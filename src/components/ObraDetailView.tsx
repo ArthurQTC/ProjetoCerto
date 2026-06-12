@@ -6,13 +6,10 @@ import {
   Percent,
   Plus,
   Trash2,
-  Archive,
   Ban,
   CheckCircle,
   Edit,
   Search,
-  Eye,
-  EyeOff,
   Building,
   Layers,
   FileSpreadsheet,
@@ -38,8 +35,6 @@ export default function ObraDetailView() {
   const navigateToProjects = useUIStore((state) => state.navigateToProjects);
   const navigateToSteps = useUIStore((state) => state.navigateToSteps);
   const selectedProjectId = useUIStore((state) => state.selectedProjectId || state.selectedObraId);
-  const showArquivados = useUIStore((state) => state.showArquivados);
-  const setShowArquivados = useUIStore((state) => state.setShowArquivados);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -257,8 +252,6 @@ export default function ObraDetailView() {
   // Status badge style helper
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "ARQUIVADO":
-        return <span className="inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-wider py-0.5 px-2 bg-slate-200 text-slate-600 border border-slate-300 rounded-md">Arquivado</span>;
       case "LIXEIRA":
         return <span className="inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-wider py-0.5 px-2 bg-red-50 text-red-600 border border-red-200 rounded-md">Lixeira</span>;
       default:
@@ -266,7 +259,7 @@ export default function ObraDetailView() {
     }
   };
 
-  const handleToggleStatus = (item: ItemOrcamento, targetStatus: "ATIVO" | "ARQUIVADO" | "LIXEIRA") => {
+  const handleToggleStatus = (item: ItemOrcamento, targetStatus: "ATIVO" | "LIXEIRA" | "FORA_DO_ORCAMENTO") => {
     updateItemMutation.mutate({ itemId: item.id, payload: { status: targetStatus } });
   };
 
@@ -310,12 +303,21 @@ export default function ObraDetailView() {
       e.preventDefault();
       return;
     }
-    setDraggedId(id);
+    
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", id);
+
+    // Timeout allows browser to capture the fully visible row screenshot as the drag image first
+    setTimeout(() => {
+      setDraggedId(id);
+    }, 0);
   };
 
-  const handleDragOver = (e: React.DragEvent, hoveredId: string) => {
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDragEnter = (e: React.DragEvent, hoveredId: string) => {
     e.preventDefault();
     if (!draggedId || draggedId === hoveredId) return;
 
@@ -371,8 +373,6 @@ export default function ObraDetailView() {
     }
 
     if (item.status === "LIXEIRA") return false;
-
-    if (item.status === "ARQUIVADO" && !showArquivados) return false;
 
     const matchesSearch =
       item.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -501,27 +501,10 @@ export default function ObraDetailView() {
                     id="item_search_detail"
                   />
                 </div>
-                {/* Show/Hide Archived */}
-                <button
-                  onClick={() => {
-                    setShowArquivados(!showArquivados);
-                    if (showLixeira) setShowLixeira(false);
-                  }}
-                  className={`p-1 border rounded-lg transition-colors inline-flex items-center gap-1 text-[9px] font-bold ${
-                    showArquivados
-                      ? "bg-brand-primary/5 border-brand-primary/20 text-brand-primary"
-                      : "bg-white border-slate-200 text-brand-text-secondary hover:bg-slate-50"
-                  }`}
-                  id="toggle_show_arquivados_btn"
-                >
-                  {showArquivados ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  Arquivados ({project.itens?.filter(i => i.status === "ARQUIVADO").length || 0})
-                </button>
                 {/* Lixeira Filter */}
                 <button
                   onClick={() => {
                     setShowLixeira(!showLixeira);
-                    if (showArquivados) setShowArquivados(false);
                   }}
                   className={`p-1 border rounded-lg transition-all inline-flex items-center gap-1 text-[9px] font-bold ${
                     showLixeira
@@ -599,7 +582,6 @@ export default function ObraDetailView() {
                   <tbody className="divide-y divide-slate-150 text-[11px]">
                     {filteredItems.map((item, index) => {
                       const isOutOfBudget = item.status === "FORA_DO_ORCAMENTO";
-                      const isArchived = item.status === "ARQUIVADO";
                       const isLixeira = item.status === "LIXEIRA";
                       const isCurrentDragged = draggedId !== null && item.id === draggedId;
 
@@ -608,25 +590,24 @@ export default function ObraDetailView() {
                           key={item.id}
                           draggable
                           onDragStart={(e) => handleDragStart(e, item.id)}
-                          onDragOver={(e) => handleDragOver(e, item.id)}
+                          onDragOver={handleDragOver}
+                          onDragEnter={(e) => handleDragEnter(e, item.id)}
                           onDragEnd={handleDragEnd}
-                          className={`transition-all duration-150 border-t border-slate-150 ${
+                          className={`transition-all duration-155 border-t border-slate-150 ${
                             isCurrentDragged
-                              ? "bg-slate-50/80 border-2 border-dashed border-slate-350 shadow-inner h-[52px]"
+                              ? "opacity-40 bg-slate-100/90 scale-[0.99] border-2 border-dashed border-brand-primary/50 shadow-inner"
                               : isOutOfBudget
                               ? "opacity-50 bg-slate-50/50 hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
-                              : isArchived
-                              ? "opacity-40 bg-slate-105 hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
                               : isLixeira
                               ? "bg-red-50/10 hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
                               : "hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
                           }`}
                         >
                           {/* Grip handle indicator */}
-                          <td className={`py-2.5 px-1 text-center select-none w-6 shrink-0 ${isCurrentDragged ? "opacity-0 pointer-events-none" : ""}`}>
+                          <td className="py-2.5 px-1 text-center select-none w-6 shrink-0">
                             <GripVertical className="w-3 h-3 mx-auto text-slate-300 hover:text-slate-500" />
                           </td>
-                          <td className={`py-2.5 px-3 font-bold text-brand-text-primary ${isCurrentDragged ? "opacity-0 pointer-events-none" : ""}`}>
+                          <td className="py-2.5 px-3 font-bold text-brand-text-primary">
                             <div>
                               <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
                               {item.observacao && (
@@ -636,19 +617,19 @@ export default function ObraDetailView() {
                               )}
                             </div>
                           </td>
-                          <td className={`py-2.5 px-3 text-brand-text-secondary font-semibold ${isCurrentDragged ? "opacity-0 pointer-events-none" : ""}`}>
+                          <td className="py-2.5 px-3 text-brand-text-secondary font-semibold">
                             <span className="inline-flex flex-col">
                               <span>{item.categoria?.nome || "Sem Categoria"}</span>
                             </span>
                           </td>
-                          <td className={`py-2.5 px-3 text-right font-mono font-bold ${isCurrentDragged ? "opacity-0 pointer-events-none" : isOutOfBudget ? "text-brand-text-secondary" : "text-brand-text-primary"}`}>
+                          <td className={`py-2.5 px-3 text-right font-mono font-bold ${isOutOfBudget ? "text-brand-text-secondary" : "text-brand-text-primary"}`}>
                             {formatBRL(item.valor)}
                           </td>
-                          <td className={`py-2.5 px-3 text-center ${isCurrentDragged ? "opacity-0 pointer-events-none" : ""}`}>
+                          <td className="py-2.5 px-3 text-center">
                             {getStatusBadge(item.status)}
                           </td>
                           <td className="py-2.5 px-3" draggable="false" onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                            <div className={`flex items-center justify-center gap-1 ${isCurrentDragged ? "opacity-0 pointer-events-none" : ""}`} onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                               {isLixeira ? (
                                 <>
                                   <button
@@ -707,17 +688,6 @@ export default function ObraDetailView() {
                                       title="Ativar no Orçamento"
                                     >
                                       <CheckCircle className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-
-                                  {/* Toggle Archive */}
-                                  {item.status !== "ARQUIVADO" && (
-                                    <button
-                                      onClick={() => handleToggleStatus(item, "ARQUIVADO")}
-                                      className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded transition-colors"
-                                      title="Arquivar (Ocultar da planilha)"
-                                    >
-                                      <Archive className="w-3 h-3" />
                                     </button>
                                   )}
 

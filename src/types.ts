@@ -7,7 +7,7 @@ export type GrupoCalculo =
   | 'MARGEM'
   | 'OUTROS';
 
-export type ItemStatus = 'ATIVO' | 'FORA_DO_ORCAMENTO' | 'ARQUIVADO' | 'LIXEIRA';
+export type ItemStatus = 'ATIVO' | 'FORA_DO_ORCAMENTO' | 'LIXEIRA';
 
 export interface Categoria {
   id: string;
