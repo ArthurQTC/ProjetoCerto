@@ -42,6 +42,18 @@ export default function ObraDetailView() {
   const [selectedItem, setSelectedItem] = useState<ItemOrcamento | null>(null);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
   
+  // Live PDF-Matching Proposal Preview
+  const [isBudgetPreviewOpen, setIsBudgetPreviewOpen] = useState(false);
+  const [docNumber, setDocNumber] = useState("");
+  const [docDate, setDocDate] = useState("");
+  const [docValidity, setDocValidity] = useState("");
+  const [docClientName, setDocClientName] = useState("");
+  const [docClientCnpj, setDocClientCnpj] = useState("");
+  const [docClientAddress, setDocClientAddress] = useState("");
+  const [docClientEmail, setDocClientEmail] = useState("");
+  const [docScope, setDocScope] = useState("");
+  const [docScopePct, setDocScopePct] = useState("***60%***");
+
   // Document attachments and inline pdf preview states
   const [activePdfUrl, setActivePdfUrl] = useState<string | null>(null);
 
@@ -132,6 +144,27 @@ export default function ObraDetailView() {
       setLocalItems(project.itens);
     }
   }, [project?.itens]);
+
+  useEffect(() => {
+    if (project) {
+      const defaultId = project.id.replace(/\D/g, "");
+      setDocNumber(project.numeroPedido || (defaultId ? defaultId.substring(0, 4) : "9461"));
+      
+      const today = new Date();
+      setDocDate(today.toLocaleDateString("pt-BR"));
+      
+      const validityDate = new Date();
+      validityDate.setDate(validityDate.getDate() + 30);
+      setDocValidity(validityDate.toLocaleDateString("pt-BR"));
+      
+      setDocClientName(project.cliente || project.nome);
+      setDocClientCnpj("03.786.187/0017-56");
+      setDocClientAddress("Rua Itacolomi - RESIDENCIA BOA VISTA - Conjunto Habitacional Jardim Sabiá - Senador Canedo - GO - CEP: 75250-005");
+      setDocClientEmail("savio@threeway.com.br");
+      setDocScope("FORNECIMENTO DE MATERIAIS PARA ESTRUTURA E SUBESTRUTURA PARA RECEBIMENTO DOS BRISES + MÃO DE OBRA DE INSTALAÇÃO DO BRISES THB 150 HUNTER DOUGLAS");
+      setDocScopePct("***60%***");
+    }
+  }, [project, isBudgetPreviewOpen]);
 
   // Toggle item statuses
   const updateItemMutation = useMutation({
@@ -562,6 +595,15 @@ export default function ObraDetailView() {
                 >
                   <Plus className="w-3 h-3" />
                   Novo Item
+                </button>
+                {/* Visualizar Orçamento Materiais */}
+                <button
+                  onClick={() => setIsBudgetPreviewOpen(true)}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors shadow-sm cursor-pointer"
+                  id="visualize_budget_materials_btn"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Orçamento Materiais (PDF)
                 </button>
               </div>
             </div>
@@ -1032,6 +1074,394 @@ export default function ObraDetailView() {
                 className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-inner flex-1" 
                 title="PDF Full Preview"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic PDF-matching Materials Budget Export & Preview Modal */}
+      {isBudgetPreviewOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 md:p-4 bg-slate-900/70 backdrop-blur-xs">
+          {/* Custom Print Stylesheet to hide everything else and style the budget page strictly on A4 */}
+          <style dangerouslySetInnerHTML={{__html: `
+            @media print {
+              html, body {
+                background: white !important;
+                color: black !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-budget-document, #printable-budget-document * {
+                visibility: visible !important;
+              }
+              #printable-budget-document {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 1.5cm 1.2cm !important;
+                border: none !important;
+                box-shadow: none !important;
+                page-break-after: avoid !important;
+              }
+              .no-print {
+                display: none !important;
+              }
+            }
+          `}} />
+
+          <div className="relative bg-white w-full h-full md:h-[95vh] md:max-w-7xl md:rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-150 flex items-center justify-between gap-3 shrink-0 text-left no-print">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <h4 className="text-xs font-black tracking-wide text-brand-text-primary uppercase">
+                    Visualização & Parametrização do Orçamento (Materiais)
+                  </h4>
+                  <p className="text-[10px] text-brand-text-secondary">
+                    Visualize o documento idêntico ao modelo original e edite os dados em tempo real antes de imprimir ou salvar como PDF.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider shadow-sm cursor-pointer"
+                  title="Imprimir ou Salvar como PDF usando a ferramenta nativa do navegador"
+                >
+                  <UploadCloud className="w-3.5 h-3.5 rotate-180" />
+                  Imprimir / Baixar PDF
+                </button>
+                <button
+                  onClick={() => setIsBudgetPreviewOpen(false)}
+                  className="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-brand-text-primary transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Split Screen Container */}
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-100 no-print:bg-white">
+              {/* Left Config Panel */}
+              <div className="w-full lg:w-[350px] bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 p-4 overflow-y-auto flex flex-col gap-4 text-xs text-left shrink-0 no-print">
+                <h5 className="font-bold text-slate-800 uppercase tracking-widest text-[10px] border-b border-slate-200 pb-1">
+                  Parâmetros do Documento
+                </h5>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                      Num. Orçamento
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                      value={docNumber}
+                      onChange={(e) => setDocNumber(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                      Data de Emissão
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                      value={docDate}
+                      onChange={(e) => setDocDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    Validade da Proposta
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                    value={docValidity}
+                    onChange={(e) => setDocValidity(e.target.value)}
+                  />
+                </div>
+
+                <h5 className="font-bold text-slate-800 uppercase tracking-widest text-[10px] border-b border-slate-200 pb-1 mt-2">
+                  Dados do Cliente
+                </h5>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    Nome / Razão Social
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                    value={docClientName}
+                    onChange={(e) => setDocClientName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    CNPJ Cliente
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                    value={docClientCnpj}
+                    onChange={(e) => setDocClientCnpj(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    E-mail Cliente
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                    value={docClientEmail}
+                    onChange={(e) => setDocClientEmail(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    Endereço Completo
+                  </label>
+                  <textarea
+                    rows={2}
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500 resize-none font-sans"
+                    value={docClientAddress}
+                    onChange={(e) => setDocClientAddress(e.target.value)}
+                  />
+                </div>
+
+                <h5 className="font-bold text-slate-800 uppercase tracking-widest text-[10px] border-b border-slate-200 pb-1 mt-2">
+                  Escopo & Observações
+                </h5>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    Descrição do Escopo / Fornecimento
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500 resize-none font-sans"
+                    value={docScope}
+                    onChange={(e) => setDocScope(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider mb-1">
+                    Percentual / Complemento
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                    value={docScopePct}
+                    onChange={(e) => setDocScopePct(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Right Live Preview Panel */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center items-start">
+                {/* Simulated A4 Container */}
+                <div 
+                  id="printable-budget-document"
+                  className="bg-white shadow-xl w-full max-w-[210mm] min-h-[297mm] p-6 md:p-12 border border-slate-200 text-left text-slate-900 font-sans relative flex flex-col justify-between"
+                  style={{ minHeight: '297mm', boxSizing: 'border-box' }}
+                >
+                  <div>
+                    {/* Top Date & Doc ID Row */}
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium tracking-tight mb-2">
+                      <span>{docValidity}</span>
+                      <span className="font-semibold text-slate-800">Orçamento <span className="font-bold font-mono text-xs">{docNumber}</span></span>
+                    </div>
+
+                    {/* Double-line divider */}
+                    <div className="border-t border-slate-300 my-1 font-semibold" />
+
+                    {/* Header: Vendor Brand Info Card */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 py-3 items-center">
+                      {/* Left: Brand logo & Vendor CNPJ/Address details */}
+                      <div className="md:col-span-8 flex gap-4 text-left">
+                        {/* Triangular prism architecture logo */}
+                        <div className="w-10 h-12 shrink-0 py-1">
+                          <svg width="40" height="48" viewBox="0 0 40 50" fill="none" className="mx-auto">
+                            <path d="M5 45L20 5L24 45L5 45Z" fill="#5F6368" />
+                            <path d="M20 5L35 32L24 45L20 5Z" fill="#C5221F" />
+                            <path d="M35 32L38 45L24 45L35 32Z" fill="#E67C73" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h2 className="text-[14px] font-black tracking-tight text-slate-900 uppercase">PROJETO CERTO</h2>
+                          <p className="text-[8.5px] text-slate-650 leading-snug mt-1 max-w-md font-semibold">
+                            Setor SGCV - BLOCO 65/8 LOTE 03 LOJA 04 VILA DA PAPER HOUSE - Zona Industrial (Guará) - Brasília - DF - CEP: 71215-100
+                          </p>
+                          <p className="text-[8.5px] text-slate-600 font-medium leading-normal mt-0.5">
+                            PROJETO CERTO SOLUCOES INTELIGENTES EIRELI
+                          </p>
+                          <p className="text-[8px] text-slate-500 font-mono mt-0.5">
+                            CNPJ: 14.938.262/0001-06 &nbsp; IE: 0759696400159
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right: Vendor Contacts */}
+                      <div className="md:col-span-4 text-left md:text-right flex flex-col md:items-end justify-center">
+                        <span className="text-xs font-black text-slate-900 tracking-tight font-mono mb-0.5">(61) 3346-7565</span>
+                        <span className="text-[9px] font-bold text-slate-650 hover:underline">comercial@projetocerto.com.br</span>
+                      </div>
+                    </div>
+
+                    {/* Double-line divider */}
+                    <div className="border-b-2 border-slate-900 my-1 pb-1" />
+
+                    {/* Client Info & Validity Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-slate-300 rounded-lg overflow-hidden mt-3 text-[10px]">
+                      {/* Customer Details Segment */}
+                      <div className="md:col-span-3 p-4 border-r border-slate-300 bg-white leading-relaxed flex flex-col justify-between">
+                        <div>
+                          <h3 className="font-extrabold text-slate-950 uppercase text-[11px] mb-1">{docClientName}</h3>
+                          {docClientCnpj && (
+                            <p className="text-slate-500 font-mono text-[9px]">CNPJ: {docClientCnpj}</p>
+                          )}
+                          {docClientAddress && (
+                            <p className="text-slate-600 mt-1 font-semibold text-[9.5px]">{docClientAddress}</p>
+                          )}
+                        </div>
+                        {docClientEmail && (
+                          <p className="text-slate-600 hover:underline mt-1.5 font-mono font-bold text-[9px]">{docClientEmail}</p>
+                        )}
+                      </div>
+
+                      {/* Proposal Validity Group */}
+                      <div className="bg-slate-50/50 p-4 flex flex-col justify-center items-start md:items-center text-left md:text-center shrink-0">
+                        <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Validade da proposta</span>
+                        <span className="text-[10px] font-black text-slate-850 mt-1.5 bg-white px-2 py-1 border border-slate-200 rounded-md shadow-3xs">{docValidity}</span>
+                      </div>
+                    </div>
+
+                    {/* Solid horizontal bar wrapper */}
+                    <div className="border-t border-slate-300 my-4" />
+
+                    {/* Proposal description scope text area representation */}
+                    <div className="py-2.5 px-0.5 text-slate-800 font-semibold text-[9.5px] leading-relaxed uppercase">
+                      <p className="whitespace-pre-line">{docScope}</p>
+                      {docScopePct && (
+                        <p className="mt-1 font-black tracking-widest text-slate-500">{docScopePct}</p>
+                      )}
+                    </div>
+
+                    {/* Solid horizontal bar wrapper */}
+                    <div className="border-t border-slate-300 mb-4" />
+
+                    {/* Materials table listing items dynamically */}
+                    <div className="mt-4">
+                      <table className="w-full text-left border-collapse text-[10px] font-semibold leading-relaxed">
+                        <thead>
+                          <tr className="border-b border-t border-slate-300 bg-slate-50/50">
+                            <th className="py-1.5 px-2 font-bold text-slate-700 w-12 text-center uppercase tracking-tight">Qt.</th>
+                            <th className="py-1.5 px-3 font-bold text-slate-700 uppercase tracking-tight">Produto/Serviço</th>
+                            <th className="py-1.5 px-3 font-bold text-slate-750 uppercase tracking-tight">Detalhe do item</th>
+                            <th className="py-1.5 px-3 font-bold text-slate-700 text-right uppercase tracking-tight w-28">Valor unitário</th>
+                            <th className="py-1.5 px-3 font-bold text-slate-700 text-right uppercase tracking-tight w-28">Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-250">
+                          {(() => {
+                            const materiaisItems = project?.itens?.filter(
+                              (item) =>
+                                item.status === "ATIVO" &&
+                                (item.categoria?.nome?.toLowerCase().includes("materiais") ||
+                                  item.categoria?.nome?.toLowerCase() === "materiais" ||
+                                  item.categoria?.grupoCalculo === "MATERIAL")
+                            ) || [];
+
+                            if (materiaisItems.length > 0) {
+                              return materiaisItems.map((item) => (
+                                <tr key={item.id} className="hover:bg-slate-50/20">
+                                  <td className="py-3 px-2 text-center text-slate-700">1</td>
+                                  <td className="py-3 px-3 font-bold text-slate-900 max-w-xs">{item.descricao}</td>
+                                  <td className="py-3 px-3 text-slate-600 italic whitespace-pre-line max-w-xs font-semibold">
+                                    {item.observacao || "FORNECIMENTO DE ESTUTURA/SUBESTRUTURA"}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono font-bold text-slate-850">
+                                    {formatBRLNoDecimals(item.valor)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-mono font-bold text-slate-950">
+                                    {formatBRLNoDecimals(item.valor)}
+                                  </td>
+                                </tr>
+                              ));
+                            } else {
+                              return (
+                                <tr>
+                                  <td colSpan={5} className="py-8 text-center text-slate-400 font-bold uppercase tracking-wider text-[8.5px]">
+                                    Nenhum item cadastrado ou ativo na categoria &apos;Materiais&apos; para este projeto.
+                                  </td>
+                                </tr>
+                              );
+                            }
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Dynamic Totals and net calculation matches layout */}
+                    {(() => {
+                      const deItems = project?.itens?.filter(
+                        (item) =>
+                          item.status === "ATIVO" &&
+                          (item.categoria?.nome?.toLowerCase().includes("materiais") ||
+                            item.categoria?.nome?.toLowerCase() === "materiais" ||
+                            item.categoria?.grupoCalculo === "MATERIAL")
+                      ) || [];
+                      const totMat = deItems.reduce((acc, item) => acc + (item.valor || 0), 0);
+
+                      if (deItems.length > 0) {
+                        return (
+                          <div className="mt-6 flex justify-end">
+                            <div className="w-56 border-t border-slate-350 text-[10px] uppercase font-bold tracking-tight">
+                              <div className="flex justify-between py-1.5 border-b border-dashed border-slate-205">
+                                <span className="text-slate-500">Total</span>
+                                <span className="font-mono font-black text-slate-900">{formatBRLNoDecimals(totMat)}</span>
+                              </div>
+                              <div className="flex justify-between py-1.5">
+                                <span className="text-slate-850">Valor líquido</span>
+                                <span className="font-mono font-black text-slate-950 text-xs">{formatBRLNoDecimals(totMat)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+
+                  {/* Document Page Footer */}
+                  <div className="border-t border-slate-300 pt-3.5 flex justify-between items-center text-[8.5px] text-slate-450 font-bold tracking-widest leading-none mt-12 bg-white">
+                    <span className="uppercase">PROJETO CERTO SOLUÇÕES INTELIGENTES</span>
+                    <span>Página 1 de 1</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
