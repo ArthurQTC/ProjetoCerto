@@ -95,6 +95,19 @@ export default function ProjectsListView() {
     return matchesStatus && matchesSearch;
   });
 
+  // Calculate dynamic metrics specifically for projects of the selected status filter
+  const allProjectsList = data.projetos || data.obras || [];
+  const statusFilteredProjects = allProjectsList.filter(
+    (o: any) => (o.statusContrato || "CONSOLIDADO") === projectFilter
+  );
+
+  const totalContratosFiltered = statusFilteredProjects.reduce((acc: number, o: any) => acc + (o.valorContrato || 0), 0);
+  const totalVisaoGeralFiltered = statusFilteredProjects.reduce((acc: number, o: any) => acc + (o.visaoGeral || 0), 0);
+  const totalMargemFiltered = totalContratosFiltered - totalVisaoGeralFiltered;
+  const percentualMedioFiltered = statusFilteredProjects.length > 0
+    ? statusFilteredProjects.reduce((acc: number, o: any) => acc + (o.percentualMargem || 0), 0) / statusFilteredProjects.length
+    : 0;
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header Panel */}
@@ -128,7 +141,7 @@ export default function ProjectsListView() {
           </div>
           <div>
             <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider block">Receita Contratual</span>
-            <span className="text-sm font-bold font-mono text-brand-text-primary">{formatBRL(data.totalContratos)}</span>
+            <span className="text-sm font-bold font-mono text-brand-text-primary">{formatBRL(totalContratosFiltered)}</span>
           </div>
         </div>
         <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-xs flex items-center gap-3">
@@ -137,7 +150,7 @@ export default function ProjectsListView() {
           </div>
           <div>
             <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider block">Custo dos Contratos</span>
-            <span className="text-sm font-bold font-mono text-brand-text-primary">{formatBRL(data.totalVisaoGeral)}</span>
+            <span className="text-sm font-bold font-mono text-brand-text-primary">{formatBRL(totalVisaoGeralFiltered)}</span>
           </div>
         </div>
         <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-xs flex items-center gap-3">
@@ -146,7 +159,7 @@ export default function ProjectsListView() {
           </div>
           <div>
             <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider block">Margem Líquida</span>
-            <span className="text-sm font-bold font-mono text-brand-success">{formatBRL(data.totalMargem)}</span>
+            <span className="text-sm font-bold font-mono text-brand-success">{formatBRL(totalMargemFiltered)}</span>
           </div>
         </div>
         <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-xs flex items-center gap-3">
@@ -155,7 +168,7 @@ export default function ProjectsListView() {
           </div>
           <div>
             <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider block">Percentual LL</span>
-            <span className="text-sm font-bold font-mono text-brand-text-primary">{data.percentualMedio.toFixed(2)}%</span>
+            <span className="text-sm font-bold font-mono text-brand-text-primary">{percentualMedioFiltered.toFixed(2)}%</span>
           </div>
         </div>
       </div>
