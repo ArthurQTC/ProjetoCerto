@@ -1,0 +1,8 @@
+{
+  "name": "Centro de Custos Obras",
+  "description": "Sistema profissional de gestão de custos de obras desenvolvido para substituir planilhas operacionais de orçamento.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
