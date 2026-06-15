@@ -800,67 +800,12 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
     }
   });
 
-  // Export Dados para JSON
+  // Export Dados da Memória para JSON
   app.get("/api/export-memory", async (req, res) => {
     try {
-      // Consolidar dados do Banco (se disponível) e Memória
-      const obrasMap = new Map<string, any>();
-
-      if (dbConnected && pool) {
-        try {
-          const dbObrasRes = await pool.query('SELECT * FROM obras ORDER BY "createdAt" DESC');
-          const allObras = dbObrasRes.rows;
-          const allItensRes = await pool.query(`
-            SELECT i.*, 
-                   c.nome as "cat_nome", c."grupoCalculo" as "cat_grupoCalculo"
-            FROM itens_orcamento i
-            LEFT JOIN categorias c ON i."categoriaId" = c.id
-            ORDER BY i.ordem ASC
-          `);
-          const allItens = allItensRes.rows;
-
-          allObras.forEach(o => {
-            const items = allItens.filter(i => i.obraId === o.id).map(i => ({
-              id: i.id,
-              descricao: i.descricao,
-              valor: Number(i.valor),
-              status: i.status,
-              observacao: i.observacao,
-              ordem: Number(i.ordem),
-              obraId: i.obraId,
-              categoriaId: i.categoriaId,
-              createdAt: i.createdAt,
-              updatedAt: i.updatedAt,
-              categoria: { id: i.categoriaId, nome: i.cat_nome, grupoCalculo: i.cat_grupoCalculo }
-            }));
-            obrasMap.set(o.id, {
-              ...o,
-              valorContrato: Number(o.valorContrato),
-              documentos: typeof o.documentos === 'string' ? JSON.parse(o.documentos) : (o.documentos || []),
-              itens: items
-            });
-          });
-        } catch (dbErr) {
-          console.error("Erro exportando dados do pg:", dbErr);
-        }
-      }
-
-      // Adicionar obras da Memória que não estão no Banco
-      memoryObras.forEach(o => {
-        if (!obrasMap.has(o.id)) {
-          const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
-            ...i,
-            categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-          }));
-          obrasMap.set(o.id, {
-            ...o,
-            itens: items
-          });
-        }
-      });
-
       res.json({
-        obras: Array.from(obrasMap.values()),
+        obras: memoryObras,
+        itens: memoryItens,
         categorias: memoryCategorias
       });
     } catch (e: any) {
