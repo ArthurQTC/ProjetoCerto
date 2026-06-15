@@ -803,7 +803,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   // Export Dados para JSON
   app.get("/api/export-memory", async (req, res) => {
     try {
-      let freshObras: any[] = [];
+      // Consolidar dados do Banco (se disponível) e Memória
+      const obrasMap = new Map<string, any>();
+
       if (dbConnected && pool) {
         try {
           const dbObrasRes = await pool.query('SELECT * FROM obras ORDER BY "createdAt" DESC');
@@ -817,7 +819,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           `);
           const allItens = allItensRes.rows;
 
-          freshObras = allObras.map(o => {
+          allObras.forEach(o => {
             const items = allItens.filter(i => i.obraId === o.id).map(i => ({
               id: i.id,
               descricao: i.descricao,
@@ -831,33 +833,34 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               updatedAt: i.updatedAt,
               categoria: { id: i.categoriaId, nome: i.cat_nome, grupoCalculo: i.cat_grupoCalculo }
             }));
-            return {
+            obrasMap.set(o.id, {
               ...o,
               valorContrato: Number(o.valorContrato),
               documentos: typeof o.documentos === 'string' ? JSON.parse(o.documentos) : (o.documentos || []),
               itens: items
-            };
+            });
           });
         } catch (dbErr) {
           console.error("Erro exportando dados do pg:", dbErr);
         }
       }
 
-      if (!dbConnected || freshObras.length === 0) {
-        freshObras = memoryObras.map(o => {
+      // Adicionar obras da Memória que não estão no Banco
+      memoryObras.forEach(o => {
+        if (!obrasMap.has(o.id)) {
           const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
             ...i,
             categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
           }));
-          return {
+          obrasMap.set(o.id, {
             ...o,
             itens: items
-          };
-        });
-      }
+          });
+        }
+      });
 
       res.json({
-        obras: freshObras,
+        obras: Array.from(obrasMap.values()),
         categorias: memoryCategorias
       });
     } catch (e: any) {
