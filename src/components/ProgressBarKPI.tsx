@@ -76,11 +76,11 @@ export default function ProgressBarKPI({
     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
       <div>
         <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest block">{title}</span>
-        <h4 className="text-base font-extrabold font-mono tracking-tight text-brand-text-primary mt-1.5 flex items-center flex-wrap gap-1 bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-100">
-          <span className="text-brand-primary">{formatCurrency(current)}</span>
-          <span className="text-slate-300 font-sans mx-1">/</span>
+        <h4 className="text-xs min-[380px]:text-sm sm:text-base font-extrabold font-mono tracking-tight text-brand-text-primary mt-1.5 flex items-center flex-nowrap whitespace-nowrap gap-1 bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-100 overflow-x-auto scrollbar-none">
+          <span className="text-brand-primary shrink-0">{formatCurrency(current)}</span>
+          <span className="text-slate-300 font-sans mx-1 shrink-0">/</span>
           {isEditing ? (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
               <span className="text-[10px] text-slate-400 font-sans">R$</span>
               <input
                 type="number"
@@ -97,20 +97,26 @@ export default function ProgressBarKPI({
                 }}
                 autoFocus
               />
-              <button onClick={handleSave} className="p-0.5 text-green-600 hover:text-green-800" title="Salvar">
-                <Check className="w-3.5 h-3.5" />
+              <button 
+                id={`btn_save_goal_edit_${title.toLowerCase().replace(/\s+/g, '_')}`}
+                onClick={handleSave} 
+                className="p-1 text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-md shrink-0" 
+                title="Salvar"
+              >
+                <Check className="w-3 h-3" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 group/goal select-none">
-              <span className="text-brand-text-secondary text-sm font-medium">{formatCurrency(goal)}</span>
+            <div className="flex items-center gap-1.5 select-none shrink-0">
+              <span className="text-brand-text-secondary text-sm font-medium shrink-0">{formatCurrency(goal)}</span>
               {onGoalChange && (
                 <button
+                  id={`btn_edit_goal_${title.toLowerCase().replace(/\s+/g, '_')}`}
                   onClick={() => {
                     setValInput(String(goal));
                     setIsEditing(true);
                   }}
-                  className="opacity-0 group-hover/goal:opacity-100 transition-opacity p-0.5 text-brand-text-secondary hover:text-brand-primary cursor-pointer"
+                  className="p-1 text-slate-500 hover:text-brand-primary bg-slate-100/80 hover:bg-slate-200/85 rounded-md transition-all duration-200 cursor-pointer text-xs shrink-0"
                   title="Editar Meta"
                 >
                   <Edit2 className="w-3 h-3" />

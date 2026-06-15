@@ -118,9 +118,35 @@ export default function DashboardView() {
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
-      {/* Title */}
-      <div>
-        <h1 className="text-xl font-extrabold tracking-tight text-brand-text-primary">Dashboard - Centro de Custos Obras</h1>
+      {/* Top Header Section with Progress bars on the right */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-100 pb-2">
+        <div>
+          <h1 className="text-2xl font-black text-brand-text-primary tracking-tight">Dashboard</h1>
+          <p className="text-xs text-brand-text-secondary font-semibold uppercase tracking-wider">Centro de Custos Obras</p>
+        </div>
+        
+        {/* Progress indicators placed in the top right, above the main KPI cards */}
+        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto shrink-0">
+          <div className="w-full sm:w-80 md:w-96 lg:w-[380px] xl:w-[420px] shrink-0">
+            <ProgressBarKPI
+              title="PROJEÇÃO 2026"
+              current={data.kpiProjecao.atual}
+              goal={6000000}
+              color="emerald"
+              hideBar={false}
+            />
+          </div>
+          <div className="w-full sm:w-80 md:w-96 lg:w-[380px] xl:w-[420px] shrink-0">
+            <ProgressBarKPI
+              title="DESPESAS ADM"
+              current={data.kpiAdm.atual}
+              goal={admMeta}
+              color="emerald"
+              hideBar={false}
+              onGoalChange={handleAdmMetaChange}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Row 1: KPI Cards spread full-width to prevent any wrapping or squeezing */}
@@ -291,25 +317,6 @@ export default function DashboardView() {
         {/* Right Sidebar Column (spans 1/3 of space on desktop) */}
         <div className="lg:col-span-1 space-y-4">
           
-          {/* Progress indicators - stacked on the right */}
-          <div className="space-y-4">
-            <ProgressBarKPI
-              title="PROJEÇÃO 2026"
-              current={data.kpiProjecao.atual}
-              goal={6000000}
-              color="emerald"
-              hideBar={false}
-            />
-            <ProgressBarKPI
-              title="DESPESAS ADM"
-              current={data.kpiAdm.atual}
-              goal={admMeta}
-              color="emerald"
-              hideBar={false}
-              onGoalChange={handleAdmMetaChange}
-            />
-          </div>
-
           {/* Chart 2: Cost group distribution */}
           <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex flex-col justify-between">
             <div>
