@@ -198,10 +198,10 @@ export default function ProjectsListView() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Visão Geral</th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Custo dos Contratos</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Ações</th>
                 </tr>
               </thead>
@@ -225,6 +225,9 @@ export default function ProjectsListView() {
                         )}
                       </td>
                       <td className="py-3.5 px-5 text-right font-mono font-bold text-brand-text-primary">
+                        {formatBRL(p.valorContrato)}
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-mono font-bold text-brand-text-primary">
                         {formatBRL(p.visaoGeral)}
                       </td>
                       <td
@@ -244,9 +247,6 @@ export default function ProjectsListView() {
                         >
                           {p.percentualMargem.toFixed(2)}%
                         </span>
-                      </td>
-                      <td className="py-3.5 px-5 text-right font-mono font-bold text-brand-text-primary">
-                        {formatBRL(p.valorContrato)}
                       </td>
                       <td className="py-3.5 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">

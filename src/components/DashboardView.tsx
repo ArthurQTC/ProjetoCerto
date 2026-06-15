@@ -117,7 +117,15 @@ export default function DashboardView() {
             <h1 className="text-lg font-extrabold tracking-tight text-brand-text-primary">Dashboard - Centro de Custos Obras</h1>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <KPICard
+              title="Receita Contratual"
+              value={data.totalContratos}
+              type="currency"
+              icon={<Briefcase className="w-4 h-4 text-amber-600" />}
+              subtitle="Faturamento total"
+              id="hdr_receita_contratual_total"
+            />
             <KPICard
               title="Custo dos Contratos"
               value={data.totalVisaoGeral}
@@ -274,11 +282,11 @@ export default function DashboardView() {
               <thead>
                 <tr className="bg-slate-50/60 border-b border-slate-100">
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Cliente</th>
-                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Visão Custo Geral</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Custo dos Contratos</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
-                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Contrato</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Ação</th>
                 </tr>
               </thead>
@@ -293,6 +301,9 @@ export default function DashboardView() {
                     >
                       <td className="py-2.5 px-4 font-bold text-brand-text-primary group-hover:text-brand-primary transition-colors">
                         {p.nome}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-brand-text-primary">
+                        {formatBRL(p.valorContrato)}
                       </td>
                       <td className="py-2.5 px-4 text-brand-text-secondary font-semibold">
                         {p.cliente || "Geral / Interno"}
@@ -317,9 +328,6 @@ export default function DashboardView() {
                         >
                           {p.percentualMargem.toFixed(2)}%
                         </span>
-                      </td>
-                      <td className="py-2.5 px-4 text-right font-mono font-bold text-brand-text-primary">
-                        {formatBRL(p.valorContrato)}
                       </td>
                       <td className="py-2.5 px-4 text-center">
                         <button className="p-0.5 px-2 hover:bg-brand-primary hover:text-white text-brand-primary border border-brand-primary/10 hover:border-transparent rounded-md transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold">

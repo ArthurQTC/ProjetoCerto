@@ -57,11 +57,13 @@ export default function ObraDetailView() {
 
   // Document attachments and inline pdf preview states
   const [activePdfUrl, setActivePdfUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsUploading(true);
     const reader = new FileReader();
     reader.onload = async () => {
       const base64Url = reader.result as string;
@@ -85,7 +87,13 @@ export default function ObraDetailView() {
         queryClient.invalidateQueries({ queryKey: ["projectDetail", project?.id] });
       } catch (err: any) {
         alert("Erro ao enviar arquivo: " + err.message);
+      } finally {
+        setIsUploading(false);
       }
+    };
+    reader.onerror = () => {
+      alert("Erro ao ler o arquivo PDF/Imagem.");
+      setIsUploading(false);
     };
     reader.readAsDataURL(file);
   };
@@ -827,17 +835,32 @@ export default function ObraDetailView() {
 
             {/* Upload Area */}
             <div className="pt-2 border-t border-slate-100">
-              <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-brand-accent rounded-xl p-3 cursor-pointer hover:bg-slate-50 transition-all">
+              <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-3 transition-all ${
+                isUploading 
+                  ? "border-amber-300 bg-amber-50/20 cursor-not-allowed" 
+                  : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
+              }`}>
                 <div className="flex flex-col items-center justify-center text-center">
-                  <UploadCloud className="w-5 h-5 text-brand-accent mb-1 animate-bounce" />
-                  <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento PDF / Imagem</p>
-                  <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste o arquivo aqui</p>
+                  {isUploading ? (
+                    <>
+                      <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin mb-1" />
+                      <p className="text-[10px] font-extrabold text-amber-700">Enviando arquivo...</p>
+                      <p className="text-[8px] text-slate-400 mt-0.5">Salvando no banco de dados, aguarde...</p>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-5 h-5 text-brand-accent mb-1 animate-bounce" />
+                      <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento PDF / Imagem</p>
+                      <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste o arquivo aqui</p>
+                    </>
+                  )}
                 </div>
                 <input 
                   type="file" 
                   accept="application/pdf,image/*" 
                   className="hidden" 
                   onChange={handleLocalFileUpload} 
+                  disabled={isUploading}
                 />
               </label>
             </div>
