@@ -87,10 +87,12 @@ export default function DashboardView() {
     .slice(0, 8)
     .map((p) => ({
       name: p.nome.length > 12 ? `${p.nome.substring(0, 12)}...` : p.nome,
+      fullName: p.nome,
       id: p.id,
       Contrato: p.valorContrato,
       Custos: p.visaoGeral,
       Margem: p.margemLiquida,
+      Percentual: p.percentualMargem,
     }));
 
   const handleBarClick = (entry: any) => {
@@ -98,6 +100,41 @@ export default function DashboardView() {
     if (id) {
       navigateToProject(id);
     }
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const currentData = payload[0].payload;
+      const isPositive = currentData.Margem >= 0;
+      return (
+        <div className="bg-white p-3 border border-slate-100 rounded-xl shadow-lg text-xs space-y-2 min-w-[210px] animate-in fade-in zoom-in-95 duration-100">
+          <p className="font-extrabold text-slate-800 border-b border-slate-100 pb-1 mb-1 truncate max-w-[240px]">
+            {currentData.fullName}
+          </p>
+          <div className="flex justify-between gap-3 items-center">
+            <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">Valor Contrato</span>
+            <span className="font-mono font-bold text-amber-600">{formatBRL(currentData.Contrato)}</span>
+          </div>
+          <div className="flex justify-between gap-3 items-center">
+            <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">Custo Geral</span>
+            <span className="font-mono font-bold text-slate-800">{formatBRL(currentData.Custos)}</span>
+          </div>
+          <div className="flex justify-between gap-3 items-center border-t border-slate-100 pt-1.5 mt-1">
+            <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">Margem Líquida</span>
+            <span className={`font-mono font-bold ${isPositive ? "text-brand-success" : "text-brand-error"}`}>
+              {formatBRL(currentData.Margem)}
+            </span>
+          </div>
+          <div className="flex justify-between gap-3 items-center">
+            <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">Margem (%)</span>
+            <span className={`font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-md ${isPositive ? "bg-brand-success/5 text-brand-success border border-brand-success/15" : "bg-brand-error/5 text-brand-error border border-brand-error/15"}`}>
+              {currentData.Percentual.toFixed(2)}%
+            </span>
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
 
   const COLORS = ["#EA580C", "#1E293B", "#D97706", "#334155", "#9A3412", "#475569", "#7C2D12", "#1E1B4B"];
@@ -207,10 +244,7 @@ export default function DashboardView() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                   <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#64748B" }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={(v: number) => `${v / 1000}k`} tick={{ fontSize: 9, fill: "#64748B" }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    formatter={(value: any) => [formatBRL(Number(value)), ""]}
-                    contentStyle={{ border: "none", borderRadius: "8px", fontSize: "11px", boxShadow: "0 4px 10px rgba(0,0,0,0.04)" }}
-                  />
+                  <Tooltip content={<CustomTooltip />} />
                   <Legend iconSize={6} iconType="circle" wrapperStyle={{ fontSize: 9, paddingTop: 10 }} />
                   <Bar dataKey="Contrato" name="Valor Contrato" fill="#F97316" radius={[3, 3, 0, 0]} barSize={12} onClick={handleBarClick} className="cursor-pointer hover:opacity-85 transition-opacity" style={{ cursor: "pointer" }} />
                   <Bar dataKey="Custos" name="Custo Geral" fill="#1A1A1A" radius={[3, 3, 0, 0]} barSize={12} onClick={handleBarClick} className="cursor-pointer hover:opacity-85 transition-opacity" style={{ cursor: "pointer" }} />
@@ -247,7 +281,7 @@ export default function DashboardView() {
                       <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
                       <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
                       <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Cliente</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Custo dos Contratos</th>
+                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Custo do Contrato</th>
                       <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
                       <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
                       <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Ação</th>
