@@ -12,11 +12,24 @@ export default function DateRangePicker({ startDate, endDate, onChange }: DateRa
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [hoveredDate, setHoveredDate] = useState<Date | null>(null);
+  
+  // Local temporary states for filtering
+  const [localStartDate, setLocalStartDate] = useState(startDate);
+  const [localEndDate, setLocalEndDate] = useState(endDate);
+
+  // Sync local states when the popover opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalStartDate(startDate);
+      setLocalEndDate(endDate);
+    }
+  }, [isOpen, startDate, endDate]);
 
   // Initialize reference date (default to today or June 2026 if today is in 2026)
   const [leftCalendarDate, setLeftCalendarDate] = useState(() => {
-    if (startDate) {
-      return new Date(startDate);
+    const refDateStr = startDate || endDate || "";
+    if (refDateStr) {
+      return new Date(refDateStr);
     }
     return new Date(); // Defaults to system time
   });
@@ -92,9 +105,11 @@ export default function DateRangePicker({ startDate, endDate, onChange }: DateRa
   const applyPreset = (preset: string) => {
     const { start, end } = getPresetDates(preset);
     if (!start || !end) {
-      onChange("", "");
+      setLocalStartDate("");
+      setLocalEndDate("");
     } else {
-      onChange(formatToDateInput(start), formatToDateInput(end));
+      setLocalStartDate(formatToDateInput(start));
+      setLocalEndDate(formatToDateInput(end));
       setLeftCalendarDate(new Date(start));
     }
   };
@@ -108,20 +123,22 @@ export default function DateRangePicker({ startDate, endDate, onChange }: DateRa
 
   const handleDayClick = (dayDate: Date) => {
     dayDate.setHours(12, 0, 0, 0);
-    const startObj = parseFromDateInput(startDate);
-    const endObj = parseFromDateInput(endDate);
+    const startObj = parseFromDateInput(localStartDate);
+    const endObj = parseFromDateInput(localEndDate);
 
     if (!startObj || (startObj && endObj)) {
       // First click or both set: start new selection
-      onChange(formatToDateInput(dayDate), "");
+      setLocalStartDate(formatToDateInput(dayDate));
+      setLocalEndDate("");
     } else {
       // Start is set but not end
       if (dayDate < startObj) {
         // Earlier than start: make it start
-        onChange(formatToDateInput(dayDate), "");
+        setLocalStartDate(formatToDateInput(dayDate));
+        setLocalEndDate("");
       } else {
         // Later or equal: make it end
-        onChange(formatToDateInput(startObj), formatToDateInput(dayDate));
+        setLocalEndDate(formatToDateInput(dayDate));
       }
     }
   };
@@ -176,8 +193,8 @@ export default function DateRangePicker({ startDate, endDate, onChange }: DateRa
   };
 
   const getDayClasses = (dayDate: Date, isCurrentMonth: boolean) => {
-    const startObj = parseFromDateInput(startDate);
-    const endObj = parseFromDateInput(endDate);
+    const startObj = parseFromDateInput(localStartDate);
+    const endObj = parseFromDateInput(localEndDate);
     
     dayDate.setHours(12, 0, 0, 0);
     const time = dayDate.getTime();
@@ -267,164 +284,213 @@ export default function DateRangePicker({ startDate, endDate, onChange }: DateRa
 
       {isOpen && (
         <div 
-          className="absolute left-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[100] flex overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+          className="absolute left-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[100] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
           style={{ width: "660px", maxWidth: "calc(100vw - 2rem)" }}
         >
-          {/* Preset Sidebar */}
-          <div className="w-36 bg-slate-50/55 border-r border-slate-100 p-2.5 flex flex-col gap-1.5 shrink-0 select-none">
-            <button
-              onClick={() => applyPreset("hoje")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Hoje
-            </button>
-            <button
-              onClick={() => applyPreset("ontem")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Ontem
-            </button>
-            <button
-              onClick={() => applyPreset("semana")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Semana
-            </button>
-            <button
-              onClick={() => applyPreset("mes")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Mês
-            </button>
-            <button
-              onClick={() => applyPreset("mes_passado")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Mês passado
-            </button>
-            <button
-              onClick={() => applyPreset("ano")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Ano
-            </button>
-            <button
-              onClick={() => applyPreset("ano_passado")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Ano passado
-            </button>
-            <button
-              onClick={() => applyPreset("tudo")}
-              className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
-            >
-              Tudo
-            </button>
+          {/* Main Content Area: presets + calendars */}
+          <div className="flex flex-row overflow-hidden">
+            {/* Preset Sidebar */}
+            <div className="w-36 bg-slate-50/55 border-r border-slate-100 p-2.5 flex flex-col gap-1.5 shrink-0 select-none">
+              <button
+                onClick={() => applyPreset("hoje")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Hoje
+              </button>
+              <button
+                onClick={() => applyPreset("ontem")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Ontem
+              </button>
+              <button
+                onClick={() => applyPreset("semana")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Semana
+              </button>
+              <button
+                onClick={() => applyPreset("mes")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Mês
+              </button>
+              <button
+                onClick={() => applyPreset("mes_passado")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Mês passado
+              </button>
+              <button
+                onClick={() => applyPreset("ano")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Ano
+              </button>
+              <button
+                onClick={() => applyPreset("ano_passado")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Ano passado
+              </button>
+              <button
+                onClick={() => applyPreset("tudo")}
+                className="text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary rounded-lg transition-colors cursor-pointer"
+              >
+                Tudo
+              </button>
+            </div>
+
+            {/* Calendar Area */}
+            <div className="flex-1 p-5 flex flex-col gap-4 overflow-hidden">
+              {/* Header displaying specific Date values as editable inputs for manual writing or calendar selection */}
+              <div className="space-y-1.5 shrink-0">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                  Insira as datas manualmente ou clique no calendário:
+                </span>
+                <div className="flex justify-between items-center gap-2.5">
+                  {/* Left Input Display */}
+                  <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1 px-2.5 flex items-center gap-1.5 focus-within:bg-white focus-within:ring-1 focus-within:ring-brand-primary focus-within:border-brand-primary transition-all text-slate-700">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <input
+                      type="date"
+                      value={localStartDate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLocalStartDate(val);
+                        const d = parseFromDateInput(val);
+                        if (d && !isNaN(d.getTime())) {
+                          setLeftCalendarDate(d);
+                        }
+                      }}
+                      className="w-full text-xs font-bold font-mono text-slate-800 bg-transparent border-0 outline-hidden focus:outline-hidden p-0 focus:ring-0 min-h-[22px] min-w-0"
+                    />
+                  </div>
+                  <span className="text-slate-300 font-bold shrink-0 text-xs">até</span>
+                  {/* Right Input Display */}
+                  <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1 px-2.5 flex items-center gap-1.5 focus-within:bg-white focus-within:ring-1 focus-within:ring-brand-primary focus-within:border-brand-primary transition-all text-slate-700">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <input
+                      type="date"
+                      value={localEndDate}
+                      onChange={(e) => {
+                        setLocalEndDate(e.target.value);
+                      }}
+                      className="w-full text-xs font-bold font-mono text-slate-800 bg-transparent border-0 outline-hidden focus:outline-hidden p-0 focus:ring-0 min-h-[22px] min-w-0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Calendars side-by-side */}
+              <div className="flex gap-6 grow relative" onMouseLeave={() => setHoveredDate(null)}>
+                
+                {/* Month 1 (Left) */}
+                <div className="flex-1 select-none">
+                  <div className="flex justify-between items-center mb-3">
+                    <button 
+                      onClick={() => navigateMonth("prev")} 
+                      className="p-1 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 cursor-pointer shrink-0"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs font-extrabold text-slate-800 uppercase tracking-widest font-sans">
+                      {getPortugueseMonthYear(leftCal)}
+                    </span>
+                    <div className="w-6 shrink-0" /> {/* Spacer to align */}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-1 justify-items-center mb-1">
+                    {weekDays.map((day) => (
+                      <span key={day} className="text-[10px] font-bold text-slate-400 w-8 text-center uppercase tracking-wider">
+                        {day}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-1 justify-items-center">
+                    {generateMonthDays(leftCal).map((day, idx) => (
+                      <div
+                        key={`left-${idx}`}
+                        onClick={() => handleDayClick(day.date)}
+                        onMouseEnter={() => {
+                          const d = new Date(day.date);
+                          d.setHours(12, 0, 0, 0);
+                          setHoveredDate(d);
+                        }}
+                        className={getDayClasses(day.date, day.isCurrentMonth)}
+                      >
+                        {day.date.getDate()}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Month 2 (Right) */}
+                <div className="flex-1 select-none">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="w-6 shrink-0" /> {/* Spacer to align */}
+                    <span className="text-xs font-extrabold text-slate-800 uppercase tracking-widest font-sans animate-none">
+                      {getPortugueseMonthYear(rightCal)}
+                    </span>
+                    <button 
+                      onClick={() => navigateMonth("next")} 
+                      className="p-1 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 cursor-pointer shrink-0"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-1 justify-items-center mb-1">
+                    {weekDays.map((day) => (
+                      <span key={day} className="text-[10px] font-bold text-slate-400 w-8 text-center uppercase tracking-wider">
+                        {day}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-1 justify-items-center">
+                    {generateMonthDays(rightCal).map((day, idx) => (
+                      <div
+                        key={`right-${idx}`}
+                        onClick={() => handleDayClick(day.date)}
+                        onMouseEnter={() => {
+                          const d = new Date(day.date);
+                          d.setHours(12, 0, 0, 0);
+                          setHoveredDate(d);
+                        }}
+                        className={getDayClasses(day.date, day.isCurrentMonth)}
+                      >
+                        {day.date.getDate()}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
 
-          {/* Calendar Content Area */}
-          <div className="flex-1 p-5 flex flex-col gap-4 overflow-hidden">
-            {/* Header displaying specific Date values as readonly input-styled labels */}
-            <div className="flex justify-between items-center gap-3">
-              {/* Left Input Display */}
-              <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1 px-3 flex items-center gap-2 text-slate-700">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="font-mono text-xs font-bold">{formatDateDisplay(startDate)}</span>
-              </div>
-              <span className="text-slate-300 font-bold shrink-0">to</span>
-              {/* Right Input Display */}
-              <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1 px-3 flex items-center gap-2 text-slate-700">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="font-mono text-xs font-bold">{formatDateDisplay(endDate)}</span>
-              </div>
-            </div>
-
-            {/* Calendars side-by-side */}
-            <div className="flex gap-6 grow relative" onMouseLeave={() => setHoveredDate(null)}>
-              
-              {/* Month 1 (Left) */}
-              <div className="flex-1 select-none">
-                <div className="flex justify-between items-center mb-3">
-                  <button 
-                    onClick={() => navigateMonth("prev")} 
-                    className="p-1 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 cursor-pointer shrink-0"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-xs font-extrabold text-slate-800 uppercase tracking-widest font-sans">
-                    {getPortugueseMonthYear(leftCal)}
-                  </span>
-                  <div className="w-6 shrink-0" /> {/* Spacer to align */}
-                </div>
-
-                <div className="grid grid-cols-7 gap-y-1 justify-items-center mb-1">
-                  {weekDays.map((day) => (
-                    <span key={day} className="text-[10px] font-bold text-slate-400 w-8 text-center uppercase tracking-wider">
-                      {day}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-y-1 justify-items-center">
-                  {generateMonthDays(leftCal).map((day, idx) => (
-                    <div
-                      key={`left-${idx}`}
-                      onClick={() => handleDayClick(day.date)}
-                      onMouseEnter={() => {
-                        const d = new Date(day.date);
-                        d.setHours(12, 0, 0, 0);
-                        setHoveredDate(d);
-                      }}
-                      className={getDayClasses(day.date, day.isCurrentMonth)}
-                    >
-                      {day.date.getDate()}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Month 2 (Right) */}
-              <div className="flex-1 select-none">
-                <div className="flex justify-between items-center mb-3">
-                  <div className="w-6 shrink-0" /> {/* Spacer to align */}
-                  <span className="text-xs font-extrabold text-slate-800 uppercase tracking-widest font-sans animate-none">
-                    {getPortugueseMonthYear(rightCal)}
-                  </span>
-                  <button 
-                    onClick={() => navigateMonth("next")} 
-                    className="p-1 hover:bg-slate-100 rounded-lg transition-colors text-slate-500 cursor-pointer shrink-0"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-7 gap-y-1 justify-items-center mb-1">
-                  {weekDays.map((day) => (
-                    <span key={day} className="text-[10px] font-bold text-slate-400 w-8 text-center uppercase tracking-wider">
-                      {day}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-y-1 justify-items-center">
-                  {generateMonthDays(rightCal).map((day, idx) => (
-                    <div
-                      key={`right-${idx}`}
-                      onClick={() => handleDayClick(day.date)}
-                      onMouseEnter={() => {
-                        const d = new Date(day.date);
-                        d.setHours(12, 0, 0, 0);
-                        setHoveredDate(d);
-                      }}
-                      className={getDayClasses(day.date, day.isCurrentMonth)}
-                    >
-                      {day.date.getDate()}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
+          {/* New Footer Panel containing Clear and Apply Buttons */}
+          <div className="flex justify-end gap-2 p-3 bg-slate-50 border-t border-slate-100 shrink-0">
+            <button
+              onClick={() => {
+                setLocalStartDate("");
+                setLocalEndDate("");
+              }}
+              className="px-3.5 py-1.5 text-xs font-bold border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer bg-white"
+            >
+              Limpar Seleção
+            </button>
+            <button
+              onClick={() => {
+                onChange(localStartDate, localEndDate);
+                setIsOpen(false);
+              }}
+              className="px-4 py-1.5 text-xs font-bold bg-brand-primary text-white rounded-lg hover:bg-brand-primary/95 transition-colors cursor-pointer"
+            >
+              Aplicar Filtro
+            </button>
           </div>
         </div>
       )}

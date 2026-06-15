@@ -17,6 +17,50 @@ import { DashboardStats, Projeto } from "../types";
 import CreateProjectModal from "./CreateObraModal";
 import DateRangePicker from "./DateRangePicker";
 
+const formatDateBR = (dateStr?: string | null) => {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+};
+
+const parseLocalDate = (dateVal: any, isEnd = false): Date | null => {
+  if (!dateVal) return null;
+  
+  let dateStr = "";
+  if (dateVal instanceof Date) {
+    const y = dateVal.getFullYear();
+    const m = String(dateVal.getMonth() + 1).padStart(2, "0");
+    const d = String(dateVal.getDate()).padStart(2, "0");
+    dateStr = `${y}-${m}-${d}`;
+  } else if (typeof dateVal === "string") {
+    dateStr = dateVal;
+  } else {
+    return null;
+  }
+
+  const cleanStr = dateStr.trim().substring(0, 10);
+  const parts = cleanStr.split("-");
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      const date = new Date(year, month, day);
+      if (isEnd) {
+        date.setHours(23, 59, 59, 999);
+      } else {
+        date.setHours(0, 0, 0, 0);
+      }
+      return date;
+    }
+  }
+
+  return null;
+};
+
 export default function ProjectsListView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
   const projectFilter = useUIStore((state) => state.projectFilter);
@@ -90,27 +134,35 @@ export default function ProjectsListView() {
     );
   }
 
-  // Filter projects by search, statusContrato, and date range
+  // Filter projects by search, statusContrato, and contract date range
   const filteredProjects = (data.projetos || data.obras || []).filter((o) => {
     const matchesStatus = (o.statusContrato || "CONSOLIDADO") === projectFilter;
     const matchesSearch = o.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (o.cliente && o.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
 
     let matchesDate = true;
-    if (o.createdAt) {
-      const createDate = new Date(o.createdAt);
-      if (startDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        if (createDate < start) matchesDate = false;
+    
+    // Determine contract start and end dates in a timezone-safe manner
+    const contractStart = parseLocalDate(o.dataInicioContrato || o.createdAt, false);
+    const contractEnd = parseLocalDate(o.dataFimContrato || o.dataInicioContrato || o.createdAt, true);
+
+    if (startDate && contractEnd) {
+      const filterStart = parseLocalDate(startDate, false);
+      if (filterStart && contractEnd < filterStart) {
+        matchesDate = false;
       }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        if (createDate > end) matchesDate = false;
+    }
+
+    if (endDate && contractStart) {
+      const filterEnd = parseLocalDate(endDate, true);
+      if (filterEnd && contractStart > filterEnd) {
+        matchesDate = false;
       }
-    } else {
-      if (startDate || endDate) matchesDate = false;
+    }
+
+    // If a date filter is applied but the project has no valid tracking date, hide it
+    if ((startDate || endDate) && !contractStart) {
+      matchesDate = false;
     }
 
     return matchesStatus && matchesSearch && matchesDate;
@@ -254,6 +306,14 @@ export default function ProjectsListView() {
                         {p.cliente && (
                           <div className="text-[10px] text-brand-text-secondary font-bold uppercase mt-0.5">
                             {p.cliente}
+                          </div>
+                        )}
+                        {(p.dataInicioContrato || p.dataFimContrato) && (
+                          <div className="text-[10px] text-slate-400 font-semibold mt-1.5 flex flex-wrap items-center gap-1">
+                            <span>Período:</span>
+                            <span className="text-slate-500 font-bold">{p.dataInicioContrato ? formatDateBR(p.dataInicioContrato) : "N/I"}</span>
+                            <span className="opacity-60">até</span>
+                            <span className="text-slate-500 font-bold">{p.dataFimContrato ? formatDateBR(p.dataFimContrato) : "N/I"}</span>
                           </div>
                         )}
                       </td>

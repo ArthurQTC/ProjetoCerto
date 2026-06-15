@@ -98,8 +98,16 @@ export default function ObraDetailView() {
     reader.readAsDataURL(file);
   };
 
-  const handleDeleteDocument = async (docId: string) => {
-    if (!confirm("Deseja Excluir o PDF permanentemente?")) return;
+  const [docToDelete, setDocToDelete] = useState<any | null>(null);
+
+  const handleDeleteDocument = (docId: string) => {
+    const docObj = (project?.documentos || []).find((d: any) => d.id === docId);
+    if (docObj) {
+      setDocToDelete(docObj);
+    }
+  };
+
+  const executeDeleteDocument = async (docId: string) => {
     const updatedDocs = (project?.documentos || []).filter((doc: any) => doc.id !== docId);
     try {
       const res = await fetch(`/api/projetos/${project?.id}`, {
@@ -1520,6 +1528,56 @@ export default function ObraDetailView() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal for Document Deletion */}
+      {docToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-250">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="text-sm font-black text-brand-text-primary tracking-tight">
+                Confirmar Exclusão de Arquivo
+              </h3>
+              <button
+                onClick={() => setDocToDelete(null)}
+                className="p-1 px-2 text-slate-400 hover:text-slate-650 hover:bg-slate-100 rounded-lg text-xs font-bold transition-all cursor-pointer"
+              >
+                Voltar
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-brand-text-secondary leading-relaxed">
+                Tem certeza de que deseja excluir o documento <span className="font-bold text-slate-900">"{docToDelete.nome}"</span>?
+              </p>
+              <div className="p-3 bg-red-50/40 rounded-xl border border-red-50/70 text-[10px] text-red-650 font-semibold leading-normal">
+                Esta ação apagará permanently o arquivo PDF ou imagem anexado a este contrato e é completamente irreversível.
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 shrink-0">
+              <button
+                onClick={() => setDocToDelete(null)}
+                className="px-4 py-2 text-xs font-bold border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg bg-white hover:bg-slate-50 transition-colors cursor-pointer font-sans"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const id = docToDelete.id;
+                  setDocToDelete(null);
+                  executeDeleteDocument(id);
+                }}
+                className="px-4 py-2 text-xs font-bold bg-brand-error hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer"
+              >
+                Sim, Excluir PDF
+              </button>
             </div>
           </div>
         </div>

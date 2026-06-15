@@ -9,7 +9,8 @@ import {
   FolderOpen,
   DollarSign,
   Briefcase,
-  AlertCircle
+  AlertCircle,
+  X
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from "recharts";
 import KPICard from "./KPICard";
@@ -18,11 +19,56 @@ import DateRangePicker from "./DateRangePicker";
 import { DashboardStats } from "../types";
 import { useUIStore } from "../store";
 
+const formatDateBR = (dateStr?: string | null) => {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+};
+
+const parseLocalDate = (dateVal: any, isEnd = false): Date | null => {
+  if (!dateVal) return null;
+  
+  let dateStr = "";
+  if (dateVal instanceof Date) {
+    const y = dateVal.getFullYear();
+    const m = String(dateVal.getMonth() + 1).padStart(2, "0");
+    const d = String(dateVal.getDate()).padStart(2, "0");
+    dateStr = `${y}-${m}-${d}`;
+  } else if (typeof dateVal === "string") {
+    dateStr = dateVal;
+  } else {
+    return null;
+  }
+
+  const cleanStr = dateStr.trim().substring(0, 10);
+  const parts = cleanStr.split("-");
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      const date = new Date(year, month, day);
+      if (isEnd) {
+        date.setHours(23, 59, 59, 999);
+      } else {
+        date.setHours(0, 0, 0, 0);
+      }
+      return date;
+    }
+  }
+
+  return null;
+};
+
 export default function DashboardView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [showAdmDetails, setShowAdmDetails] = useState(false);
   const [admMeta, setAdmMeta] = useState<number>(() => {
     const saved = localStorage.getItem("dashboard_adm_meta");
     return saved ? parseFloat(saved) : 800000;
@@ -76,7 +122,7 @@ export default function DashboardView() {
     );
   }
 
-  // Filter projects by search, CONSOLIDADO status, and date range
+  // Filter projects by search, CONSOLIDADO status, and contract date range
   const filteredProjects = (data.projetos || data.obras || [])
     .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
     .filter((p) => {
@@ -84,20 +130,28 @@ export default function DashboardView() {
         (p.cliente && p.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
 
       let matchesDate = true;
-      if (p.createdAt) {
-        const createDate = new Date(p.createdAt);
-        if (startDate) {
-          const start = new Date(startDate);
-          start.setHours(0, 0, 0, 0);
-          if (createDate < start) matchesDate = false;
+      
+      // Determine contract start and end dates in a timezone-safe manner
+      const contractStart = parseLocalDate(p.dataInicioContrato || p.createdAt, false);
+      const contractEnd = parseLocalDate(p.dataFimContrato || p.dataInicioContrato || p.createdAt, true);
+
+      if (startDate && contractEnd) {
+        const filterStart = parseLocalDate(startDate, false);
+        if (filterStart && contractEnd < filterStart) {
+          matchesDate = false;
         }
-        if (endDate) {
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999);
-          if (createDate > end) matchesDate = false;
+      }
+
+      if (endDate && contractStart) {
+        const filterEnd = parseLocalDate(endDate, true);
+        if (filterEnd && contractStart > filterEnd) {
+          matchesDate = false;
         }
-      } else {
-        if (startDate || endDate) matchesDate = false;
+      }
+
+      // If a date filter is applied but the project has no valid tracking date, hide it
+      if ((startDate || endDate) && !contractStart) {
+        matchesDate = false;
       }
 
       return matchesSearch && matchesDate;
@@ -202,6 +256,7 @@ export default function DashboardView() {
               color="emerald"
               hideBar={false}
               onGoalChange={handleAdmMetaChange}
+              onClick={() => setShowAdmDetails(true)}
             />
           </div>
         </div>
@@ -334,8 +389,16 @@ export default function DashboardView() {
                           onClick={() => navigateToProject(p.id)}
                           className="hover:bg-brand-primary/5 cursor-pointer transition-colors group"
                         >
-                          <td className="py-2.5 px-4 font-bold text-brand-text-primary group-hover:text-brand-primary transition-colors">
-                            {p.nome}
+                          <td className="py-2.5 px-4 text-brand-text-primary group-hover:text-brand-primary transition-colors">
+                            <div className="font-bold">{p.nome}</div>
+                            {(p.dataInicioContrato || p.dataFimContrato) && (
+                              <div className="text-[10px] text-slate-400 font-semibold mt-0.5 flex flex-wrap items-center gap-1">
+                                <span>Período:</span>
+                                <span>{p.dataInicioContrato ? formatDateBR(p.dataInicioContrato) : "N/I"}</span>
+                                <span className="opacity-60">até</span>
+                                <span>{p.dataFimContrato ? formatDateBR(p.dataFimContrato) : "N/I"}</span>
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5 px-4 text-right font-mono font-bold text-brand-text-primary">
                             {formatBRL(p.valorContrato)}
@@ -443,6 +506,119 @@ export default function DashboardView() {
 
         </div>
       </div>
+
+      {/* ADM Despesas detail modal */}
+      {showAdmDetails && (() => {
+        const projectsForAdmModal = (data?.projetos || data?.obras || [])
+          .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
+          .map((p) => ({
+            id: p.id,
+            nome: p.nome,
+            cliente: p.cliente,
+            valorContrato: p.valorContrato,
+            despesaAdm: p.despesaAdm || 0,
+          }))
+          .sort((a, b) => b.despesaAdm - a.despesaAdm);
+
+        const grandTotalAdm = projectsForAdmModal.reduce((sum, p) => sum + p.despesaAdm, 0);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-base font-black text-brand-text-primary tracking-tight">
+                    Detalhamento das Despesas Administrativas (ADM)
+                  </h3>
+                  <p className="text-[11px] text-brand-text-secondary mt-0.5">
+                    Total Consolidado: <span className="font-bold text-brand-primary">{formatBRL(grandTotalAdm)}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAdmDetails(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                {projectsForAdmModal.length === 0 ? (
+                  <div className="text-center py-6 text-brand-text-secondary/50">
+                    <AlertCircle className="w-8 h-8 mx-auto opacity-40 mb-2" />
+                    <p className="text-xs font-bold">Nenhum contrato consolidado encontrado.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {projectsForAdmModal.map((p, index) => {
+                      const weight = grandTotalAdm > 0 ? (p.despesaAdm / grandTotalAdm) * 100 : 0;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            setShowAdmDetails(false);
+                            navigateToProject(p.id);
+                          }}
+                          className="p-3.5 bg-white border border-slate-100 hover:border-slate-300 rounded-xl transition-all hover:shadow-xs group cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                                #{index + 1}
+                              </span>
+                              <h4 className="text-xs font-extrabold text-brand-text-primary group-hover:text-brand-primary transition-colors truncate">
+                                {p.nome}
+                              </h4>
+                            </div>
+                            {p.cliente && (
+                              <p className="text-[10px] text-brand-text-secondary truncate font-semibold ml-8 font-sans">
+                                {p.cliente}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Right info: Value and visual weight */}
+                          <div className="flex items-center gap-4 text-right shrink-0">
+                            <div>
+                              <span className="text-xs font-black text-slate-800 font-mono block">
+                                {formatBRL(p.despesaAdm)}
+                              </span>
+                              <div className="flex items-center justify-end gap-1.5 mt-1">
+                                <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden inline-block border border-slate-50">
+                                  <div 
+                                    className="bg-brand-primary h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(weight, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-brand-text-secondary font-mono font-bold">
+                                  {weight.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2 shrink-0">
+                <button
+                  onClick={() => setShowAdmDetails(false)}
+                  className="px-4 py-2 text-xs font-bold border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

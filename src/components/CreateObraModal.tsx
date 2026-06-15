@@ -15,6 +15,8 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
   const [observacoes, setObservacoes] = useState("");
   const [valorContrato, setValorContrato] = useState("");
   const [statusContrato, setStatusContrato] = useState<'CONSOLIDADO' | 'A_FECHAR'>('CONSOLIDADO');
+  const [dataInicioContrato, setDataInicioContrato] = useState("");
+  const [dataFimContrato, setDataFimContrato] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,12 +44,16 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
       setObservacoes(projectToEdit.observacoes || "");
       setValorContrato(formatNumberToBRL(projectToEdit.valorContrato));
       setStatusContrato(projectToEdit.statusContrato || "CONSOLIDADO");
+      setDataInicioContrato(projectToEdit.dataInicioContrato || "");
+      setDataFimContrato(projectToEdit.dataFimContrato || "");
     } else {
       setNome("");
       setCliente("");
       setObservacoes("");
       setValorContrato("");
       setStatusContrato("CONSOLIDADO");
+      setDataInicioContrato("");
+      setDataFimContrato("");
     }
     setError(null);
   }, [projectToEdit, isOpen]);
@@ -80,6 +86,8 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
       observacoes: observacoes.trim() || null,
       valorContrato: parsedValor,
       statusContrato,
+      dataInicioContrato: dataInicioContrato || null,
+      dataFimContrato: dataFimContrato || null,
     };
 
     try {
@@ -197,6 +205,34 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
                 <option value="CONSOLIDADO">Consolidado</option>
                 <option value="A_FECHAR">A fechar</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+                Início do Contrato
+              </label>
+              <input
+                type="date"
+                className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors bg-white font-semibold text-brand-primary"
+                value={dataInicioContrato}
+                onChange={(e) => setDataInicioContrato(e.target.value)}
+                disabled={loading}
+                id="projeto_data_inicio_input"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+                Fim do Contrato
+              </label>
+              <input
+                type="date"
+                className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors bg-white font-semibold text-brand-primary"
+                value={dataFimContrato}
+                onChange={(e) => setDataFimContrato(e.target.value)}
+                disabled={loading}
+                id="projeto_data_fim_input"
+              />
             </div>
           </div>
 

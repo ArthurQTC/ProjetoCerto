@@ -56,6 +56,8 @@ export interface Obra {
   etapaFabricacao?: boolean;
   prazo?: string | null;
   numeroPedido?: string | null;
+  dataInicioContrato?: string | null;
+  dataFimContrato?: string | null;
 }
 
 export type Projeto = Obra;
@@ -76,8 +78,11 @@ export interface ObraSummary {
   etapaFabricacao?: boolean;
   prazo?: string | null;
   numeroPedido?: string | null;
+  dataInicioContrato?: string | null;
+  dataFimContrato?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  despesaAdm?: number;
 }
 
 export type ProjetoSummary = ObraSummary;

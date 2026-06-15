@@ -187,13 +187,28 @@ export default function ContractStepsView() {
   });
 
   const handleToggleStepIndex = (project: ProjetoSummary, stepIndex: 1 | 2 | 3) => {
-    let payload;
+    let payload: Partial<ProjetoSummary> = {};
     if (stepIndex === 1) {
-      payload = { etapaProjeto: !project.etapaProjeto };
+      const nextVal = !project.etapaProjeto;
+      if (nextVal) {
+        payload = { etapaProjeto: true };
+      } else {
+        payload = { etapaProjeto: false, etapaCotacao: false, etapaFabricacao: false };
+      }
     } else if (stepIndex === 2) {
-      payload = { etapaCotacao: !project.etapaCotacao };
+      const nextVal = !project.etapaCotacao;
+      if (nextVal) {
+        payload = { etapaProjeto: true, etapaCotacao: true };
+      } else {
+        payload = { etapaCotacao: false, etapaFabricacao: false };
+      }
     } else {
-      payload = { etapaFabricacao: !project.etapaFabricacao };
+      const nextVal = !project.etapaFabricacao;
+      if (nextVal) {
+        payload = { etapaProjeto: true, etapaCotacao: true, etapaFabricacao: true };
+      } else {
+        payload = { etapaFabricacao: false };
+      }
     }
     updateProjectMutation.mutate({
       id: project.id,

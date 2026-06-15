@@ -216,6 +216,8 @@ async function checkDbConnection() {
             prazo VARCHAR(255),
             "numeroPedido" VARCHAR(255),
             documentos TEXT NOT NULL DEFAULT '[]',
+            "dataInicioContrato" VARCHAR(255),
+            "dataFimContrato" VARCHAR(255),
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
@@ -248,6 +250,8 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS prazo VARCHAR(255)');
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "numeroPedido" VARCHAR(255)');
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS documentos TEXT NOT NULL DEFAULT \'[]\'');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataInicioContrato" VARCHAR(255)');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataFimContrato" VARCHAR(255)');
 
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS descricao VARCHAR(255) NOT NULL DEFAULT \'\'');
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS valor DOUBLE PRECISION NOT NULL DEFAULT 0.0');
@@ -346,18 +350,6 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
             INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, "obraId", "categoriaId", "createdAt", "updatedAt")
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
           `, [`fixed-imposto-${obraId}`, "Imposto Fixo", Math.round(valueContract * 0.098 * 100) / 100, "ATIVO", "9.8%", currentCount || 99, obraId, catImpostos.id]);
-        } else {
-          const obs = impostoItem.observacao || "";
-          if (obs.includes("%")) {
-            const pct = parseFloat(obs.replace(/[^0-9.]/g, ""));
-            if (!isNaN(pct)) {
-              await pool.query(`
-                UPDATE itens_orcamento 
-                SET valor = $1, "updatedAt" = NOW()
-                WHERE id = $2
-              `, [Math.round(valueContract * (pct / 100) * 100) / 100, impostoItem.id]);
-            }
-          }
         }
       }
 
@@ -371,20 +363,28 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
             INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, "obraId", "categoriaId", "createdAt", "updatedAt")
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
           `, [`fixed-custo-adm-${obraId}`, "Custo ADM", Math.round(valueContract * 0.05 * 100) / 100, "ATIVO", "5%", (currentCount || 99) + 1, obraId, catAdm.id]);
-        } else {
-          const obs = admItem.observacao || "";
-          if (obs.includes("%")) {
-            const pct = parseFloat(obs.replace(/[^0-9.]/g, ""));
-            if (!isNaN(pct)) {
+        }
+      }
+
+      // Now query ALL items for this project and update any item that contains a '%' in its observation
+      const allItensRes = await pool.query('SELECT * FROM itens_orcamento WHERE "obraId" = $1', [obraId]);
+      for (const item of allItensRes.rows) {
+        const obs = item.observacao || "";
+        if (obs.includes("%")) {
+          const pct = parseFloat(obs.replace(/[^0-9.]/g, ""));
+          if (!isNaN(pct)) {
+            const calculatedValor = Math.round(valueContract * (pct / 100) * 100) / 100;
+            if (Number(item.valor) !== calculatedValor) {
               await pool.query(`
                 UPDATE itens_orcamento 
                 SET valor = $1, "updatedAt" = NOW()
                 WHERE id = $2
-              `, [Math.round(valueContract * (pct / 100) * 100) / 100, admItem.id]);
+              `, [calculatedValor, item.id]);
             }
           }
         }
       }
+
     } catch (pgErr) {
       console.error("Erro recriando/recalculando itens fixos no Postgres, usando fallback mental:", pgErr);
     }
@@ -410,15 +410,6 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
         createdAt: new Date(),
         updatedAt: new Date()
       });
-    } else {
-      const obs = impostoItem.observacao || "";
-      if (obs.includes("%")) {
-        const pct = parseFloat(obs.replace(/[^0-9.]/g, ""));
-        if (!isNaN(pct)) {
-          impostoItem.valor = Math.round(valueContract * (pct / 100) * 100) / 100;
-          impostoItem.updatedAt = new Date();
-        }
-      }
     }
   }
 
@@ -438,17 +429,22 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
         createdAt: new Date(),
         updatedAt: new Date()
       });
-    } else {
-      const obs = admItem.observacao || "";
+    }
+  }
+
+  // Dual track memory check for any items with '%' in observation
+  memoryItens.forEach((item) => {
+    if (item.obraId === obraId) {
+      const obs = item.observacao || "";
       if (obs.includes("%")) {
         const pct = parseFloat(obs.replace(/[^0-9.]/g, ""));
         if (!isNaN(pct)) {
-          admItem.valor = Math.round(valueContract * (pct / 100) * 100) / 100;
-          admItem.updatedAt = new Date();
+          item.valor = Math.round(valueContract * (pct / 100) * 100) / 100;
+          item.updatedAt = new Date();
         }
       }
     }
-  }
+  });
 };
 
 const formatObraWithMetrics = (obra: any) => {
@@ -497,6 +493,8 @@ const formatObraWithMetrics = (obra: any) => {
     etapaFabricacao: !!obra.etapaFabricacao,
     prazo: obra.prazo || null,
     numeroPedido: obra.numeroPedido || null,
+    dataInicioContrato: obra.dataInicioContrato || null,
+    dataFimContrato: obra.dataFimContrato || null,
   };
 };
 
@@ -708,10 +706,14 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             prazo VARCHAR(255),
             "numeroPedido" VARCHAR(255),
             documentos TEXT NOT NULL DEFAULT '[]',
+            "dataInicioContrato" VARCHAR(255),
+            "dataFimContrato" VARCHAR(255),
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
           ALTER TABLE obras ADD COLUMN IF NOT EXISTS "statusContrato" VARCHAR(255) NOT NULL DEFAULT 'CONSOLIDADO';
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataInicioContrato" VARCHAR(255);
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataFimContrato" VARCHAR(255);
 
           CREATE TABLE IF NOT EXISTS itens_orcamento (
             id VARCHAR(255) PRIMARY KEY,
@@ -905,6 +907,23 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           visaoGeral: o.visaoGeral,
           margemLiquida: o.margemLiquida,
           percentualMargem: o.percentualMargem,
+          createdAt: o.createdAt,
+          updatedAt: o.updatedAt,
+          dataInicioContrato: o.dataInicioContrato,
+          dataFimContrato: o.dataFimContrato,
+          documentos: o.documentos,
+          etapaLevantamento: o.etapaLevantamento,
+          etapaProjeto: o.etapaProjeto,
+          etapaCotacao: o.etapaCotacao,
+          etapaFabricacao: o.etapaFabricacao,
+          prazo: o.prazo,
+          numeroPedido: o.numeroPedido,
+          observacoes: o.observacoes,
+          despesaAdm: o.itens
+            ? o.itens
+                .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+                .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
+            : 0,
         })),
         projetos: allCalculated.map((o) => ({
           id: o.id,
@@ -915,6 +934,23 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           visaoGeral: o.visaoGeral,
           margemLiquida: o.margemLiquida,
           percentualMargem: o.percentualMargem,
+          createdAt: o.createdAt,
+          updatedAt: o.updatedAt,
+          dataInicioContrato: o.dataInicioContrato,
+          dataFimContrato: o.dataFimContrato,
+          documentos: o.documentos,
+          etapaLevantamento: o.etapaLevantamento,
+          etapaProjeto: o.etapaProjeto,
+          etapaCotacao: o.etapaCotacao,
+          etapaFabricacao: o.etapaFabricacao,
+          prazo: o.prazo,
+          numeroPedido: o.numeroPedido,
+          observacoes: o.observacoes,
+          despesaAdm: o.itens
+            ? o.itens
+                .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+                .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
+            : 0,
         })),
       });
     } catch (error: any) {
@@ -1065,7 +1101,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
   // POST Criar nova Obra
   app.post(["/api/obras", "/api/projetos"], async (req, res) => {
-    const { nome, cliente, observacoes, valorContrato, statusContrato, documentos, etapaLevantamento, etapaProjeto, etapaCotacao, etapaFabricacao, prazo, numeroPedido } = req.body;
+    const { nome, cliente, observacoes, valorContrato, statusContrato, documentos, etapaLevantamento, etapaProjeto, etapaCotacao, etapaFabricacao, prazo, numeroPedido, dataInicioContrato, dataFimContrato } = req.body;
     if (!nome) {
       return res.status(400).json({ error: "O nome do projeto é obrigatório" });
     }
@@ -1082,15 +1118,17 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           await pool.query(`
             INSERT INTO obras (
               id, nome, cliente, observacoes, "valorContrato", "statusContrato", documentos,
-              "etapaLevantamento", "etapaProjeto", "etapaCotacao", "etapaFabricacao", prazo, "numeroPedido", "createdAt", "updatedAt"
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+              "etapaLevantamento", "etapaProjeto", "etapaCotacao", "etapaFabricacao", prazo, "numeroPedido",
+              "dataInicioContrato", "dataFimContrato", "createdAt", "updatedAt"
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
           `, [
             id, nome, cliente || null, observacoes || null, Number(valorContrato) || 0.0, statusContrato || "CONSOLIDADO", JSON.stringify(normalizedDocs),
             etapaLevantamento !== undefined ? !!etapaLevantamento : false,
             etapaProjeto !== undefined ? !!etapaProjeto : false,
             etapaCotacao !== undefined ? !!etapaCotacao : false,
             etapaFabricacao !== undefined ? !!etapaFabricacao : false,
-            prazo || null, numeroPedido || null
+            prazo || null, numeroPedido || null,
+            dataInicioContrato || null, dataFimContrato || null
           ]);
 
           // Recalculate fixed items for the newly created project immediately
@@ -1154,6 +1192,8 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           etapaFabricacao: etapaFabricacao !== undefined ? !!etapaFabricacao : false,
           prazo: prazo || null,
           numeroPedido: numeroPedido || null,
+          dataInicioContrato: dataInicioContrato || null,
+          dataFimContrato: dataFimContrato || null,
           createdAt: new Date(),
           updatedAt: new Date()
         };
@@ -1192,7 +1232,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       etapaCotacao,
       etapaFabricacao,
       prazo,
-      numeroPedido
+      numeroPedido,
+      dataInicioContrato,
+      dataFimContrato
     } = req.body;
 
     try {
@@ -1217,17 +1259,21 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             const updatedProj = etapaProjeto !== undefined ? !!etapaProjeto : existing.etapaProjeto;
             const updatedCot = etapaCotacao !== undefined ? !!etapaCotacao : existing.etapaCotacao;
             const updatedFab = etapaFabricacao !== undefined ? !!etapaFabricacao : existing.etapaFabricacao;
-            const updatedPrazo = prazo !== undefined ? prazo : existing.prazo;
+             const updatedPrazo = prazo !== undefined ? prazo : existing.prazo;
             const updatedPed = numeroPedido !== undefined ? numeroPedido : existing.numeroPedido;
+            const updatedInicio = dataInicioContrato !== undefined ? (dataInicioContrato || null) : existing.dataInicioContrato;
+            const updatedFim = dataFimContrato !== undefined ? (dataFimContrato || null) : existing.dataFimContrato;
 
             await pool.query(`
               UPDATE obras SET
                 nome = $1, cliente = $2, observacoes = $3, "valorContrato" = $4, "statusContrato" = $5, documentos = $6,
-                "etapaLevantamento" = $7, "etapaProjeto" = $8, "etapaCotacao" = $9, "etapaFabricacao" = $10, prazo = $11, "numeroPedido" = $12, "updatedAt" = NOW()
-              WHERE id = $13
+                "etapaLevantamento" = $7, "etapaProjeto" = $8, "etapaCotacao" = $9, "etapaFabricacao" = $10, prazo = $11, "numeroPedido" = $12,
+                "dataInicioContrato" = $13, "dataFimContrato" = $14, "updatedAt" = NOW()
+              WHERE id = $15
             `, [
               updatedNome, updatedCliente, updatedObs, updatedValor, updatedStatus, updatedDocs,
-              updatedLev, updatedProj, updatedCot, updatedFab, updatedPrazo, updatedPed, id
+              updatedLev, updatedProj, updatedCot, updatedFab, updatedPrazo, updatedPed,
+              updatedInicio, updatedFim, id
             ]);
 
             // If valorContrato was changed, we need to update the percentages for fixed items
@@ -1299,8 +1345,10 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             etapaProjeto: etapaProjeto !== undefined ? !!etapaProjeto : existing.etapaProjeto,
             etapaCotacao: etapaCotacao !== undefined ? !!etapaCotacao : existing.etapaCotacao,
             etapaFabricacao: etapaFabricacao !== undefined ? !!etapaFabricacao : existing.etapaFabricacao,
-            prazo: prazo !== undefined ? prazo : existing.prazo,
+             prazo: prazo !== undefined ? prazo : existing.prazo,
             numeroPedido: numeroPedido !== undefined ? numeroPedido : existing.numeroPedido,
+            dataInicioContrato: dataInicioContrato !== undefined ? (dataInicioContrato || null) : existing.dataInicioContrato,
+            dataFimContrato: dataFimContrato !== undefined ? (dataFimContrato || null) : existing.dataFimContrato,
             updatedAt: new Date()
           };
           memoryObras[existingIdx] = updated;

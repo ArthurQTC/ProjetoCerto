@@ -9,6 +9,7 @@ interface ProgressBarKPIProps {
   description?: string;
   hideBar?: boolean;
   onGoalChange?: (newGoal: number) => void;
+  onClick?: () => void;
 }
 
 export default function ProgressBarKPI({ 
@@ -18,7 +19,8 @@ export default function ProgressBarKPI({
   color, 
   description, 
   hideBar,
-  onGoalChange 
+  onGoalChange,
+  onClick
 }: ProgressBarKPIProps) {
   const percent = goal > 0 ? (current / goal) * 100 : 0;
   const clampedPercent = Math.min(percent, 100).toFixed(2);
@@ -94,7 +96,12 @@ export default function ProgressBarKPI({
   };
 
   return (
-    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
+    <div 
+      className={`bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between hover:shadow-md transition-all duration-200 ${
+        onClick ? "cursor-pointer hover:border-slate-300 hover:bg-slate-50/20" : ""
+      }`}
+      onClick={onClick}
+    >
       <div>
         <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest block">{title}</span>
         <h4 className="text-xs min-[380px]:text-sm sm:text-base font-extrabold font-mono tracking-tight text-brand-text-primary mt-1.5 flex items-center flex-nowrap whitespace-nowrap gap-1 bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-100 overflow-x-auto scrollbar-none">
@@ -136,7 +143,8 @@ export default function ProgressBarKPI({
               {onGoalChange && (
                 <button
                   id={`btn_edit_goal_${title.toLowerCase().replace(/\s+/g, '_')}`}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setValInput(formatBRLValue(goal));
                     setIsEditing(true);
                   }}
