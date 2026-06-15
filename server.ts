@@ -800,13 +800,69 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
     }
   });
 
-  // Export Memória para JSON
+  // Export Dados para JSON
   app.get("/api/export-memory", async (req, res) => {
-    res.json({
-      obras: memoryObras,
-      itens: memoryItens,
-      categorias: memoryCategorias
-    });
+    try {
+      let freshObras: any[] = [];
+      if (dbConnected && pool) {
+        try {
+          const dbObrasRes = await pool.query('SELECT * FROM obras ORDER BY "createdAt" DESC');
+          const allObras = dbObrasRes.rows;
+          const allItensRes = await pool.query(`
+            SELECT i.*, 
+                   c.nome as "cat_nome", c."grupoCalculo" as "cat_grupoCalculo"
+            FROM itens_orcamento i
+            LEFT JOIN categorias c ON i."categoriaId" = c.id
+            ORDER BY i.ordem ASC
+          `);
+          const allItens = allItensRes.rows;
+
+          freshObras = allObras.map(o => {
+            const items = allItens.filter(i => i.obraId === o.id).map(i => ({
+              id: i.id,
+              descricao: i.descricao,
+              valor: Number(i.valor),
+              status: i.status,
+              observacao: i.observacao,
+              ordem: Number(i.ordem),
+              obraId: i.obraId,
+              categoriaId: i.categoriaId,
+              createdAt: i.createdAt,
+              updatedAt: i.updatedAt,
+              categoria: { id: i.categoriaId, nome: i.cat_nome, grupoCalculo: i.cat_grupoCalculo }
+            }));
+            return {
+              ...o,
+              valorContrato: Number(o.valorContrato),
+              documentos: typeof o.documentos === 'string' ? JSON.parse(o.documentos) : (o.documentos || []),
+              itens: items
+            };
+          });
+        } catch (dbErr) {
+          console.error("Erro exportando dados do pg:", dbErr);
+        }
+      }
+
+      if (!dbConnected || freshObras.length === 0) {
+        freshObras = memoryObras.map(o => {
+          const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
+            ...i,
+            categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
+          }));
+          return {
+            ...o,
+            itens: items
+          };
+        });
+      }
+
+      res.json({
+        obras: freshObras,
+        categorias: memoryCategorias
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: "Erro ao exportar", details: e.message });
+    }
   });
 
   // GET Dashboard Stats
