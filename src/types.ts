@@ -83,6 +83,7 @@ export interface ObraSummary {
   createdAt?: string;
   updatedAt?: string;
   despesaAdm?: number;
+  itens?: ItemOrcamento[];
 }
 
 export type ProjetoSummary = ObraSummary;

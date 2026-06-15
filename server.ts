@@ -366,6 +366,19 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
         }
       }
 
+      if (catImpostos) {
+        const pisItemRes = await pool.query('SELECT * FROM itens_orcamento WHERE "obraId" = $1 AND descricao = $2 LIMIT 1', [obraId, "PIS/COFINS/IRPJ/CSLL"]);
+        const pisItem = pisItemRes.rows[0];
+        if (!pisItem) {
+          const countRes = await pool.query('SELECT COUNT(*)::int as count FROM itens_orcamento WHERE "obraId" = $1', [obraId]);
+          const currentCount = countRes.rows[0].count;
+          await pool.query(`
+            INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, "obraId", "categoriaId", "createdAt", "updatedAt")
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+          `, [`fixed-pis-${obraId}`, "PIS/COFINS/IRPJ/CSLL", Math.round(valueContract * 0.056 * 100) / 100, "ATIVO", "5.6%", (currentCount || 99) + 2, obraId, catImpostos.id]);
+        }
+      }
+
       // Now query ALL items for this project and update any item that contains a '%' in its observation
       const allItensRes = await pool.query('SELECT * FROM itens_orcamento WHERE "obraId" = $1', [obraId]);
       for (const item of allItensRes.rows) {
@@ -426,6 +439,25 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
         ordem: idx + 1,
         obraId,
         categoriaId: mAdm.id,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+  }
+
+  if (mImpostos) {
+    let pisItem = memoryItens.find(i => i.obraId === obraId && i.descricao === "PIS/COFINS/IRPJ/CSLL");
+    if (!pisItem) {
+      const idx = memoryItens.filter(i => i.obraId === obraId).length;
+      memoryItens.push({
+        id: `fixed-pis-${obraId}`,
+        descricao: "PIS/COFINS/IRPJ/CSLL",
+        valor: Math.round(valueContract * 0.056 * 100) / 100,
+        status: "ATIVO",
+        observacao: "5.6%",
+        ordem: idx + 2,
+        obraId,
+        categoriaId: mImpostos.id,
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -924,6 +956,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
                 .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
                 .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
             : 0,
+          itens: o.itens || [],
         })),
         projetos: allCalculated.map((o) => ({
           id: o.id,
@@ -951,6 +984,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
                 .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
                 .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
             : 0,
+          itens: o.itens || [],
         })),
       });
     } catch (error: any) {

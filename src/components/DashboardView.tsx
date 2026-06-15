@@ -511,13 +511,29 @@ export default function DashboardView() {
       {showAdmDetails && (() => {
         const projectsForAdmModal = (data?.projetos || data?.obras || [])
           .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
-          .map((p) => ({
-            id: p.id,
-            nome: p.nome,
-            cliente: p.cliente,
-            valorContrato: p.valorContrato,
-            despesaAdm: p.despesaAdm || 0,
-          }))
+          .map((p) => {
+            const itensAdm = (p.itens || [])
+              .filter((i: any) => i.status === "ATIVO" && (i.categoria?.nome === "Administração" || i.categoriaId === "cat-adm"))
+              .map((i: any) => {
+                const pct = p.valorContrato > 0 ? (Number(i.valor) / Number(p.valorContrato)) * 100 : 0;
+                return {
+                  id: i.id,
+                  descricao: i.descricao,
+                  valor: Number(i.valor),
+                  percentual: pct,
+                  observacao: i.observacao,
+                };
+              });
+
+            return {
+              id: p.id,
+              nome: p.nome,
+              cliente: p.cliente,
+              valorContrato: p.valorContrato,
+              despesaAdm: p.despesaAdm || 0,
+              itensAdm,
+            };
+          })
           .sort((a, b) => b.despesaAdm - a.despesaAdm);
 
         const grandTotalAdm = projectsForAdmModal.reduce((sum, p) => sum + p.despesaAdm, 0);
@@ -529,7 +545,7 @@ export default function DashboardView() {
               <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div>
                   <h3 className="text-base font-black text-brand-text-primary tracking-tight">
-                    Detalhamento das Despesas Administrativas (ADM)
+                    Despesas ADM - Detalhado
                   </h3>
                   <p className="text-[11px] text-brand-text-secondary mt-0.5">
                     Total Consolidado: <span className="font-bold text-brand-primary">{formatBRL(grandTotalAdm)}</span>
@@ -545,60 +561,107 @@ export default function DashboardView() {
               </div>
 
               {/* Modal Content */}
-              <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              <div className="p-5 overflow-y-auto flex-1 space-y-4 text-left">
                 {projectsForAdmModal.length === 0 ? (
                   <div className="text-center py-6 text-brand-text-secondary/50">
                     <AlertCircle className="w-8 h-8 mx-auto opacity-40 mb-2" />
                     <p className="text-xs font-bold">Nenhum contrato consolidado encontrado.</p>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="space-y-4">
                     {projectsForAdmModal.map((p, index) => {
-                      const weight = grandTotalAdm > 0 ? (p.despesaAdm / grandTotalAdm) * 100 : 0;
                       return (
                         <div
                           key={p.id}
-                          onClick={() => {
-                            setShowAdmDetails(false);
-                            navigateToProject(p.id);
-                          }}
-                          className="p-3.5 bg-white border border-slate-100 hover:border-slate-300 rounded-xl transition-all hover:shadow-xs group cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          className="p-4 bg-white border border-slate-100 hover:border-slate-300 rounded-xl transition-all hover:shadow-xs flex flex-col gap-3"
                         >
-                          <div className="space-y-1 flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
-                                #{index + 1}
-                              </span>
-                              <h4 className="text-xs font-extrabold text-brand-text-primary group-hover:text-brand-primary transition-colors truncate">
-                                {p.nome}
-                              </h4>
+                          {/* Contract Main Row: clickable to navigate */}
+                          <div 
+                            onClick={() => {
+                              setShowAdmDetails(false);
+                              navigateToProject(p.id);
+                            }}
+                            className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 cursor-pointer group"
+                          >
+                            <div className="space-y-1 flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                                  #{index + 1}
+                                </span>
+                                <h4 className="text-xs font-extrabold text-brand-text-primary group-hover:text-brand-primary transition-colors truncate">
+                                  {p.nome}
+                                </h4>
+                              </div>
+                              {p.cliente && (
+                                <p className="text-[10px] text-brand-text-secondary truncate font-semibold ml-8 font-sans">
+                                  {p.cliente}
+                                </p>
+                              )}
                             </div>
-                            {p.cliente && (
-                              <p className="text-[10px] text-brand-text-secondary truncate font-semibold ml-8 font-sans">
-                                {p.cliente}
-                              </p>
-                            )}
-                          </div>
 
-                          {/* Right info: Value and visual weight */}
-                          <div className="flex items-center gap-4 text-right shrink-0">
-                            <div>
+                            {/* Right info: Total value block, clean and without 'Total ADM: ' phrase */}
+                            <div className="text-right shrink-0">
                               <span className="text-xs font-black text-slate-800 font-mono block">
                                 {formatBRL(p.despesaAdm)}
                               </span>
                               <div className="flex items-center justify-end gap-1.5 mt-1">
-                                <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden inline-block border border-slate-50">
-                                  <div 
-                                    className="bg-brand-primary h-full rounded-full transition-all duration-500"
-                                    style={{ width: `${Math.min(weight, 100)}%` }}
-                                  />
-                                </div>
-                                <span className="text-[10px] text-brand-text-secondary font-mono font-bold">
-                                  {weight.toFixed(1)}%
+                                <span className="text-[9px] text-brand-text-secondary font-sans font-semibold">
+                                  Contrato: {formatBRL(p.valorContrato)}
+                                </span>
+                                <span className="text-[10px] text-brand-primary font-mono font-bold">
+                                  ({((p.despesaAdm / (p.valorContrato || 1)) * 100).toFixed(1)}%)
                                 </span>
                               </div>
                             </div>
                           </div>
+
+                          {/* Nested List of ADM Items with sequential order and custom percentage bar */}
+                          {p.itensAdm.length > 0 ? (
+                            <div className="ml-8 border-l-2 border-slate-100 pl-3.5 py-1 space-y-3.5">
+                              {p.itensAdm.map((item, itemIdx) => {
+                                const itemWeightOnGrandTotal = grandTotalAdm > 0 ? (item.valor / grandTotalAdm) * 100 : 0;
+                                return (
+                                  <div key={item.id} className="space-y-1">
+                                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-[9px] font-mono font-bold bg-slate-50 text-slate-400 border border-slate-100 px-1 py-0.5 rounded leading-none">
+                                          {itemIdx + 1}
+                                        </span>
+                                        <span className="font-bold text-slate-700 truncate" title={item.descricao}>
+                                          {item.descricao}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2.5 shrink-0">
+                                        <span className="font-mono text-slate-900 font-bold text-xs">
+                                          {formatBRL(item.valor)}
+                                        </span>
+                                        <span className="text-[9px] font-mono font-extrabold bg-brand-primary/10 text-brand-primary px-1.5 py-0.5 rounded-sm leading-none shrink-0" title={`${itemWeightOnGrandTotal.toFixed(2)}% do Total Consolidado ADM`}>
+                                          {itemWeightOnGrandTotal.toFixed(1)}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Visual representation card of weight against whole ADM cost */}
+                                    <div className="flex items-center gap-2 pl-5">
+                                      <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-50/50">
+                                        <div 
+                                          className="bg-brand-primary h-full rounded-full transition-all duration-500"
+                                          style={{ width: `${Math.min(itemWeightOnGrandTotal, 100)}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[8px] text-slate-400 font-sans font-bold uppercase tracking-wider shrink-0">
+                                        do Total Consolidado
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="ml-8 py-1 text-slate-400 font-medium text-[10px] italic">
+                              Sem itens de despesa administrativa cadastrados neste contrato.
+                            </div>
+                          )}
                         </div>
                       );
                     })}
