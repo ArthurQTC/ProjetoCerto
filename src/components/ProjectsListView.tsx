@@ -187,17 +187,48 @@ export default function ProjectsListView() {
           </h1>
         </div>
         <div>
-          <button
-            onClick={() => {
-              setProjectToEdit(null);
-              setIsNewProjectModalOpen(true);
-            }}
-            className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
-            id="projects_list_new_project_btn"
-          >
-            <Plus className="w-4 h-4 text-white" />
-            Novo Contrato
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const headers = ["Contrato", "Cliente", "Valor Contrato", "Custo Geral", "Margem Líquida", "Margem (%)", "Data Início", "Data Fim"];
+                const rows = filteredProjects.map((p: any) => [
+                  p.nome,
+                  p.cliente || "",
+                  p.valorContrato,
+                  p.visaoGeral,
+                  p.margemLiquida,
+                  p.percentualMargem,
+                  p.dataInicioContrato || "",
+                  p.dataFimContrato || ""
+                ]);
+                const csvContent = [
+                  headers.join(";"),
+                  ...rows.map(r => r.join(";"))
+                ].join("\n");
+                
+                const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `contratos_export_${new Date().toISOString()}.csv`;
+                a.click();
+              }}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors"
+            >
+              Exportar Excel
+            </button>
+            <button
+              onClick={() => {
+                setProjectToEdit(null);
+                setIsNewProjectModalOpen(true);
+              }}
+              className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+              id="projects_list_new_project_btn"
+            >
+              <Plus className="w-4 h-4 text-white" />
+              Novo Contrato
+            </button>
+          </div>
         </div>
       </div>
 
