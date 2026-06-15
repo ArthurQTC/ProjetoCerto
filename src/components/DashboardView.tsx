@@ -14,12 +14,15 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from "recharts";
 import KPICard from "./KPICard";
 import ProgressBarKPI from "./ProgressBarKPI";
+import DateRangePicker from "./DateRangePicker";
 import { DashboardStats } from "../types";
 import { useUIStore } from "../store";
 
 export default function DashboardView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
   const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [admMeta, setAdmMeta] = useState<number>(() => {
     const saved = localStorage.getItem("dashboard_adm_meta");
     return saved ? parseFloat(saved) : 800000;
@@ -73,17 +76,35 @@ export default function DashboardView() {
     );
   }
 
-  // Filter projects by search and CONSOLIDADO status
+  // Filter projects by search, CONSOLIDADO status, and date range
   const filteredProjects = (data.projetos || data.obras || [])
     .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
-    .filter((p) =>
-      p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.cliente && p.cliente.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    .filter((p) => {
+      const matchesSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.cliente && p.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      let matchesDate = true;
+      if (p.createdAt) {
+        const createDate = new Date(p.createdAt);
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (createDate < start) matchesDate = false;
+        }
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (createDate > end) matchesDate = false;
+        }
+      } else {
+        if (startDate || endDate) matchesDate = false;
+      }
+
+      return matchesSearch && matchesDate;
+    });
 
   // Setup data for charts - Compact & clean
-  const barChartData = (data.projetos || data.obras || [])
-    .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
+  const barChartData = filteredProjects
     .slice(0, 8)
     .map((p) => ({
       name: p.nome.length > 12 ? `${p.nome.substring(0, 12)}...` : p.nome,
@@ -254,26 +275,43 @@ export default function DashboardView() {
           </div>
 
           {/* Projects list preview table inside the dashboard */}
-          <div className="bg-white rounded-xl border border-slate-100 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-brand-success" />
-                <h3 className="text-xs font-extrabold text-brand-text-primary uppercase tracking-wide">Contratos Projeto Certo</h3>
+          <div className="bg-white rounded-xl border border-slate-100 shadow-xs">
+            <div className="p-4 border-b border-slate-100 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-success" />
+                  <h3 className="text-xs font-extrabold text-brand-text-primary uppercase tracking-wide">Contratos Projeto Certo</h3>
+                </div>
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-brand-text-secondary" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar contrato ou cliente..."
+                    className="w-full pl-8 pr-3 py-1.5 text-[10px] border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-brand-primary/25 hover:border-slate-300 transition-colors"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    id="project_search_dashboard"
+                  />
+                </div>
               </div>
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-brand-text-secondary" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar projeto ou cliente..."
-                  className="w-full pl-8 pr-3 py-1.5 text-[10px] border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-brand-primary/25 hover:border-slate-300 transition-colors"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  id="project_search_dashboard"
-                />
+
+              {/* Date Filters Row */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-50 text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-extrabold uppercase tracking-wide text-[9px]">Filtro de Período:</span>
+                  <DateRangePicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    onChange={(start, end) => {
+                      setStartDate(start);
+                      setEndDate(end);
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-b-xl overflow-hidden">
               {filteredProjects.length > 0 ? (
                 <table className="w-full text-left border-collapse">
                   <thead>

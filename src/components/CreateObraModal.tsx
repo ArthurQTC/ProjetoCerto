@@ -206,7 +206,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </label>
             <textarea
               className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors h-24 resize-none"
-              placeholder="Ex: Escopo do projeto compreende pavimentação, terraplenagem e acabamento..."
+              placeholder="Ex: Escopo do contrato compreende pavimentação, terraplenagem e acabamento..."
               value={observacoes}
               onChange={(e) => setObservacoes(e.target.value)}
               disabled={loading}

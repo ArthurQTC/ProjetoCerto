@@ -15,11 +15,14 @@ import {
 import { useUIStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
 import CreateProjectModal from "./CreateObraModal";
+import DateRangePicker from "./DateRangePicker";
 
 export default function ProjectsListView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
   const projectFilter = useUIStore((state) => state.projectFilter);
   const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<Projeto | null>(null);
 
@@ -87,25 +90,38 @@ export default function ProjectsListView() {
     );
   }
 
-  // Filter projects by search and statusContrato matching projectFilter
+  // Filter projects by search, statusContrato, and date range
   const filteredProjects = (data.projetos || data.obras || []).filter((o) => {
     const matchesStatus = (o.statusContrato || "CONSOLIDADO") === projectFilter;
     const matchesSearch = o.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (o.cliente && o.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesStatus && matchesSearch;
+
+    let matchesDate = true;
+    if (o.createdAt) {
+      const createDate = new Date(o.createdAt);
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (createDate < start) matchesDate = false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (createDate > end) matchesDate = false;
+      }
+    } else {
+      if (startDate || endDate) matchesDate = false;
+    }
+
+    return matchesStatus && matchesSearch && matchesDate;
   });
 
-  // Calculate dynamic metrics specifically for projects of the selected status filter
-  const allProjectsList = data.projetos || data.obras || [];
-  const statusFilteredProjects = allProjectsList.filter(
-    (o: any) => (o.statusContrato || "CONSOLIDADO") === projectFilter
-  );
-
-  const totalContratosFiltered = statusFilteredProjects.reduce((acc: number, o: any) => acc + (o.valorContrato || 0), 0);
-  const totalVisaoGeralFiltered = statusFilteredProjects.reduce((acc: number, o: any) => acc + (o.visaoGeral || 0), 0);
+  // Calculate dynamic metrics specifically for projects of the selected status and date filters
+  const totalContratosFiltered = filteredProjects.reduce((acc: number, o: any) => acc + (o.valorContrato || 0), 0);
+  const totalVisaoGeralFiltered = filteredProjects.reduce((acc: number, o: any) => acc + (o.visaoGeral || 0), 0);
   const totalMargemFiltered = totalContratosFiltered - totalVisaoGeralFiltered;
-  const percentualMedioFiltered = statusFilteredProjects.length > 0
-    ? statusFilteredProjects.reduce((acc: number, o: any) => acc + (o.percentualMargem || 0), 0) / statusFilteredProjects.length
+  const percentualMedioFiltered = filteredProjects.length > 0
+    ? filteredProjects.reduce((acc: number, o: any) => acc + (o.percentualMargem || 0), 0) / filteredProjects.length
     : 0;
 
   return (
@@ -174,25 +190,42 @@ export default function ProjectsListView() {
       </div>
 
       {/* Table Section */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-brand-text-secondary" />
-            <input
-              type="text"
-              placeholder="Pesquisar projeto ou cliente..."
-              className="w-full pl-9 pr-4 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              id="project_search_input"
-            />
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-xs">
+        <div className="p-5 border-b border-slate-100 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-brand-text-secondary" />
+              <input
+                type="text"
+                placeholder="Pesquisar contrato ou cliente..."
+                className="w-full pl-9 pr-4 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                id="project_search_input"
+              />
+            </div>
+            <p className="text-[10px] font-bold text-brand-text-secondary bg-slate-50 border border-slate-100 py-1 px-2 rounded-md shrink-0">
+              {filteredProjects.length === 1 ? "1 contrato localizado" : `${filteredProjects.length} contratos localizados`}
+            </p>
           </div>
-          <p className="text-[10px] font-bold text-brand-text-secondary bg-slate-50 border border-slate-100 py-1 px-2 rounded-md">
-            {filteredProjects.length === 1 ? "1 projeto localizado" : `${filteredProjects.length} projetos localizados`}
-          </p>
+
+          {/* Date Filters Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Filtrar Período:</span>
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onChange={(start, end) => {
+                  setStartDate(start);
+                  setEndDate(end);
+                }}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-b-2xl overflow-hidden">
           {filteredProjects.length > 0 ? (
             <table className="w-full text-left border-collapse">
               <thead>

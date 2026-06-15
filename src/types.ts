@@ -76,6 +76,8 @@ export interface ObraSummary {
   etapaFabricacao?: boolean;
   prazo?: string | null;
   numeroPedido?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type ProjetoSummary = ObraSummary;

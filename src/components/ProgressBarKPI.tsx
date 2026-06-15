@@ -24,12 +24,33 @@ export default function ProgressBarKPI({
   const clampedPercent = Math.min(percent, 100).toFixed(2);
   const formattedPercent = percent.toFixed(2);
 
+  const formatBRLValue = (val: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(val);
+  };
+
+  const formatBRLInputValue = (valueStr: string) => {
+    const digits = valueStr.replace(/\D/g, "");
+    if (!digits) return "0,00";
+    const cents = parseInt(digits, 10);
+    const floatVal = cents / 100;
+    return formatBRLValue(floatVal);
+  };
+
+  const parseBRLInputValue = (formattedStr: string) => {
+    const digits = formattedStr.replace(/\D/g, "");
+    if (!digits) return 0;
+    return parseInt(digits, 10) / 100;
+  };
+
   const [isEditing, setIsEditing] = useState(false);
-  const [valInput, setValInput] = useState(String(goal));
+  const [valInput, setValInput] = useState(formatBRLValue(goal));
 
   // Sync valInput if goal parameter changes externally
   useEffect(() => {
-    setValInput(String(goal));
+    setValInput(formatBRLValue(goal));
   }, [goal]);
 
   const themeColors = {
@@ -63,11 +84,11 @@ export default function ProgressBarKPI({
   };
 
   const handleSave = () => {
-    const parsed = parseFloat(valInput);
-    if (!isNaN(parsed) && parsed >= 0) {
+    const parsed = parseBRLInputValue(valInput);
+    if (parsed >= 0) {
       onGoalChange?.(parsed);
     } else {
-      setValInput(String(goal));
+      setValInput(formatBRLValue(goal));
     }
     setIsEditing(false);
   };
@@ -83,15 +104,18 @@ export default function ProgressBarKPI({
             <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
               <span className="text-[10px] text-slate-400 font-sans">R$</span>
               <input
-                type="number"
-                className="w-20 px-1 py-0.5 rounded border border-slate-300 text-xs text-slate-900 font-mono focus:outline-hidden focus:ring-1 focus:ring-brand-primary"
+                type="text"
+                className="w-28 px-1.5 py-0.5 rounded border border-slate-300 text-xs text-slate-900 font-mono focus:outline-hidden focus:ring-1 focus:ring-brand-primary text-right"
                 value={valInput}
-                onChange={(e) => setValInput(e.target.value)}
+                onChange={(e) => {
+                  const formatted = formatBRLInputValue(e.target.value);
+                  setValInput(formatted);
+                }}
                 onBlur={handleSave}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSave();
                   if (e.key === "Escape") {
-                    setValInput(String(goal));
+                    setValInput(formatBRLValue(goal));
                     setIsEditing(false);
                   }
                 }}
@@ -113,7 +137,7 @@ export default function ProgressBarKPI({
                 <button
                   id={`btn_edit_goal_${title.toLowerCase().replace(/\s+/g, '_')}`}
                   onClick={() => {
-                    setValInput(String(goal));
+                    setValInput(formatBRLValue(goal));
                     setIsEditing(true);
                   }}
                   className="p-1 text-slate-500 hover:text-brand-primary bg-slate-100/80 hover:bg-slate-200/85 rounded-md transition-all duration-200 cursor-pointer text-xs shrink-0"
