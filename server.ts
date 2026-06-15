@@ -800,13 +800,53 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
     }
   });
 
-  // Export Dados da Memória para JSON
+  // Export Todos os Dados para JSON
   app.get("/api/export-memory", async (req, res) => {
     try {
+      const obrasMap = new Map<string, any>();
+      
+      // 1. Fetch DB Data (if available)
+      if (dbConnected && pool) {
+        try {
+          const dbObrasRes = await pool.query('SELECT * FROM obras');
+          const dbObras = dbObrasRes.rows;
+          const dbItensRes = await pool.query('SELECT i.*, c.nome as "cat_nome", c."grupoCalculo" as "cat_grupoCalculo" FROM itens_orcamento i LEFT JOIN categorias c ON i."categoriaId" = c.id');
+          const dbItens = dbItensRes.rows;
+          const dbCategoriasRes = await pool.query('SELECT * FROM categorias');
+          const dbCategorias = dbCategoriasRes.rows;
+
+          dbObras.forEach(o => {
+            obrasMap.set(o.id, {
+              ...o,
+              valorContrato: Number(o.valorContrato),
+              itens: dbItens.filter(i => i.obraId === o.id).map(i => ({
+                ...i,
+                valor: Number(i.valor),
+                categoria: { id: i.categoriaId, nome: i.cat_nome, grupoCalculo: i.cat_grupoCalculo }
+              }))
+            });
+          });
+        } catch (dbErr) {
+          console.error("Erro ao buscar dados do banco para exportação:", dbErr);
+        }
+      }
+
+      // 2. Merge/Add Memory Data (if it's not yet in DB)
+      memoryObras.forEach(o => {
+        if (!obrasMap.has(o.id)) {
+          obrasMap.set(o.id, {
+            ...o,
+            itens: memoryItens.filter(i => i.obraId === o.id).map(i => ({
+              ...i,
+              categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
+            }))
+          });
+        }
+      });
+
       res.json({
-        obras: memoryObras,
-        itens: memoryItens,
-        categorias: memoryCategorias
+        obras: Array.from(obrasMap.values()),
+        categorias: memoryCategorias // Fallback to memory categories
       });
     } catch (e: any) {
       res.status(500).json({ error: "Erro ao exportar", details: e.message });
