@@ -800,11 +800,19 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
     }
   });
 
+  // Export Memória para JSON
+  app.get("/api/export-memory", async (req, res) => {
+    res.json({
+      obras: memoryObras,
+      itens: memoryItens,
+      categorias: memoryCategorias
+    });
+  });
+
   // GET Dashboard Stats
   app.get("/api/dashboard", async (req, res) => {
     try {
       let freshObras: any[] = [];
-      
       if (dbConnected && pool) {
         try {
           const dbObrasRes = await pool.query('SELECT * FROM obras ORDER BY "createdAt" DESC');

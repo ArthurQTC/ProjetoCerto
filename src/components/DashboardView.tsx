@@ -235,6 +235,21 @@ export default function DashboardView() {
         <div>
           <h1 className="text-2xl font-black text-brand-text-primary tracking-tight">Dashboard</h1>
           <p className="text-xs text-brand-text-secondary font-semibold uppercase tracking-wider">Centro de Custos Obras</p>
+          <button
+            onClick={async () => {
+              const res = await fetch("/api/export-memory");
+              const data = await res.json();
+              const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `memory_export_${new Date().toISOString()}.json`;
+              a.click();
+            }}
+            className="mt-2 text-[9px] font-bold text-brand-primary bg-brand-primary/10 px-2 py-1 rounded-md hover:bg-brand-primary/20 transition-colors cursor-pointer"
+          >
+            Baixar Exportação em JSON
+          </button>
         </div>
         
         {/* Progress indicators placed in the top right, above the main KPI cards */}
