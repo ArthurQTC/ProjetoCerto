@@ -1,4 +1,5 @@
-import { Goal } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Goal, Edit2, Check } from "lucide-react";
 
 interface ProgressBarKPIProps {
   title: string;
@@ -7,13 +8,29 @@ interface ProgressBarKPIProps {
   color: "indigo" | "rose" | "emerald";
   description?: string;
   hideBar?: boolean;
+  onGoalChange?: (newGoal: number) => void;
 }
 
-export default function ProgressBarKPI({ title, current, goal, color, description, hideBar }: ProgressBarKPIProps) {
+export default function ProgressBarKPI({ 
+  title, 
+  current, 
+  goal, 
+  color, 
+  description, 
+  hideBar,
+  onGoalChange 
+}: ProgressBarKPIProps) {
   const percent = goal > 0 ? (current / goal) * 100 : 0;
-  const isOverLimit = percent > 100;
   const clampedPercent = Math.min(percent, 100).toFixed(2);
   const formattedPercent = percent.toFixed(2);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [valInput, setValInput] = useState(String(goal));
+
+  // Sync valInput if goal parameter changes externally
+  useEffect(() => {
+    setValInput(String(goal));
+  }, [goal]);
 
   const themeColors = {
     indigo: {
@@ -45,14 +62,62 @@ export default function ProgressBarKPI({ title, current, goal, color, descriptio
     }).format(val);
   };
 
+  const handleSave = () => {
+    const parsed = parseFloat(valInput);
+    if (!isNaN(parsed) && parsed >= 0) {
+      onGoalChange?.(parsed);
+    } else {
+      setValInput(String(goal));
+    }
+    setIsEditing(false);
+  };
+
   return (
     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
       <div>
         <span className="text-[10px] font-bold text-brand-text-secondary uppercase tracking-widest block">{title}</span>
-        <h4 className="text-base font-extrabold font-mono tracking-tight text-brand-text-primary mt-1.5 flex items-baseline gap-1 bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-100">
+        <h4 className="text-base font-extrabold font-mono tracking-tight text-brand-text-primary mt-1.5 flex items-center flex-wrap gap-1 bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-100">
           <span className="text-brand-primary">{formatCurrency(current)}</span>
           <span className="text-slate-300 font-sans mx-1">/</span>
-          <span className="text-brand-text-secondary text-sm font-medium">{formatCurrency(goal)}</span>
+          {isEditing ? (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[10px] text-slate-400 font-sans">R$</span>
+              <input
+                type="number"
+                className="w-20 px-1 py-0.5 rounded border border-slate-300 text-xs text-slate-900 font-mono focus:outline-hidden focus:ring-1 focus:ring-brand-primary"
+                value={valInput}
+                onChange={(e) => setValInput(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSave();
+                  if (e.key === "Escape") {
+                    setValInput(String(goal));
+                    setIsEditing(false);
+                  }
+                }}
+                autoFocus
+              />
+              <button onClick={handleSave} className="p-0.5 text-green-600 hover:text-green-800" title="Salvar">
+                <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 group/goal select-none">
+              <span className="text-brand-text-secondary text-sm font-medium">{formatCurrency(goal)}</span>
+              {onGoalChange && (
+                <button
+                  onClick={() => {
+                    setValInput(String(goal));
+                    setIsEditing(true);
+                  }}
+                  className="opacity-0 group-hover/goal:opacity-100 transition-opacity p-0.5 text-brand-text-secondary hover:text-brand-primary cursor-pointer"
+                  title="Editar Meta"
+                >
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
         </h4>
         {description && !hideBar && (
           <p className="text-[10px] text-brand-text-secondary mt-1.5 font-semibold">{description}</p>
@@ -71,7 +136,7 @@ export default function ProgressBarKPI({ title, current, goal, color, descriptio
           <div className="flex justify-between items-center mt-2.5 text-[10px] font-bold text-brand-text-secondary">
             <span className="flex items-center gap-1 opacity-70">
               <Goal className="w-3 h-3 text-brand-text-secondary" />
-              Meta Fixada
+              Meta
             </span>
             <span className={`${themeColors.text} bg-slate-100 py-0.5 px-1.5 rounded-md`}>
               {formattedPercent}% atingido
