@@ -273,7 +273,7 @@ export default function DashboardView() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/60 border-b border-slate-100">
-                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Projeto</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Cliente</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Visão Custo Geral</th>
                   <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>

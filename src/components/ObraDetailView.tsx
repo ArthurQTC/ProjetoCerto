@@ -53,6 +53,7 @@ export default function ObraDetailView() {
   const [docClientEmail, setDocClientEmail] = useState("");
   const [docScope, setDocScope] = useState("");
   const [docScopePct, setDocScopePct] = useState("***60%***");
+  const [selectedBudgetItems, setSelectedBudgetItems] = useState<Record<string, boolean>>({});
 
   // Document attachments and inline pdf preview states
   const [activePdfUrl, setActivePdfUrl] = useState<string | null>(null);
@@ -163,6 +164,15 @@ export default function ObraDetailView() {
       setDocClientEmail("savio@threeway.com.br");
       setDocScope("FORNECIMENTO DE MATERIAIS PARA ESTRUTURA E SUBESTRUTURA PARA RECEBIMENTO DOS BRISES + MÃO DE OBRA DE INSTALAÇÃO DO BRISES THB 150 HUNTER DOUGLAS");
       setDocScopePct("***60%***");
+
+      // Pre-select all active budget items initially
+      const initialSelected: Record<string, boolean> = {};
+      project?.itens?.forEach((item) => {
+        if (item.status === "ATIVO") {
+          initialSelected[item.id] = true;
+        }
+      });
+      setSelectedBudgetItems(initialSelected);
     }
   }, [project, isBudgetPreviewOpen]);
 
@@ -759,7 +769,6 @@ export default function ObraDetailView() {
           </div>
           <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between text-[10px] font-bold text-brand-text-secondary">
             <span>Orçamento do Projeto: {filteredItems.length} registros listados</span>
-            <span className="opacity-80">Gere e controle categorias adicionais livremente</span>
           </div>
         </div>
 
@@ -870,15 +879,21 @@ export default function ObraDetailView() {
                 </div>
 
                 <div className="flex flex-col gap-1.5 mt-4 w-full text-left max-h-[140px] overflow-y-auto pr-1">
-                  {categoryChartData.map((item, index) => (
-                    <div key={item.name} className="flex items-center justify-between text-[10px] font-bold text-brand-text-secondary py-1 border-b border-slate-50">
-                      <div className="flex items-center gap-1.5 truncate max-w-[120px]">
-                        <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
-                        <span className="truncate" title={item.name}>{item.name}</span>
-                      </div>
-                      <strong className="font-mono text-brand-text-primary ml-2 shrink-0">{formatBRLNoDecimals(item.value)}</strong>
-                    </div>
-                  ))}
+                  {(() => {
+                    const totalBudget = categoryChartData.reduce((acc, item) => acc + item.value, 0);
+                    return categoryChartData.map((item, index) => {
+                      const pct = totalBudget > 0 ? ((item.value / totalBudget) * 100).toFixed(1) : "0";
+                      return (
+                        <div key={item.name} className="flex items-center justify-between text-[10px] font-bold text-brand-text-secondary py-1 border-b border-slate-50">
+                          <div className="flex items-center gap-1.5 truncate max-w-[170px]">
+                            <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
+                            <span className="truncate" title={item.name}>{item.name} <span className="text-[9px] text-slate-400 font-normal ml-0.5">({pct}%)</span></span>
+                          </div>
+                          <strong className="font-mono text-brand-text-primary ml-2 shrink-0">{formatBRLNoDecimals(item.value)}</strong>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             ) : (
@@ -1126,11 +1141,8 @@ export default function ObraDetailView() {
                 <FileText className="w-5 h-5 text-amber-600 shrink-0" />
                 <div>
                   <h4 className="text-xs font-black tracking-wide text-brand-text-primary uppercase">
-                    Visualização & Parametrização do Orçamento (Materiais)
+                    Visualização do Orçamento
                   </h4>
-                  <p className="text-[10px] text-brand-text-secondary">
-                    Visualize o documento idêntico ao modelo original e edite os dados em tempo real antes de imprimir ou salvar como PDF.
-                  </p>
                 </div>
               </div>
 
@@ -1277,6 +1289,36 @@ export default function ObraDetailView() {
                     onChange={(e) => setDocScopePct(e.target.value)}
                   />
                 </div>
+
+                <h5 className="font-bold text-slate-800 uppercase tracking-widest text-[10px] border-b border-slate-200 pb-1 mt-2">
+                  Escolher Itens do Orçamento
+                </h5>
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  {project?.itens?.filter(item => item.status === "ATIVO").map((item) => (
+                    <label key={item.id} className="flex items-start gap-2 p-1.5 hover:bg-slate-100 rounded-md cursor-pointer text-[10px] font-semibold leading-relaxed">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3.5 w-3.5 text-amber-600 focus:ring-amber-500 border-slate-300 rounded"
+                        checked={selectedBudgetItems[item.id] !== false}
+                        onChange={(e) => {
+                          setSelectedBudgetItems(prev => ({
+                            ...prev,
+                            [item.id]: e.target.checked
+                          }));
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-slate-800 font-bold" title={item.descricao}>{item.descricao}</p>
+                        <span className="text-[9px] text-slate-400 font-mono block">
+                          {item.categoria?.nome || "Sem Categoria"} &bull; {formatBRLNoDecimals(item.valor)}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                  {(!project?.itens || project.itens.filter(item => item.status === "ATIVO").length === 0) && (
+                    <p className="text-[9px] text-slate-400 italic">Nenhum item ativo disponível.</p>
+                  )}
+                </div>
               </div>
 
               {/* Right Live Preview Panel */}
@@ -1300,14 +1342,15 @@ export default function ObraDetailView() {
                     {/* Header: Vendor Brand Info Card */}
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 py-3 items-center">
                       {/* Left: Brand logo & Vendor CNPJ/Address details */}
-                      <div className="md:col-span-8 flex gap-4 text-left">
-                        {/* Triangular prism architecture logo */}
-                        <div className="w-10 h-12 shrink-0 py-1">
-                          <svg width="40" height="48" viewBox="0 0 40 50" fill="none" className="mx-auto">
-                            <path d="M5 45L20 5L24 45L5 45Z" fill="#5F6368" />
-                            <path d="M20 5L35 32L24 45L20 5Z" fill="#C5221F" />
-                            <path d="M35 32L38 45L24 45L35 32Z" fill="#E67C73" />
-                          </svg>
+                      <div className="md:col-span-8 flex gap-4 items-center text-left">
+                        {/* Site Favicon Logo */}
+                        <div className="w-12 h-12 shrink-0 flex items-center justify-center">
+                          <img
+                            src={localStorage.getItem("logo_url") || "https://dptxkbsyzfntolgmhniz.supabase.co/storage/v1/object/sign/ProjetoCerto/faviconProjetoCerto.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8yY2MyYjJkMS1hMDBkLTQ5N2EtYTQwMC0zOWM0MjFkZmNmYWEiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJQcm9qZXRvQ2VydG8vZmF2aWNvblByb2pldG9DZXJ0by5wbmciLCJpYXQiOjE3ODA0MjQxNDIsImV4cCI6MjA5NTc4NDE0Mn0._ofXmRtiUUM0MbiBO-FO7fBd5btjixNn1B7EGjNUVy4"}
+                            alt="Logo"
+                            className="w-12 h-12 object-contain"
+                            referrerPolicy="no-referrer"
+                          />
                         </div>
                         <div className="flex-1">
                           <h2 className="text-[14px] font-black tracking-tight text-slate-900 uppercase">PROJETO CERTO</h2>
@@ -1386,21 +1429,17 @@ export default function ObraDetailView() {
                         </thead>
                         <tbody className="divide-y divide-slate-250">
                           {(() => {
-                            const materiaisItems = project?.itens?.filter(
-                              (item) =>
-                                item.status === "ATIVO" &&
-                                (item.categoria?.nome?.toLowerCase().includes("materiais") ||
-                                  item.categoria?.nome?.toLowerCase() === "materiais" ||
-                                  item.categoria?.grupoCalculo === "MATERIAL")
+                            const chosenItems = project?.itens?.filter(
+                              (item) => item.status === "ATIVO" && selectedBudgetItems[item.id] !== false
                             ) || [];
 
-                            if (materiaisItems.length > 0) {
-                              return materiaisItems.map((item) => (
+                            if (chosenItems.length > 0) {
+                              return chosenItems.map((item) => (
                                 <tr key={item.id} className="hover:bg-slate-50/20">
                                   <td className="py-3 px-2 text-center text-slate-700">1</td>
                                   <td className="py-3 px-3 font-bold text-slate-900 max-w-xs">{item.descricao}</td>
                                   <td className="py-3 px-3 text-slate-600 italic whitespace-pre-line max-w-xs font-semibold">
-                                    {item.observacao || "FORNECIMENTO DE ESTUTURA/SUBESTRUTURA"}
+                                    {item.observacao || "FORNECIMENTO DE ESTRUTURA/SUBESTRUTURA"}
                                   </td>
                                   <td className="py-3 px-3 text-right font-mono font-bold text-slate-850">
                                     {formatBRLNoDecimals(item.valor)}
@@ -1414,7 +1453,7 @@ export default function ObraDetailView() {
                               return (
                                 <tr>
                                   <td colSpan={5} className="py-8 text-center text-slate-400 font-bold uppercase tracking-wider text-[8.5px]">
-                                    Nenhum item cadastrado ou ativo na categoria &apos;Materiais&apos; para este projeto.
+                                    Nenhum item ativo selecionado para compor este orçamento.
                                   </td>
                                 </tr>
                               );
@@ -1426,26 +1465,22 @@ export default function ObraDetailView() {
 
                     {/* Dynamic Totals and net calculation matches layout */}
                     {(() => {
-                      const deItems = project?.itens?.filter(
-                        (item) =>
-                          item.status === "ATIVO" &&
-                          (item.categoria?.nome?.toLowerCase().includes("materiais") ||
-                            item.categoria?.nome?.toLowerCase() === "materiais" ||
-                            item.categoria?.grupoCalculo === "MATERIAL")
+                      const chosenItems = project?.itens?.filter(
+                        (item) => item.status === "ATIVO" && selectedBudgetItems[item.id] !== false
                       ) || [];
-                      const totMat = deItems.reduce((acc, item) => acc + (item.valor || 0), 0);
+                      const totBudget = chosenItems.reduce((acc, item) => acc + (item.valor || 0), 0);
 
-                      if (deItems.length > 0) {
+                      if (chosenItems.length > 0) {
                         return (
                           <div className="mt-6 flex justify-end">
                             <div className="w-56 border-t border-slate-350 text-[10px] uppercase font-bold tracking-tight">
                               <div className="flex justify-between py-1.5 border-b border-dashed border-slate-205">
                                 <span className="text-slate-500">Total</span>
-                                <span className="font-mono font-black text-slate-900">{formatBRLNoDecimals(totMat)}</span>
+                                <span className="font-mono font-black text-slate-900">{formatBRLNoDecimals(totBudget)}</span>
                               </div>
                               <div className="flex justify-between py-1.5">
                                 <span className="text-slate-850">Valor líquido</span>
-                                <span className="font-mono font-black text-slate-950 text-xs">{formatBRLNoDecimals(totMat)}</span>
+                                <span className="font-mono font-black text-slate-950 text-xs">{formatBRLNoDecimals(totBudget)}</span>
                               </div>
                             </div>
                           </div>

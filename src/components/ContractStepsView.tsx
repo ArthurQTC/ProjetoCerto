@@ -188,18 +188,12 @@ export default function ContractStepsView() {
 
   const handleToggleStepIndex = (project: ProjetoSummary, stepIndex: 1 | 2 | 3) => {
     let payload;
-    if (stepIndex === 1 && project.etapaProjeto && !project.etapaCotacao && !project.etapaFabricacao) {
-      payload = {
-        etapaProjeto: false,
-        etapaCotacao: false,
-        etapaFabricacao: false,
-      };
+    if (stepIndex === 1) {
+      payload = { etapaProjeto: !project.etapaProjeto };
+    } else if (stepIndex === 2) {
+      payload = { etapaCotacao: !project.etapaCotacao };
     } else {
-      payload = {
-        etapaProjeto: stepIndex >= 1,
-        etapaCotacao: stepIndex >= 2,
-        etapaFabricacao: stepIndex >= 3,
-      };
+      payload = { etapaFabricacao: !project.etapaFabricacao };
     }
     updateProjectMutation.mutate({
       id: project.id,
@@ -417,7 +411,7 @@ export default function ContractStepsView() {
                       <div 
                         className="absolute top-[28px] left-[16.6%] h-1 bg-brand-success rounded-full transition-all duration-350 z-0"
                         style={{ 
-                          width: stepsCount === 3 ? "66.8%" : stepsCount === 2 ? "33.4%" : "0%"
+                          width: p.etapaFabricacao ? "66.8%" : p.etapaCotacao ? "33.4%" : "0%"
                         }} 
                       />
 
@@ -429,8 +423,8 @@ export default function ContractStepsView() {
                             disabled={savingId === p.id && saveStatus === "saving"}
                             className={`w-7 h-7 rounded-full flex items-center justify-center border font-extrabold text-[11px] transition-all duration-250 cursor-pointer ${
                               p.etapaProjeto
-                                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-600/20 scale-105"
-                                : "bg-white text-slate-400 border-slate-200 hover:border-indigo-600 hover:text-indigo-600"
+                                ? "bg-brand-success text-white border-brand-success shadow-xs ring-2 ring-brand-success/20 scale-105"
+                                : "bg-white text-slate-400 border-slate-200 hover:border-brand-success hover:text-brand-success"
                             }`}
                             title="Alternar Projeto"
                             id={`toggle_projeto_${p.id}`}
@@ -438,7 +432,7 @@ export default function ContractStepsView() {
                             {p.etapaProjeto ? "✓" : "1"}
                           </button>
                           <span className={`text-[9px] font-extrabold text-center uppercase tracking-wider ${
-                            p.etapaProjeto ? "text-indigo-700 font-bold" : "text-brand-text-secondary"
+                            p.etapaProjeto ? "text-brand-success font-bold" : "text-brand-text-secondary"
                           }`}>
                             Projeto
                           </span>
@@ -451,8 +445,8 @@ export default function ContractStepsView() {
                             disabled={savingId === p.id && saveStatus === "saving"}
                             className={`w-7 h-7 rounded-full flex items-center justify-center border font-extrabold text-[11px] transition-all duration-250 cursor-pointer ${
                               p.etapaCotacao
-                                ? "bg-amber-600 text-white border-amber-600 shadow-xs ring-2 ring-amber-600/20 scale-105"
-                                : "bg-white text-slate-400 border-slate-200 hover:border-amber-600 hover:text-amber-600"
+                                ? "bg-brand-success text-white border-brand-success shadow-xs ring-2 ring-brand-success/20 scale-105"
+                                : "bg-white text-slate-400 border-slate-200 hover:border-brand-success hover:text-brand-success"
                             }`}
                             title="Alternar Cotação"
                             id={`toggle_cotacao_${p.id}`}
@@ -460,7 +454,7 @@ export default function ContractStepsView() {
                             {p.etapaCotacao ? "✓" : "2"}
                           </button>
                           <span className={`text-[9px] font-extrabold text-center uppercase tracking-wider ${
-                            p.etapaCotacao ? "text-amber-700 font-bold" : "text-brand-text-secondary"
+                            p.etapaCotacao ? "text-brand-success font-bold" : "text-brand-text-secondary"
                           }`}>
                             Cotação
                           </span>

@@ -1210,7 +1210,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             const updatedStatus = statusContrato !== undefined ? statusContrato : existing.statusContrato;
             const updatedDocs = documentos !== undefined 
               ? (typeof documentos === "string" ? documentos : JSON.stringify(documentos)) 
-              : existing.documentos;
+              : (existing.documentos !== undefined && existing.documentos !== null 
+                  ? (typeof existing.documentos === "string" ? existing.documentos : JSON.stringify(existing.documentos)) 
+                  : '[]');
             const updatedLev = etapaLevantamento !== undefined ? !!etapaLevantamento : existing.etapaLevantamento;
             const updatedProj = etapaProjeto !== undefined ? !!etapaProjeto : existing.etapaProjeto;
             const updatedCot = etapaCotacao !== undefined ? !!etapaCotacao : existing.etapaCotacao;

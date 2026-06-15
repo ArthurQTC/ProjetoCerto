@@ -197,7 +197,7 @@ export default function ProjectsListView() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">Projeto</th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Visão Geral</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
