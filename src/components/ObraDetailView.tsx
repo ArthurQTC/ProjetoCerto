@@ -158,9 +158,25 @@ export default function ObraDetailView() {
 
   useEffect(() => {
     if (project?.itens) {
-      setLocalItems(project.itens);
+      const baseItems = project.itens;
+      const virtualPisItem: ItemOrcamento = {
+        id: 'virtual-pis',
+        descricao: "PIS/COFINS/IRPJ/CSLL",
+        valor: Math.round((project.valorContrato || 0) * 0.056 * 100) / 100,
+        status: "ATIVO",
+        observacao: "5.6%",
+        obraId: project.id,
+        categoriaId: 'virtual-cat',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        categoria: { id: 'virtual-cat', nome: 'Impostos', grupoCalculo: 'IMPOSTOS' }
+      };
+      const itemsToDisplay = baseItems.find(i => i.descricao === "PIS/COFINS/IRPJ/CSLL")
+        ? baseItems
+        : [...baseItems, virtualPisItem];
+      setLocalItems(itemsToDisplay);
     }
-  }, [project?.itens]);
+  }, [project?.itens, project?.id, project?.valorContrato]);
 
   useEffect(() => {
     if (project) {
@@ -409,7 +425,27 @@ export default function ObraDetailView() {
   };
 
   // Process work-level cost distribution chart data (group by category name for local fine-granularity)
-  const activeItems = (project.itens || []).filter((i) => i.status === "ATIVO");
+  const baseItems = (project.itens || []);
+  
+  // Add backend-matching virtual item for front-end validation
+  const virtualPisItem: ItemOrcamento = {
+    id: 'virtual-pis',
+    descricao: "PIS/COFINS/IRPJ/CSLL",
+    valor: Math.round((project.valorContrato || 0) * 0.056 * 100) / 100,
+    status: "ATIVO",
+    observacao: "5.6%",
+    obraId: project.id,
+    categoriaId: 'virtual-cat',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    categoria: { id: 'virtual-cat', nome: 'Impostos', grupoCalculo: 'IMPOSTOS' }
+  };
+  
+  const allItemsForDisplay = baseItems.find(i => i.descricao === "PIS/COFINS/IRPJ/CSLL") 
+    ? baseItems 
+    : [...baseItems, virtualPisItem];
+
+  const activeItems = allItemsForDisplay.filter((i) => i.status === "ATIVO");
   const costCategoryMap: Record<string, number> = {};
   activeItems.forEach((i) => {
     if (i.categoria) {
