@@ -1772,7 +1772,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             // Recalcula o valor total baseado nos subitens se forem fornecidos ou existentes
             let updatedSubArray: any[] = [];
             if (subitens !== undefined) {
-              updatedSubArray = typeof subitens === "string" ? JSON.parse(subitens) : subitens;
+              updatedSubArray = Array.isArray(subitens) ? subitens : JSON.parse(subitens);
             } else {
               const currentSubStr = existing.subitens || "[]";
               updatedSubArray = typeof currentSubStr === "string" ? JSON.parse(currentSubStr) : (currentSubStr || []);
@@ -1783,7 +1783,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               updatedValor = updatedSubArray.reduce((acc, sub) => acc + (Number(sub.valor) || 0), 0);
             }
 
-            const updatedSub = typeof subitens === "string" ? subitens : JSON.stringify(updatedSubArray);
+            const updatedSub = JSON.stringify(updatedSubArray);
 
             try {
               await pool.query(`
@@ -1857,12 +1857,18 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
         let updatedSubArray: any[] = [];
         if (subitens !== undefined) {
-          updatedSubArray = typeof subitens === "string" ? JSON.parse(subitens) : subitens;
-          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens is defined. Raw subitens:`, subitens, `parsed/assigned to updatedSubArray:`, updatedSubArray);
+          if (typeof subitens === "string") {
+            try {
+              updatedSubArray = JSON.parse(subitens);
+            } catch (e) {
+              updatedSubArray = [];
+            }
+          } else if (Array.isArray(subitens)) {
+            updatedSubArray = subitens;
+          }
         } else {
           const currentSub = existing.subitens || [];
           updatedSubArray = typeof currentSub === "string" ? JSON.parse(currentSub) : currentSub;
-          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens is undefined. existing.subitens:`, existing.subitens, `assigned to updatedSubArray:`, updatedSubArray);
         }
 
         let updatedValor = valor !== undefined ? Number(valor) : existing.valor;
