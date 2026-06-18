@@ -1783,10 +1783,27 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             // Recalcula o valor total baseado nos subitens se forem fornecidos ou existentes
             let updatedSubArray: any[] = [];
             if (subitens !== undefined) {
-              updatedSubArray = Array.isArray(subitens) ? subitens : JSON.parse(subitens);
+              if (Array.isArray(subitens)) {
+                updatedSubArray = subitens;
+              } else if (typeof subitens === 'string') {
+                try {
+                  updatedSubArray = JSON.parse(subitens);
+                } catch (e) {
+                  console.error("Failed to parse subitens in PG block", subitens);
+                  updatedSubArray = [];
+                }
+              }
             } else {
               const currentSubStr = existing.subitens || "[]";
-              updatedSubArray = typeof currentSubStr === "string" ? JSON.parse(currentSubStr) : (currentSubStr || []);
+              if (typeof currentSubStr === "string") {
+                try {
+                  updatedSubArray = JSON.parse(currentSubStr);
+                } catch (e) {
+                  updatedSubArray = [];
+                }
+              } else {
+                updatedSubArray = currentSubStr || [];
+              }
             }
 
             let updatedValor = valor !== undefined ? Number(valor) : Number(existing.valor);

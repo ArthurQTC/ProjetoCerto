@@ -383,7 +383,10 @@ export default function ObraDetailView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Erro ao atualizar status do item");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Erro ao atualizar status do item no servidor");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -391,6 +394,11 @@ export default function ObraDetailView() {
       queryClient.invalidateQueries({ queryKey: ["projectDetail", selectedProjectId] });
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
     },
+    onError: (error) => {
+      console.error("Mutation failed:", error);
+      alert("Falha ao salvar os dados: " + error.message + ". A tela será atualizada.");
+      refetch(); // This will revert the optimistic UI to the real server state
+    }
   });
 
   // Sub-items management functions
