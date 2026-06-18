@@ -332,7 +332,47 @@ let memoryObras: any[] = [];
 
 let memoryItens: any[] = [];
 
+// Persistent memory fallback on filesystem
+const FALLBACK_DATA_FILE = path.join(process.cwd(), "dev_fallback_data.json");
+
+const loadMemoryDb = () => {
+  try {
+    if (fs.existsSync(FALLBACK_DATA_FILE)) {
+      const raw = fs.readFileSync(FALLBACK_DATA_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed.memoryObras && Array.isArray(parsed.memoryObras)) {
+        memoryObras = parsed.memoryObras;
+      }
+      if (parsed.memoryItens && Array.isArray(parsed.memoryItens)) {
+        memoryItens = parsed.memoryItens;
+      }
+      console.log(`[DEBUG] Persistent memory loaded from disk. Projects: ${memoryObras.length}, Items: ${memoryItens.length}`);
+    } else {
+      console.log("[DEBUG] No persistent memory fallback file found. Starting fresh.");
+    }
+  } catch (err) {
+    console.error("[DEBUG] Error loading persistent memory fallback file:", err);
+  }
+};
+
+const saveMemoryDb = () => {
+  try {
+    const payload = {
+      memoryObras,
+      memoryItens
+    };
+    fs.writeFileSync(FALLBACK_DATA_FILE, JSON.stringify(payload, null, 2), "utf-8");
+    console.log(`[DEBUG] Persistent memory saved to disk. Projects: ${memoryObras.length}, Items: ${memoryItens.length}`);
+  } catch (err) {
+    console.error("[DEBUG] Error saving persistent memory fallback file:", err);
+  }
+};
+
+// Immediately load fallback database on boot
+loadMemoryDb();
+
 const getMemoryProjectItems = (obraId: string) => {
+  console.log(`[DEBUG] getMemoryProjectItems called for obraId: ${obraId}. current memoryItens count: ${memoryItens.length}`);
   return memoryItens.filter(i => i.obraId === obraId).map(i => {
     let parsedSubs: any[] = [];
     if (i.subitens) {
@@ -340,12 +380,14 @@ const getMemoryProjectItems = (obraId: string) => {
         try {
           parsedSubs = JSON.parse(i.subitens);
         } catch (e) {
+          console.error(`[DEBUG] getMemoryProjectItems: JSON parse failed for subitens of item ${i.id}:`, i.subitens, e);
           parsedSubs = [];
         }
       } else if (Array.isArray(i.subitens)) {
         parsedSubs = i.subitens;
       }
     }
+    console.log(`[DEBUG] Item ${i.id} (${i.descricao}) has ${parsedSubs.length} parsed subitens. Raw subitens content:`, i.subitens);
     return {
       ...i,
       subitens: parsedSubs,
@@ -469,6 +511,8 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
       }
     }
   });
+
+  saveMemoryDb();
 };
 
 const formatObraWithMetrics = (obra: any) => {
@@ -1378,6 +1422,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             ...updated,
             itens: getMemoryProjectItems(id)
           };
+          saveMemoryDb();
         }
       }
 
@@ -1423,6 +1468,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         const keepItems = memoryItens.filter(i => i.obraId !== id);
         memoryItens.length = 0;
         memoryItens.push(...keepItems);
+        saveMemoryDb();
       }
 
       res.json({ success: true, message: "Projeto excluído com êxito" });
@@ -1528,6 +1574,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         const keepItems = memoryItens.filter(i => i.categoriaId !== id);
         memoryItens.length = 0;
         memoryItens.push(...keepItems);
+        saveMemoryDb();
       }
 
       res.json({ success: true, message: "Categoria e seus itens foram removidos permanentemente." });
@@ -1557,6 +1604,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         memoryItens.length = 0;
         memoryItens.push(...keepItems);
         countRemoved = initialLen - memoryItens.length;
+        saveMemoryDb();
       }
 
       res.json({ success: true, message: `${countRemoved} itens removidos permanentemente.` });
@@ -1599,6 +1647,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             item.ordem = idx;
           }
         });
+        saveMemoryDb();
       }
 
       res.json({ success: true, message: "Itens reordenados com sucesso" });
@@ -1684,6 +1733,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           categoria: categoriaObj
         };
         memoryItens.push(novoItem);
+        saveMemoryDb();
       }
 
       res.status(201).json(novoItem);
@@ -1788,12 +1838,15 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       }
 
       if (!dbConnected || !updatedItem) {
+        console.log(`[DEBUG] PUT /api/itens/${itemId} (memory block) received. body:`, req.body);
         const itemIdx = memoryItens.findIndex(i => i.id === itemId);
         if (itemIdx === -1) {
+          console.log(`[DEBUG] PUT /api/itens/${itemId} - Item not found in memoryItens!`);
           return res.status(404).json({ error: "Item de orçamento não localizado" });
         }
 
         const existing = memoryItens[itemIdx];
+        console.log(`[DEBUG] PUT /api/itens/${itemId} existing item:`, existing);
 
         if (categoriaId) {
           const catExists = memoryCategorias.find(c => c.id === categoriaId);
@@ -1805,14 +1858,19 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         let updatedSubArray: any[] = [];
         if (subitens !== undefined) {
           updatedSubArray = typeof subitens === "string" ? JSON.parse(subitens) : subitens;
+          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens is defined. Raw subitens:`, subitens, `parsed/assigned to updatedSubArray:`, updatedSubArray);
         } else {
           const currentSub = existing.subitens || [];
           updatedSubArray = typeof currentSub === "string" ? JSON.parse(currentSub) : currentSub;
+          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens is undefined. existing.subitens:`, existing.subitens, `assigned to updatedSubArray:`, updatedSubArray);
         }
 
         let updatedValor = valor !== undefined ? Number(valor) : existing.valor;
         if (Array.isArray(updatedSubArray) && updatedSubArray.length > 0) {
           updatedValor = updatedSubArray.reduce((acc, sub) => acc + (Number(sub.valor) || 0), 0);
+          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens.length: ${updatedSubArray.length}. Recalculated total weight: ${updatedValor}`);
+        } else {
+          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens is empty or not array. Keeping valor:`, updatedValor);
         }
 
         const updated = {
@@ -1826,6 +1884,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           updatedAt: new Date()
         };
         memoryItens[itemIdx] = updated;
+        console.log(`[DEBUG] PUT /api/itens/${itemId} - memoryItens[${itemIdx}] updated:`, updated);
 
         const catObj = memoryCategorias.find(c => c.id === updated.categoriaId) || null;
 
@@ -1834,6 +1893,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           subitens: updatedSubArray,
           categoria: catObj
         };
+        saveMemoryDb();
       }
 
       res.json(updatedItem);
@@ -1863,6 +1923,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           return res.status(404).json({ error: "Item de orçamento não localizado" });
         }
         memoryItens.splice(itemIdx, 1);
+        saveMemoryDb();
       }
 
       res.json({ success: true, message: "Item removido com sucesso" });
