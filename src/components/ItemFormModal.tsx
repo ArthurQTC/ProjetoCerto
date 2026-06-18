@@ -25,6 +25,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
   const [percentValue, setPercentValue] = useState("");
 
   const isFixedItem = itemToEdit ? (itemToEdit.descricao === "Imposto Fixo" || itemToEdit.descricao === "Custo ADM") : false;
+  const hasSubItems = !!(itemToEdit?.subitens && itemToEdit.subitens.length > 0);
 
   const getBRLPreview = (valStr: string) => {
     let cleanVal = valStr.replace(/[^0-9,.-]+/g, "");
@@ -273,13 +274,18 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
                   </label>
                   <input
                     type="text"
-                    className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors font-mono font-semibold"
+                    className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors font-mono font-semibold disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100"
                     placeholder="Ex: 5000"
                     value={valor}
                     onChange={(e) => setValor(e.target.value)}
-                    disabled={loading}
+                    disabled={loading || hasSubItems}
                     id="item_valor_input"
                   />
+                  {hasSubItems && (
+                    <p className="mt-1 text-[8.5px] font-bold text-emerald-600 leading-tight">
+                      Calculado automaticamente a partir da soma dos subitens. Edite-os na lista do projeto.
+                    </p>
+                  )}
                   {valor && getBRLPreview(valor) && (
                     <div id="cost_preview_brl" className="mt-1.5 text-[11px] font-mono text-brand-text-secondary bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 flex justify-between items-center animate-in fade-in slide-in-from-top-1 duration-150">
                       <span className="font-semibold text-slate-400">Visualização:</span>

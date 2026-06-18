@@ -183,52 +183,21 @@ export default function ProjectsListView() {
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-brand-text-primary flex items-center gap-2">
             <Folder className="w-6 h-6 text-brand-accent animate-pulse" />
-            {projectFilter === "A_FECHAR" ? "Gestão de Contratos a Fechar" : "Gestão de Contratos"}
+            {projectFilter === "A_FECHAR" ? "Gestão de Orçamentos a Fechar" : "Gestão de Contratos"}
           </h1>
         </div>
         <div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const headers = ["Contrato", "Cliente", "Valor Contrato", "Custo Geral", "Margem Líquida", "Margem (%)", "Data Início", "Data Fim"];
-                const rows = filteredProjects.map((p: any) => [
-                  p.nome,
-                  p.cliente || "",
-                  p.valorContrato,
-                  p.visaoGeral,
-                  p.margemLiquida,
-                  p.percentualMargem,
-                  p.dataInicioContrato || "",
-                  p.dataFimContrato || ""
-                ]);
-                const csvContent = [
-                  headers.join(";"),
-                  ...rows.map(r => r.join(";"))
-                ].join("\n");
-                
-                const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `contratos_export_${new Date().toISOString()}.csv`;
-                a.click();
-              }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors"
-            >
-              Exportar Excel
-            </button>
-            <button
-              onClick={() => {
-                setProjectToEdit(null);
-                setIsNewProjectModalOpen(true);
-              }}
-              className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
-              id="projects_list_new_project_btn"
-            >
-              <Plus className="w-4 h-4 text-white" />
-              Novo Contrato
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setProjectToEdit(null);
+              setIsNewProjectModalOpen(true);
+            }}
+            className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+            id="projects_list_new_project_btn"
+          >
+            <Plus className="w-4 h-4 text-white" />
+            {projectFilter === "A_FECHAR" ? "Novo Orçamento" : "Novo Contrato"}
+          </button>
         </div>
       </div>
 
@@ -280,7 +249,7 @@ export default function ProjectsListView() {
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-brand-text-secondary" />
               <input
                 type="text"
-                placeholder="Pesquisar contrato ou cliente..."
+                placeholder={projectFilter === "A_FECHAR" ? "Pesquisar orçamento ou cliente..." : "Pesquisar contrato ou cliente..."}
                 className="w-full pl-9 pr-4 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -288,7 +257,9 @@ export default function ProjectsListView() {
               />
             </div>
             <p className="text-[10px] font-bold text-brand-text-secondary bg-slate-50 border border-slate-100 py-1 px-2 rounded-md shrink-0">
-              {filteredProjects.length === 1 ? "1 contrato localizado" : `${filteredProjects.length} contratos localizados`}
+              {filteredProjects.length === 1 
+                ? (projectFilter === "A_FECHAR" ? "1 orçamento localizado" : "1 contrato localizado") 
+                : `${filteredProjects.length} ${projectFilter === "A_FECHAR" ? "orçamentos localizados" : "contratos localizados"}`}
             </p>
           </div>
 
@@ -313,9 +284,15 @@ export default function ProjectsListView() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Custo dos Contratos</th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
+                    {projectFilter === "A_FECHAR" ? "Orçamento" : "Contrato"}
+                  </th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">
+                    {projectFilter === "A_FECHAR" ? "Valor Orçamento" : "Valor Contrato"}
+                  </th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">
+                    {projectFilter === "A_FECHAR" ? "Custo dos Orçamentos" : "Custo dos Contratos"}
+                  </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Ações</th>
@@ -398,7 +375,9 @@ export default function ProjectsListView() {
           ) : (
             <div className="flex flex-col items-center justify-center p-12 text-brand-text-secondary/40">
               <Folder className="w-10 h-10 opacity-30 mb-2.5" />
-              <p className="font-semibold text-xs">Nenhum projeto cadastrado ou encontrado...</p>
+              <p className="font-semibold text-xs">
+                {projectFilter === "A_FECHAR" ? "Nenhum orçamento cadastrado ou encontrado..." : "Nenhum projeto cadastrado ou encontrado..."}
+              </p>
             </div>
           )}
         </div>

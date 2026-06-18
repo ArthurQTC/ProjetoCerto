@@ -231,6 +231,7 @@ async function checkDbConnection() {
             status VARCHAR(255) NOT NULL DEFAULT 'ATIVO',
             observacao TEXT,
             ordem INTEGER NOT NULL DEFAULT 0,
+            subitens TEXT NOT NULL DEFAULT '[]',
             "obraId" VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
             "categoriaId" VARCHAR(255) NOT NULL REFERENCES categorias(id) ON DELETE CASCADE,
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -258,6 +259,7 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS status VARCHAR(255) NOT NULL DEFAULT \'ATIVO\'');
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS observacao TEXT');
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 0');
+        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS subitens TEXT NOT NULL DEFAULT \'[]\'');
 
         // Seed default categories if they don't exist
         const defaultCategories = [
@@ -366,19 +368,6 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
         }
       }
 
-      if (catImpostos) {
-        const pisItemRes = await pool.query('SELECT * FROM itens_orcamento WHERE "obraId" = $1 AND descricao = $2 LIMIT 1', [obraId, "PIS/COFINS/IRPJ/CSLL"]);
-        const pisItem = pisItemRes.rows[0];
-        if (!pisItem) {
-          const countRes = await pool.query('SELECT COUNT(*)::int as count FROM itens_orcamento WHERE "obraId" = $1', [obraId]);
-          const currentCount = countRes.rows[0].count;
-          await pool.query(`
-            INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, "obraId", "categoriaId", "createdAt", "updatedAt")
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-          `, [`fixed-pis-${obraId}`, "PIS/COFINS/IRPJ/CSLL", Math.round(valueContract * 0.056 * 100) / 100, "ATIVO", "5.6%", (currentCount || 99) + 2, obraId, catImpostos.id]);
-        }
-      }
-
       // Now query ALL items for this project and update any item that contains a '%' in its observation
       const allItensRes = await pool.query('SELECT * FROM itens_orcamento WHERE "obraId" = $1', [obraId]);
       for (const item of allItensRes.rows) {
@@ -439,25 +428,6 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
         ordem: idx + 1,
         obraId,
         categoriaId: mAdm.id,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    }
-  }
-
-  if (mImpostos) {
-    let pisItem = memoryItens.find(i => i.obraId === obraId && i.descricao === "PIS/COFINS/IRPJ/CSLL");
-    if (!pisItem) {
-      const idx = memoryItens.filter(i => i.obraId === obraId).length;
-      memoryItens.push({
-        id: `fixed-pis-${obraId}`,
-        descricao: "PIS/COFINS/IRPJ/CSLL",
-        valor: Math.round(valueContract * 0.056 * 100) / 100,
-        status: "ATIVO",
-        observacao: "5.6%",
-        ordem: idx + 2,
-        obraId,
-        categoriaId: mImpostos.id,
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -800,63 +770,11 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
     }
   });
 
-  // Export Todos os Dados para JSON
-  app.get("/api/export-memory", async (req, res) => {
-    try {
-      const obrasMap = new Map<string, any>();
-      
-      // 1. Fetch DB Data (if available)
-      if (dbConnected && pool) {
-        try {
-          const dbObrasRes = await pool.query('SELECT * FROM obras');
-          const dbObras = dbObrasRes.rows;
-          const dbItensRes = await pool.query('SELECT i.*, c.nome as "cat_nome", c."grupoCalculo" as "cat_grupoCalculo" FROM itens_orcamento i LEFT JOIN categorias c ON i."categoriaId" = c.id');
-          const dbItens = dbItensRes.rows;
-          const dbCategoriasRes = await pool.query('SELECT * FROM categorias');
-          const dbCategorias = dbCategoriasRes.rows;
-
-          dbObras.forEach(o => {
-            obrasMap.set(o.id, {
-              ...o,
-              valorContrato: Number(o.valorContrato),
-              itens: dbItens.filter(i => i.obraId === o.id).map(i => ({
-                ...i,
-                valor: Number(i.valor),
-                categoria: { id: i.categoriaId, nome: i.cat_nome, grupoCalculo: i.cat_grupoCalculo }
-              }))
-            });
-          });
-        } catch (dbErr) {
-          console.error("Erro ao buscar dados do banco para exportação:", dbErr);
-        }
-      }
-
-      // 2. Merge/Add Memory Data (if it's not yet in DB)
-      memoryObras.forEach(o => {
-        if (!obrasMap.has(o.id)) {
-          obrasMap.set(o.id, {
-            ...o,
-            itens: memoryItens.filter(i => i.obraId === o.id).map(i => ({
-              ...i,
-              categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-            }))
-          });
-        }
-      });
-
-      res.json({
-        obras: Array.from(obrasMap.values()),
-        categorias: memoryCategorias // Fallback to memory categories
-      });
-    } catch (e: any) {
-      res.status(500).json({ error: "Erro ao exportar", details: e.message });
-    }
-  });
-
   // GET Dashboard Stats
   app.get("/api/dashboard", async (req, res) => {
     try {
       let freshObras: any[] = [];
+      
       if (dbConnected && pool) {
         try {
           const dbObrasRes = await pool.query('SELECT * FROM obras ORDER BY "createdAt" DESC');
@@ -1143,6 +1061,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               ordem: Number(row.ordem),
               obraId: row.obraId,
               categoriaId: row.categoriaId,
+              subitens: typeof row.subitens === 'string' ? JSON.parse(row.subitens) : (row.subitens || []),
               createdAt: row.createdAt,
               updatedAt: row.updatedAt,
               categoria: {
@@ -1242,6 +1161,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             ordem: Number(row.ordem),
             obraId: row.obraId,
             categoriaId: row.categoriaId,
+            subitens: typeof row.subitens === 'string' ? JSON.parse(row.subitens) : (row.subitens || []),
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
             categoria: {
@@ -1389,6 +1309,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               ordem: Number(row.ordem),
               obraId: row.obraId,
               categoriaId: row.categoriaId,
+              subitens: typeof row.subitens === 'string' ? JSON.parse(row.subitens) : (row.subitens || []),
               createdAt: row.createdAt,
               updatedAt: row.updatedAt,
               categoria: {
@@ -1767,7 +1688,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   // PUT Atualizar Item
   app.put("/api/itens/:itemId", async (req, res) => {
     const { itemId } = req.params;
-    const { descricao, categoriaId, valor, status, observacao } = req.body;
+    const { descricao, categoriaId, valor, status, observacao, subitens } = req.body;
 
     try {
       let updatedItem: any = null;
@@ -1791,12 +1712,13 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             const updatedValor = valor !== undefined ? Number(valor) : Number(existing.valor);
             const updatedStatus = status !== undefined ? status : existing.status;
             const updatedObs = observacao !== undefined ? (observacao || null) : existing.observacao;
+            const updatedSub = subitens !== undefined ? (typeof subitens === "string" ? subitens : JSON.stringify(subitens)) : (existing.subitens || "[]");
 
             await pool.query(`
               UPDATE itens_orcamento SET
-                descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, "updatedAt" = NOW()
-              WHERE id = $6
-            `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, itemId]);
+                descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, "updatedAt" = NOW()
+              WHERE id = $7
+            `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, itemId]);
 
             const freshCatRes = await pool.query('SELECT * FROM categorias WHERE id = $1 LIMIT 1', [finalCatId]);
 
@@ -1807,6 +1729,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               valor: updatedValor,
               status: updatedStatus,
               observacao: updatedObs,
+              subitens: JSON.parse(updatedSub),
               ordem: existing.ordem,
               obraId: existing.obraId,
               categoria: freshCatRes.rows.length > 0 ? {
@@ -1843,6 +1766,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           valor: valor !== undefined ? Number(valor) : existing.valor,
           status: status !== undefined ? status : existing.status,
           observacao: observacao !== undefined ? (observacao || null) : existing.observacao,
+          subitens: subitens !== undefined ? subitens : existing.subitens,
           updatedAt: new Date()
         };
         memoryItens[itemIdx] = updated;

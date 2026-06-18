@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -22,6 +22,9 @@ import {
   X,
   ExternalLink,
   AlertTriangle,
+  ChevronRight,
+  ChevronDown,
+  PlusCircle,
 } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 import { Projeto, ItemOrcamento } from "../types";
@@ -29,6 +32,187 @@ import { useUIStore } from "../store";
 import ItemFormModal from "./ItemFormModal";
 import CreateProjectModal from "./CreateObraModal";
 import CreateCategoryModal from "./CreateCategoryModal";
+import * as XLSX from "xlsx";
+
+// Interactive client-side Excel Worksheet spreadsheet parser and viewer
+function ExcelViewer({ base64Url }: { base64Url: string }) {
+  const [activeSheet, setActiveSheet] = useState(0);
+  const [sheetData, setSheetData] = useState<any[]>([]);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const base64Parts = base64Url.split(";base64,");
+      const base64Data = base64Parts.length > 1 ? base64Parts[1] : base64Parts[0];
+      if (!base64Data) return;
+      const workbook = XLSX.read(base64Data, { type: "base64" });
+      setSheetNames(workbook.SheetNames);
+      if (workbook.SheetNames.length > 0) {
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        setSheetData(data);
+        setActiveSheet(0);
+      }
+    } catch (err) {
+      console.error("Erro parsing Excel: ", err);
+    }
+  }, [base64Url]);
+
+  const handleSheetChange = (idx: number, names: string[], base64Str: string) => {
+    try {
+      const base64Parts = base64Str.split(";base64,");
+      const base64Data = base64Parts.length > 1 ? base64Parts[1] : base64Parts[0];
+      if (!base64Data) return;
+      const workbook = XLSX.read(base64Data, { type: "base64" });
+      const sheet = workbook.Sheets[names[idx]];
+      const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      setSheetData(data);
+      setActiveSheet(idx);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  if (sheetNames.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-slate-400 bg-slate-50 min-h-[300px]">
+        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs font-bold font-mono text-emerald-700 animate-pulse">Lendo células e planilhas do Excel...</p>
+      </div>
+    );
+  }
+
+  // Calculate maximum columns across all rows to render a complete spreadsheet grid
+  const maxCols = sheetData.length > 0 ? Math.max(...sheetData.map(r => Array.isArray(r) ? r.length : 0)) : 0;
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden rounded-xl border border-slate-200">
+      {/* Sheet Tabs */}
+      <div className="flex bg-slate-100 border-b border-slate-200 overflow-x-auto shrink-0 select-none scrollbar-thin">
+        {sheetNames.map((name, idx) => (
+          <button
+            key={name}
+            onClick={() => handleSheetChange(idx, sheetNames, base64Url)}
+            className={`px-4 py-2 px-6 text-[10px] whitespace-nowrap font-extrabold border-r border-slate-200 uppercase tracking-widest transition-colors ${
+              activeSheet === idx
+                ? "bg-white text-emerald-700 border-t-2 border-t-emerald-600"
+                : "text-slate-500 hover:text-slate-800 hover:bg-slate-50/55"
+            }`}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+
+      {/* Spreadsheet grid cells with column mapping */}
+      <div className="flex-1 p-3 overflow-auto max-h-[60vh]">
+        {sheetData.length > 0 ? (
+          <div className="overflow-x-auto inline-block min-w-full align-middle border border-slate-150 rounded-lg shadow-inner bg-white">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-150">
+                <tr>
+                  <th className="px-2 py-1.5 text-center text-[9px] font-bold text-slate-400 border-r border-b border-slate-200 w-8 bg-slate-100 uppercase tracking-wider">
+                    #
+                  </th>
+                  {Array.from({ length: maxCols }).map((_, colIdx) => (
+                    <th key={colIdx} className="px-4 py-1.5 text-left text-[9px] font-bold text-slate-500 border-r border-b border-slate-200 bg-slate-100 uppercase tracking-wider font-mono">
+                      {String.fromCharCode(65 + (colIdx % 26)) + (colIdx >= 26 ? Math.floor(colIdx / 26) : "")}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-100 text-left">
+                {sheetData.map((row, rowIdx) => (
+                  <tr key={rowIdx} className="hover:bg-slate-50/40">
+                    <td className="px-2 py-1 text-center text-[9px] font-extrabold text-slate-450 border-r border-slate-150 bg-slate-50 font-mono">
+                      {rowIdx + 1}
+                    </td>
+                    {Array.from({ length: maxCols }).map((_, colIdx) => {
+                      const cellVal = Array.isArray(row) ? row[colIdx] : undefined;
+                      return (
+                        <td key={colIdx} className="px-4 py-1.5 text-[10px] border-r border-slate-150 font-sans text-slate-700 whitespace-nowrap">
+                          {cellVal !== undefined ? String(cellVal) : ""}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-24 text-center text-slate-400 font-mono text-[10px] font-bold">
+            Planilha vazia ou sem dados legíveis.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Vector AutoCAD Blueprint pre-visualizer overlay
+function DwgViewer({ fileName }: { fileName: string }) {
+  return (
+    <div className="flex flex-col h-full bg-slate-900 relative overflow-hidden rounded-xl border border-slate-800 p-6 select-none min-h-[350px] justify-between">
+      {/* CAD Grid Lines */}
+      <div className="absolute inset-x-0 inset-y-0 opacity-10 pointer-events-none" style={{
+        backgroundImage: "radial-gradient(#ffffff 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)",
+        backgroundSize: "20px 20px, 40px 40px, 40px 40px"
+      }} />
+
+      <div className="z-10 text-left space-y-1">
+        <span className="bg-amber-500/15 text-[#D9A441] border border-amber-500/25 rounded-md py-0.5 px-2 text-[8px] font-bold tracking-widest font-mono">
+          AUTOCAD DRAWING (DWG)
+        </span>
+        <h4 className="text-xs font-semibold text-white truncate font-mono mt-1">
+          {fileName}
+        </h4>
+      </div>
+
+      <div className="z-10 flex flex-col items-center justify-center gap-4 py-12">
+        <div className="relative w-36 h-36 border border-slate-700 rounded-full flex items-center justify-center">
+          <div className="absolute inset-4 border border-dashed border-[#D9A441]/40 rounded-full animate-spin duration-30" />
+          <div className="absolute inset-8 border border-sky-500/20 rounded-full" />
+          <div className="absolute left-0 right-0 h-[1.5px] bg-sky-500/15" />
+          <div className="absolute top-0 bottom-0 w-[1.5px] bg-sky-500/15" />
+          <div className="absolute w-full h-[1px] bg-slate-400/10 rotate-45" />
+          <div className="absolute w-full h-[1px] bg-slate-400/10 -rotate-45" />
+          <Building className="w-8 h-8 text-[#D9A441] animate-pulse" />
+        </div>
+        
+        <div className="text-center space-y-1 max-w-sm">
+          <p className="text-xs font-bold text-white uppercase tracking-wider font-sans">
+            Gabarito Técnico Indexado (.dwg)
+          </p>
+          <p className="text-[10px] text-slate-400 leading-relaxed font-sans max-w-xs mx-auto">
+            Este desenho arquitetônico está atrelado às metas do orçamento. Clique em "Nova Aba" para baixar o arquivo bruto e abri-lo no AutoCAD ou viewer local.
+          </p>
+        </div>
+      </div>
+
+      <div className="z-10 flex items-center justify-center">
+        <div className="bg-slate-800/80 border border-slate-700/60 p-2 px-3 rounded-lg flex items-center gap-2 text-[9px] text-[#D9A441] font-mono font-bold">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+          <span>PLANO OPERACIONAL DE ENGENHARIA</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Inline image preview component
+function ImageViewer({ url, fileName }: { url: string; fileName: string }) {
+  return (
+    <div className="flex-1 flex flex-col justify-center items-center h-full bg-slate-50 p-6 rounded-xl border border-slate-200 min-h-[300px]">
+      <img 
+        src={url} 
+        alt={fileName} 
+        className="max-h-[50vh] max-w-full rounded-lg shadow-md object-contain bg-white border border-slate-200" 
+        referrerPolicy="no-referrer"
+      />
+    </div>
+  );
+}
 
 export default function ObraDetailView() {
   const queryClient = useQueryClient();
@@ -55,9 +239,23 @@ export default function ObraDetailView() {
   const [docScopePct, setDocScopePct] = useState("***60%***");
   const [selectedBudgetItems, setSelectedBudgetItems] = useState<Record<string, boolean>>({});
 
-  // Document attachments and inline pdf preview states
+  // Secondary document attachments and inline pdf preview states
   const [activePdfUrl, setActivePdfUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Sub-items list expansion and inline management states
+  const [expandedItemIds, setExpandedItemIds] = useState<Record<string, boolean>>({});
+  const [addingSubItemForId, setAddingSubItemForId] = useState<string | null>(null);
+  const [editingSubItemId, setEditingSubItemId] = useState<string | null>(null);
+  const [tempSubItemDesc, setTempSubItemDesc] = useState("");
+  const [tempSubItemValue, setTempSubItemValue] = useState("");
+
+  const toggleExpandItem = (itemId: string) => {
+    setExpandedItemIds(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  };
 
   const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -158,25 +356,9 @@ export default function ObraDetailView() {
 
   useEffect(() => {
     if (project?.itens) {
-      const baseItems = project.itens;
-      const virtualPisItem: ItemOrcamento = {
-        id: 'virtual-pis',
-        descricao: "PIS/COFINS/IRPJ/CSLL",
-        valor: Math.round((project.valorContrato || 0) * 0.056 * 100) / 100,
-        status: "ATIVO",
-        observacao: "5.6%",
-        obraId: project.id,
-        categoriaId: 'virtual-cat',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        categoria: { id: 'virtual-cat', nome: 'Impostos', grupoCalculo: 'IMPOSTOS' }
-      };
-      const itemsToDisplay = baseItems.find(i => i.descricao === "PIS/COFINS/IRPJ/CSLL")
-        ? baseItems
-        : [...baseItems, virtualPisItem];
-      setLocalItems(itemsToDisplay);
+      setLocalItems(project.itens);
     }
-  }, [project?.itens, project?.id, project?.valorContrato]);
+  }, [project?.itens]);
 
   useEffect(() => {
     if (project) {
@@ -225,6 +407,75 @@ export default function ObraDetailView() {
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
     },
   });
+
+  // Sub-items management functions
+  const handleAddSubItem = async (item: ItemOrcamento) => {
+    if (!tempSubItemDesc.trim()) {
+      alert("A descrição do subitem é obrigatória.");
+      return;
+    }
+    const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
+    
+    const newSub = {
+      id: "sub-" + Date.now(),
+      descricao: tempSubItemDesc.trim(),
+      valor: val
+    };
+
+    const currentSubs = item.subitens || [];
+    const updatedSubs = [...currentSubs, newSub];
+    const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+
+    updateItemMutation.mutate({
+      itemId: item.id,
+      payload: {
+        subitens: updatedSubs,
+        valor: newTotal
+      }
+    });
+
+    setAddingSubItemForId(null);
+    setTempSubItemDesc("");
+    setTempSubItemValue("");
+  };
+
+  const handleSaveEditSubItem = async (item: ItemOrcamento, subId: string) => {
+    if (!tempSubItemDesc.trim()) {
+      alert("A descrição do subitem é obrigatória.");
+      return;
+    }
+    const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
+
+    const currentSubs = item.subitens || [];
+    const updatedSubs = currentSubs.map(s => s.id === subId ? { ...s, descricao: tempSubItemDesc.trim(), valor: val } : s);
+    const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+
+    updateItemMutation.mutate({
+      itemId: item.id,
+      payload: {
+        subitens: updatedSubs,
+        valor: newTotal
+      }
+    });
+
+    setEditingSubItemId(null);
+    setTempSubItemDesc("");
+    setTempSubItemValue("");
+  };
+
+  const handleDeleteSubItem = async (item: ItemOrcamento, subId: string) => {
+    const currentSubs = item.subitens || [];
+    const updatedSubs = currentSubs.filter(s => s.id !== subId);
+    const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+
+    updateItemMutation.mutate({
+      itemId: item.id,
+      payload: {
+        subitens: updatedSubs,
+        valor: newTotal
+      }
+    });
+  };
 
   // Delete item
   const deleteItemMutation = useMutation({
@@ -425,27 +676,7 @@ export default function ObraDetailView() {
   };
 
   // Process work-level cost distribution chart data (group by category name for local fine-granularity)
-  const baseItems = (project.itens || []);
-  
-  // Add backend-matching virtual item for front-end validation
-  const virtualPisItem: ItemOrcamento = {
-    id: 'virtual-pis',
-    descricao: "PIS/COFINS/IRPJ/CSLL",
-    valor: Math.round((project.valorContrato || 0) * 0.056 * 100) / 100,
-    status: "ATIVO",
-    observacao: "5.6%",
-    obraId: project.id,
-    categoriaId: 'virtual-cat',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    categoria: { id: 'virtual-cat', nome: 'Impostos', grupoCalculo: 'IMPOSTOS' }
-  };
-  
-  const allItemsForDisplay = baseItems.find(i => i.descricao === "PIS/COFINS/IRPJ/CSLL") 
-    ? baseItems 
-    : [...baseItems, virtualPisItem];
-
-  const activeItems = allItemsForDisplay.filter((i) => i.status === "ATIVO");
+  const activeItems = (project.itens || []).filter((i) => i.status === "ATIVO");
   const costCategoryMap: Record<string, number> = {};
   activeItems.forEach((i) => {
     if (i.categoria) {
@@ -690,123 +921,316 @@ export default function ObraDetailView() {
                       const isCurrentDragged = draggedId !== null && item.id === draggedId;
 
                       return (
-                        <tr
-                          key={item.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, item.id)}
-                          onDragOver={handleDragOver}
-                          onDragEnter={(e) => handleDragEnter(e, item.id)}
-                          onDragEnd={handleDragEnd}
-                          className={`transition-all duration-155 border-t border-slate-150 ${
-                            isCurrentDragged
-                              ? "opacity-40 bg-slate-100/90 scale-[0.99] border-2 border-dashed border-brand-primary/50 shadow-inner"
-                              : isOutOfBudget
-                              ? "opacity-50 bg-slate-50/50 hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
-                              : isLixeira
-                              ? "bg-red-50/10 hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
-                              : "hover:bg-brand-primary/5 cursor-grab active:cursor-grabbing"
-                          }`}
-                        >
-                          {/* Grip handle indicator */}
-                          <td className="py-2.5 px-1 text-center select-none w-6 shrink-0">
-                            <GripVertical className="w-3 h-3 mx-auto text-slate-300 hover:text-slate-500" />
-                          </td>
-                          <td className="py-2.5 px-3 font-bold text-brand-text-primary">
-                            <div>
-                              <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
-                              {item.observacao && (
-                                <p className="text-[9px] text-brand-text-secondary mt-0.5 font-semibold italic">
-                                  Obs: {item.observacao}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 text-brand-text-secondary font-semibold">
-                            <span className="inline-flex flex-col">
-                              <span>{item.categoria?.nome || "Sem Categoria"}</span>
-                            </span>
-                          </td>
-                          <td className={`py-2.5 px-3 text-right font-mono font-bold ${isOutOfBudget ? "text-brand-text-secondary" : "text-brand-text-primary"}`}>
-                            {formatBRL(item.valor)}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            {getStatusBadge(item.status)}
-                          </td>
-                          <td className="py-2.5 px-3" draggable="false" onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                            <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              {isLixeira ? (
-                                <>
-                                  <button
-                                    onClick={() => handleToggleStatus(item, "ATIVO")}
-                                    className="p-1 hover:bg-green-50 text-brand-success hover:text-green-700 rounded transition-colors inline-flex items-center gap-0.5"
-                                    title="Restaurar Lançamento"
-                                  >
-                                    <RotateCcw className="w-3 h-3" />
-                                    <span className="text-[9px] font-extrabold uppercase">Restaurar</span>
-                                  </button>
-                                  {confirmingItemId === item.id ? (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handlePermanentDeleteItem(item.id);
-                                        setConfirmingItemId(null);
-                                      }}
-                                      onMouseLeave={() => setConfirmingItemId(null)}
-                                      className="p-1 px-2.5 bg-red-650 hover:bg-red-700 text-white rounded font-extrabold text-[9px] uppercase tracking-wider inline-flex items-center gap-1 transition-all duration-150 animate-pulse"
-                                      title="Clique para confirmar a exclusão permanente"
-                                    >
-                                      Confirmar?
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfirmingItemId(item.id);
-                                      }}
-                                      className="p-1 hover:bg-red-50 text-brand-error rounded transition-colors inline-flex items-center gap-0.5"
-                                      title="Excluir Permanentemente"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                      <span className="text-[9px] font-extrabold uppercase">Definitivo</span>
-                                    </button>
+                        <React.Fragment key={item.id}>
+                          <tr
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, item.id)}
+                            onDragOver={handleDragOver}
+                            onDragEnter={(e) => handleDragEnter(e, item.id)}
+                            onDragEnd={handleDragEnd}
+                            className={`transition-all duration-155 border-t border-slate-150 ${
+                              isCurrentDragged
+                                ? "opacity-40 bg-slate-100/90 scale-[0.99] border-2 border-dashed border-brand-primary/50 shadow-inner"
+                                : isOutOfBudget
+                                ? "opacity-50 bg-slate-50/50 hover:bg-brand-primary/5 cursor-grab"
+                                : isLixeira
+                                ? "bg-red-50/10 hover:bg-brand-primary/5 cursor-grab"
+                                : "hover:bg-brand-primary/5 cursor-grab"
+                            }`}
+                          >
+                            {/* Grip handle indicator */}
+                            <td className="py-2.5 px-1 text-center select-none w-6 shrink-0">
+                              <GripVertical className="w-3 h-3 mx-auto text-slate-300 hover:text-slate-500" />
+                            </td>
+                            <td 
+                              className="py-2.5 px-3 font-bold text-brand-text-primary cursor-pointer hover:bg-slate-100/50 transition-colors"
+                              onClick={() => toggleExpandItem(item.id)}
+                              title="Clique para expandir composição de subitens"
+                            >
+                              <div className="flex items-center gap-2">
+                                {expandedItemIds[item.id] ? (
+                                  <ChevronDown className="w-3.5 h-3.5 text-brand-accent shrink-0 animate-pulse" />
+                                ) : (
+                                  <ChevronRight className="w-3.5 h-3.5 text-slate-450 shrink-0" />
+                                )}
+                                <div className="text-left">
+                                  <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
+                                  {item.subitens && item.subitens.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 mt-1 bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider font-mono">
+                                      {item.subitens.length} subitens compostos
+                                    </span>
                                   )}
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setSelectedItem(item);
-                                      setIsItemModalOpen(true);
-                                    }}
-                                    className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-primary rounded transition-colors"
-                                    title="Editar item"
-                                  >
-                                    <Edit className="w-3 h-3" />
-                                  </button>
-
-                                  {/* Toggle active */}
-                                  {item.status !== "ATIVO" && (
+                                  {item.observacao && (
+                                    <p className="text-[9px] text-brand-text-secondary mt-0.5 font-semibold italic">
+                                      Obs: {item.observacao}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-brand-text-secondary font-semibold">
+                              <span className="inline-flex flex-col">
+                                <span>{item.categoria?.nome || "Sem Categoria"}</span>
+                              </span>
+                            </td>
+                            <td className={`py-2.5 px-3 text-right font-mono font-bold ${isOutOfBudget ? "text-brand-text-secondary" : "text-brand-text-primary"}`}>
+                              {formatBRL(item.valor)}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              {getStatusBadge(item.status)}
+                            </td>
+                            <td className="py-2.5 px-3" draggable="false" onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                              <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                {isLixeira ? (
+                                  <>
                                     <button
                                       onClick={() => handleToggleStatus(item, "ATIVO")}
-                                      className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-success rounded transition-colors"
-                                      title="Ativar no Orçamento"
+                                      className="p-1 hover:bg-green-50 text-brand-success hover:text-green-700 rounded transition-colors inline-flex items-center gap-0.5 pointer"
+                                      title="Restaurar Lançamento"
                                     >
-                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      <RotateCcw className="w-3 h-3" />
+                                      <span className="text-[9px] font-extrabold uppercase">Restaurar</span>
                                     </button>
+                                    {confirmingItemId === item.id ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handlePermanentDeleteItem(item.id);
+                                          setConfirmingItemId(null);
+                                        }}
+                                        onMouseLeave={() => setConfirmingItemId(null)}
+                                        className="p-1 px-2.5 bg-red-650 hover:bg-red-700 text-white rounded font-extrabold text-[9px] uppercase tracking-wider inline-flex items-center gap-1 transition-all duration-150 animate-pulse cursor-pointer"
+                                        title="Clique para confirmar a exclusão permanente"
+                                      >
+                                        Confirmar?
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setConfirmingItemId(item.id);
+                                        }}
+                                        className="p-1 hover:bg-red-50 text-brand-error rounded transition-colors inline-flex items-center gap-0.5 pointer"
+                                        title="Excluir Permanentemente"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                        <span className="text-[9px] font-extrabold uppercase">Definitivo</span>
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Action to Add Sub-item */}
+                                    <button
+                                      onClick={() => {
+                                        setAddingSubItemForId(item.id);
+                                        setEditingSubItemId(null);
+                                        setTempSubItemDesc("");
+                                        setTempSubItemValue("");
+                                        setExpandedItemIds(prev => ({ ...prev, [item.id]: true }));
+                                      }}
+                                      className="p-1 hover:bg-emerald-50 text-emerald-500 hover:text-emerald-700 rounded transition-colors cursor-pointer"
+                                      title="Adicionar subitem"
+                                      id={`add_subitem_btn_${item.id}`}
+                                    >
+                                      <PlusCircle className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setSelectedItem(item);
+                                        setIsItemModalOpen(true);
+                                      }}
+                                      className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
+                                      title="Editar item"
+                                    >
+                                      <Edit className="w-3 h-3" />
+                                    </button>
+
+                                    {/* Toggle active */}
+                                    {item.status !== "ATIVO" && (
+                                      <button
+                                        onClick={() => handleToggleStatus(item, "ATIVO")}
+                                        className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-success rounded transition-colors cursor-pointer"
+                                        title="Ativar no Orçamento"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+
+                                    <button
+                                      onClick={() => handleSoftDeleteItem(item)}
+                                      className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors cursor-pointer"
+                                      title="Mover para Lixeira"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* INLINE EXPANDED SUBITEM TABLE BODY SECTION */}
+                          {expandedItemIds[item.id] && (
+                            <tr className="bg-slate-50/50 hover:bg-slate-50/80 transition-colors border-l-4 border-l-[#D9A441]">
+                              <td colSpan={6} className="py-3 px-6 text-left" draggable="false" onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                <div className="space-y-3 pl-8">
+                                  <div className="flex items-center justify-between border-b border-slate-150 pb-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                                      <h5 className="text-[10px] font-black uppercase text-brand-text-primary tracking-widest font-sans">
+                                        Composição de Subitens ({item.subitens?.length || 0})
+                                      </h5>
+                                    </div>
+                                    <span className="text-[9px] font-bold text-brand-text-secondary font-mono">
+                                      Soma Total Compositiva: <strong className="text-emerald-600 ml-1 font-extrabold">{formatBRL(item.valor)}</strong>
+                                    </span>
+                                  </div>
+
+                                  {/* List of sub-items styled nicely */}
+                                  {item.subitens && item.subitens.length > 0 ? (
+                                    <div className="space-y-1.5 max-w-2xl bg-white border border-slate-200 p-3 rounded-xl shadow-inner">
+                                      {item.subitens.map((sub) => {
+                                        const isEditingCurrent = editingSubItemId === sub.id;
+                                        return (
+                                          <div 
+                                            key={sub.id} 
+                                            className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-all duration-100 border border-slate-100 text-[10px]"
+                                          >
+                                            {isEditingCurrent ? (
+                                              <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                                                <input
+                                                  type="text"
+                                                  value={tempSubItemDesc}
+                                                  onChange={(e) => setTempSubItemDesc(e.target.value)}
+                                                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-slate-700 flex-1 focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
+                                                  placeholder="Ex: Alvenaria ou Subestrutura Secundária"
+                                                  autoFocus
+                                                />
+                                                <input
+                                                  type="text"
+                                                  value={tempSubItemValue}
+                                                  onChange={(e) => setTempSubItemValue(e.target.value)}
+                                                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[10px] font-mono font-bold text-slate-700 w-24 text-right focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
+                                                  placeholder="Ex: 30"
+                                                />
+                                                <button
+                                                  onClick={() => handleSaveEditSubItem(item, sub.id)}
+                                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg transition-colors cursor-pointer"
+                                                >
+                                                  Confirmar
+                                                </button>
+                                                <button
+                                                  onClick={() => setEditingSubItemId(null)}
+                                                  className="px-2 py-1 bg-slate-200 text-slate-600 font-bold rounded-lg hover:bg-slate-300 transition-colors cursor-pointer"
+                                                >
+                                                  Cancelar
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <>
+                                                <div className="flex items-center gap-2 truncate">
+                                                  <span className="text-slate-300 font-extrabold select-none shrink-0">•</span>
+                                                  <span className="font-bold text-brand-text-primary capitalize truncate max-w-sm">
+                                                    {sub.descricao}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-3 shrink-0">
+                                                  <span className="font-mono font-black text-brand-text-primary text-right w-24">
+                                                    {formatBRL(sub.valor)}
+                                                  </span>
+                                                  <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
+                                                    <button
+                                                      onClick={() => {
+                                                        setEditingSubItemId(sub.id);
+                                                        setAddingSubItemForId(null);
+                                                        setTempSubItemDesc(sub.descricao);
+                                                        setTempSubItemValue(sub.valor.toString());
+                                                      }}
+                                                      className="p-1 hover:bg-slate-150 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
+                                                      title="Editar subitem"
+                                                    >
+                                                      <Edit className="w-3 h-3" />
+                                                    </button>
+                                                    <button
+                                                      onClick={() => handleDeleteSubItem(item, sub.id)}
+                                                      className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors cursor-pointer"
+                                                      title="Excluir subitem"
+                                                    >
+                                                      <Trash2 className="w-3 h-3" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              </>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p className="text-[10px] text-slate-400 font-medium italic">
+                                      Nenhum subitem foi adicionado a esta composição ainda. Os subitens compõem a somatória do valor total do item.
+                                    </p>
                                   )}
 
-                                  <button
-                                    onClick={() => handleSoftDeleteItem(item)}
-                                    className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors"
-                                    title="Mover para Lixeira"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                                  {/* Inline form to append a new sub-item compositively */}
+                                  {addingSubItemForId === item.id ? (
+                                    <div className="flex items-center gap-2 max-w-xl bg-white border border-[#D9A441]/40 p-2 rounded-xl shadow-md animate-in slide-in-from-top-1 duration-150" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="text"
+                                        placeholder="Nova Descrição do Subitem (ex: Mão de Obra do pilar)"
+                                        value={tempSubItemDesc}
+                                        onChange={(e) => setTempSubItemDesc(e.target.value)}
+                                        className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 flex-1 font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-brand-accent"
+                                        autoFocus
+                                      />
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          placeholder="Valor R$ (ex: 30)"
+                                          value={tempSubItemValue}
+                                          onChange={(e) => setTempSubItemValue(e.target.value)}
+                                          className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 w-24 font-mono font-extrabold pr-4 text-slate-750 focus:outline-hidden focus:ring-1 focus:ring-brand-accent text-right"
+                                        />
+                                        <span className="absolute right-1 text-slate-400 font-mono text-[9px] top-1/2 -translate-y-1/2">R$</span>
+                                      </div>
+                                      <button
+                                        onClick={() => handleAddSubItem(item)}
+                                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-lg text-[9px] transition-all cursor-pointer uppercase tracking-wider"
+                                      >
+                                        Adicionar
+                                      </button>
+                                      <button
+                                        onClick={() => setAddingSubItemForId(null)}
+                                        className="px-2.5 py-1.5 bg-slate-250 hover:bg-slate-300 text-slate-600 font-bold rounded-lg text-[9px] transition-all cursor-pointer"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex justify-start">
+                                      {!isLixeira && (
+                                        <button
+                                          onClick={() => {
+                                            setAddingSubItemForId(item.id);
+                                            setEditingSubItemId(null);
+                                            setTempSubItemDesc("");
+                                            setTempSubItemValue("");
+                                          }}
+                                          className="inline-flex items-center gap-1.5 text-[10px] text-emerald-600 hover:text-emerald-700 transition-colors font-extrabold px-3 py-1.5 border border-dashed border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-50/10 rounded-lg cursor-pointer uppercase tracking-wider"
+                                        >
+                                          <Plus className="w-3.5 h-3.5" />
+                                          + Inserir Subitem Compositivo
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -894,14 +1318,14 @@ export default function ObraDetailView() {
                   ) : (
                     <>
                       <UploadCloud className="w-5 h-5 text-brand-accent mb-1 animate-bounce" />
-                      <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento PDF / Imagem</p>
+                      <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento (PDF, Imagem, DWG, Excel)</p>
                       <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste o arquivo aqui</p>
                     </>
                   )}
                 </div>
                 <input 
                   type="file" 
-                  accept="application/pdf,image/*" 
+                  accept="application/pdf,image/*,.dwg,.xlsx,.xls" 
                   className="hidden" 
                   onChange={handleLocalFileUpload} 
                   disabled={isUploading}
@@ -1105,61 +1529,84 @@ export default function ObraDetailView() {
       )}
 
       {/* Pop-up modal screen overlapping for PDF document previewing */}
-      {activePdfUrl && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div 
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs" 
-            onClick={() => setActivePdfUrl(null)} 
-          />
+      {activePdfUrl && (() => {
+        const activeDoc = project.documentos?.find(d => d.url === activePdfUrl);
+        const activeDocName = activeDoc?.nome || "Documento";
+        const ext = activeDocName.split('.').pop()?.toLowerCase() || '';
+        const isExcel = ext === "xlsx" || ext === "xls";
+        const isDwg = ext === "dwg";
+        const isImage = ["png", "jpg", "jpeg", "svg", "gif", "webp"].includes(ext);
 
-          <div className="relative bg-white w-full max-w-4xl h-[85vh] rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Modal header details and full-size actions */}
-            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-150 flex items-center justify-between gap-3 shrink-0 text-left">
-              <div className="flex items-center gap-2 truncate text-left">
-                <FileText className="w-5 h-5 text-brand-accent shrink-0" />
-                <div>
-                  <h4 className="text-xs font-black tracking-wide text-brand-text-primary uppercase">
-                    Visualização do PDF
-                  </h4>
-                  <p className="text-[10px] text-brand-text-secondary truncate max-w-[300px] sm:max-w-[450px] font-mono">
-                    {project.documentos?.find(d => d.url === activePdfUrl)?.nome || activePdfUrl}
-                  </p>
+        let typeLabel = "PDF";
+        if (isExcel) typeLabel = "Planilha Excel";
+        else if (isDwg) typeLabel = "Desenho CAD (DWG)";
+        else if (isImage) typeLabel = "Imagem";
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div 
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs" 
+              onClick={() => setActivePdfUrl(null)} 
+            />
+
+            <div className="relative bg-white w-full max-w-4xl h-[85vh] rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Modal header details and full-size actions */}
+              <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-150 flex items-center justify-between gap-3 shrink-0 text-left">
+                <div className="flex items-center gap-2 truncate text-left">
+                  <FileText className="w-5 h-5 text-brand-accent shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-black tracking-wide text-brand-text-primary uppercase">
+                      Visualização de {typeLabel}
+                    </h4>
+                    <p className="text-[10px] text-brand-text-secondary truncate max-w-[300px] sm:max-w-[450px] font-mono">
+                      {activeDocName}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={activePdfUrl}
+                    download={activeDocName}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-brand-primary hover:border-brand-accent rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider cursor-pointer"
+                    title="Baixar ou abrir em nova aba"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
+                    <span className="hidden sm:inline">Nova Aba / Baixar</span>
+                  </a>
+                  <button
+                    onClick={() => setActivePdfUrl(null)}
+                    className="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-brand-text-primary transition-colors cursor-pointer"
+                    title="Fechar Visualizador"
+                    id="close_pdf_modal_btn"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={activePdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-brand-primary hover:border-brand-accent rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider"
-                  title="Abrir em Nova Aba"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
-                  <span className="hidden sm:inline">Nova Aba</span>
-                </a>
-                <button
-                  onClick={() => setActivePdfUrl(null)}
-                  className="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-brand-text-primary transition-colors cursor-pointer"
-                  title="Fechar Visualizador"
-                  id="close_pdf_modal_btn"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+
+              {/* Modal body with high-resolution visualizer */}
+              <div className="flex-1 bg-slate-100 p-2 relative flex flex-col justify-stretch overflow-hidden">
+                {isExcel ? (
+                  <ExcelViewer base64Url={activePdfUrl} />
+                ) : isDwg ? (
+                  <DwgViewer fileName={activeDocName} />
+                ) : isImage ? (
+                  <ImageViewer url={activePdfUrl} fileName={activeDocName} />
+                ) : (
+                  <iframe 
+                    src={activePdfUrl} 
+                    className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-inner flex-1" 
+                    title="Document Preview"
+                  />
+                )}
               </div>
             </div>
-
-            {/* Modal body with high-resolution iframe */}
-            <div className="flex-1 bg-slate-100 p-2 relative flex flex-col justify-stretch">
-              <iframe 
-                src={activePdfUrl} 
-                className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-inner flex-1" 
-                title="PDF Full Preview"
-              />
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Dynamic PDF-matching Materials Budget Export & Preview Modal */}
       {isBudgetPreviewOpen && (

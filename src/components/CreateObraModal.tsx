@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Hammer, X } from "lucide-react";
 import { Projeto } from "../types";
+import { useUIStore } from "../store";
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface CreateProjectModalProps {
 }
 
 export default function CreateProjectModal({ isOpen, onClose, onSuccess, projectToEdit }: CreateProjectModalProps) {
+  const projectFilter = useUIStore((state) => state.projectFilter);
   const [nome, setNome] = useState("");
   const [cliente, setCliente] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -51,12 +53,12 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
       setCliente("");
       setObservacoes("");
       setValorContrato("");
-      setStatusContrato("CONSOLIDADO");
+      setStatusContrato(projectFilter);
       setDataInicioContrato("");
       setDataFimContrato("");
     }
     setError(null);
-  }, [projectToEdit, isOpen]);
+  }, [projectToEdit, isOpen, projectFilter]);
 
   if (!isOpen) return null;
 
@@ -127,7 +129,9 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
               <Hammer className="w-5 h-5" />
             </div>
             <h3 className="text-base font-extrabold text-brand-text-primary">
-              {projectToEdit ? "Editar Cadastro de Contrato" : "Novo Contrato"}
+              {projectToEdit 
+                ? (projectFilter === "A_FECHAR" ? "Editar Cadastro de Orçamento" : "Editar Cadastro de Contrato") 
+                : (projectFilter === "A_FECHAR" ? "Novo Orçamento" : "Novo Contrato")}
             </h3>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
@@ -145,7 +149,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="col-span-1 md:col-span-2">
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                Nome do Contrato *
+                {projectFilter === "A_FECHAR" ? "Nome do Orçamento *" : "Nome do Contrato *"}
               </label>
               <input
                 type="text"
@@ -175,7 +179,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
             <div>
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                Valor do Contrato (R$) *
+                {projectFilter === "A_FECHAR" ? "Valor do Orçamento (R$) *" : "Valor do Contrato (R$) *"}
               </label>
               <input
                 type="text"
@@ -193,7 +197,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
             <div>
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                Situação do Contrato
+                {projectFilter === "A_FECHAR" ? "Situação do Orçamento" : "Situação do Contrato"}
               </label>
               <select
                 className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors bg-white font-semibold text-brand-primary"
@@ -209,7 +213,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
             <div>
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                Início do Contrato
+                {projectFilter === "A_FECHAR" ? "Início do Orçamento" : "Início do Contrato"}
               </label>
               <input
                 type="date"
@@ -223,7 +227,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
             <div>
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                Fim do Contrato
+                {projectFilter === "A_FECHAR" ? "Fim do Orçamento" : "Fim do Contrato"}
               </label>
               <input
                 type="date"
@@ -242,7 +246,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </label>
             <textarea
               className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors h-24 resize-none"
-              placeholder="Ex: Escopo do contrato compreende pavimentação, terraplenagem e acabamento..."
+              placeholder={projectFilter === "A_FECHAR" ? "Ex: Escopo do orçamento compreende pavimentação, terraplenagem e acabamento..." : "Ex: Escopo do contrato compreende pavimentação, terraplenagem e acabamento..."}
               value={observacoes}
               onChange={(e) => setObservacoes(e.target.value)}
               disabled={loading}
@@ -266,7 +270,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
               disabled={loading}
               id="submit_projeto_btn"
             >
-              {loading ? "Salvando..." : projectToEdit ? "Salvar Alterações" : "Criar Contrato"}
+              {loading ? "Salvando..." : projectToEdit ? "Salvar Alterações" : (projectFilter === "A_FECHAR" ? "Criar Orçamento" : "Criar Contrato")}
             </button>
           </div>
         </form>

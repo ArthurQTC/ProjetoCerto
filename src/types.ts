@@ -15,6 +15,12 @@ export interface Categoria {
   grupoCalculo: GrupoCalculo;
 }
 
+export interface SubItemOrcamento {
+  id: string;
+  descricao: string;
+  valor: number;
+}
+
 export interface ItemOrcamento {
   id: string;
   descricao: string;
@@ -26,6 +32,7 @@ export interface ItemOrcamento {
   categoria: Categoria;
   createdAt: string;
   updatedAt: string;
+  subitens?: SubItemOrcamento[];
 }
 
 export interface DocumentoAnexo {

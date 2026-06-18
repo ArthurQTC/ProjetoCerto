@@ -337,7 +337,7 @@ export default function ContractStepsView() {
               statusFilter === "A_FECHAR" ? "bg-white text-brand-primary shadow-xs" : "text-brand-text-secondary hover:text-brand-primary"
             }`}
           >
-            A Fechar ({projects.filter((p) => p.statusContrato === "A_FECHAR").length})
+            Orçamentos a Fechar ({projects.filter((p) => p.statusContrato === "A_FECHAR").length})
           </button>
         </div>
       </div>
@@ -384,7 +384,7 @@ export default function ContractStepsView() {
                           ? "bg-green-50 text-green-700 border border-green-150" 
                           : "bg-amber-50 text-amber-700 border border-amber-150"
                       }`}>
-                        {p.statusContrato === "CONSOLIDADO" ? "Consolidado" : "A Fechar"}
+                        {p.statusContrato === "CONSOLIDADO" ? "Consolidado" : "Orçamento a Fechar"}
                       </span>
                     </div>
                     
