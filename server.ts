@@ -332,6 +332,28 @@ let memoryObras: any[] = [];
 
 let memoryItens: any[] = [];
 
+const getMemoryProjectItems = (obraId: string) => {
+  return memoryItens.filter(i => i.obraId === obraId).map(i => {
+    let parsedSubs: any[] = [];
+    if (i.subitens) {
+      if (typeof i.subitens === 'string') {
+        try {
+          parsedSubs = JSON.parse(i.subitens);
+        } catch (e) {
+          parsedSubs = [];
+        }
+      } else if (Array.isArray(i.subitens)) {
+        parsedSubs = i.subitens;
+      }
+    }
+    return {
+      ...i,
+      subitens: parsedSubs,
+      categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
+    };
+  });
+};
+
 const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: number) => {
   const valueContract = Number(valorContrato) || 0;
 
@@ -834,14 +856,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       if (!dbConnected || freshObras.length === 0) {
         await Promise.all(memoryObras.map(o => ensureAndRecalculateFixedItems(o.id, Number(o.valorContrato))));
         freshObras = memoryObras.map(o => {
-          const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
-            ...i,
-            subitens: i.subitens || [],
-            categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-          }));
           return {
             ...o,
-            itens: items
+            itens: getMemoryProjectItems(o.id)
           };
         });
       }
@@ -1019,14 +1036,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
       if (!dbConnected || freshObras.length === 0) {
         freshObras = memoryObras.map(o => {
-          const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
-            ...i,
-            subitens: i.subitens || [],
-            categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-          }));
           return {
             ...o,
-            itens: items
+            itens: getMemoryProjectItems(o.id)
           };
         });
       }
@@ -1095,14 +1107,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         if (!o) {
           return res.status(404).json({ error: "Projeto não encontrado" });
         }
-        const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
-          ...i,
-          subitens: i.subitens || [],
-          categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-        }));
         dbObra = {
           ...o,
-          itens: items
+          itens: getMemoryProjectItems(o.id)
         };
       }
 
@@ -1214,15 +1221,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         memoryObras.push(novaObra);
         await ensureAndRecalculateFixedItems(id, novaObra.valorContrato);
 
-        const items = memoryItens.filter(i => i.obraId === id).map(i => ({
-          ...i,
-          subitens: i.subitens || [],
-          categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-        }));
-
         resultObra = {
           ...novaObra,
-          itens: items
+          itens: getMemoryProjectItems(id)
         };
       }
 
@@ -1373,15 +1374,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             await ensureAndRecalculateFixedItems(id, updated.valorContrato);
           }
 
-          const items = memoryItens.filter(i => i.obraId === id).map(i => ({
-            ...i,
-            subitens: i.subitens || [],
-            categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-          }));
-
           resultObra = {
             ...updated,
-            itens: items
+            itens: getMemoryProjectItems(id)
           };
         }
       }
@@ -1836,6 +1831,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
         updatedItem = {
           ...updated,
+          subitens: updatedSubArray,
           categoria: catObj
         };
       }
