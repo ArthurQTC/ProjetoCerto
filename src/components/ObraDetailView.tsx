@@ -34,118 +34,71 @@ import CreateProjectModal from "./CreateObraModal";
 import CreateCategoryModal from "./CreateCategoryModal";
 import * as XLSX from "xlsx";
 
-// Interactive client-side Excel Worksheet spreadsheet parser and viewer
+// Interactive client-side Excel Worksheet spreadsheet parser and viewer using Fortune Sheet
+import { Workbook } from "@fortune-sheet/react";
+import "@fortune-sheet/react/dist/index.css";
+import LuckyExcel from "luckyexcel";
+
 function ExcelViewer({ base64Url }: { base64Url: string }) {
-  const [activeSheet, setActiveSheet] = useState(0);
   const [sheetData, setSheetData] = useState<any[]>([]);
-  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const base64Parts = base64Url.split(";base64,");
       const base64Data = base64Parts.length > 1 ? base64Parts[1] : base64Parts[0];
       if (!base64Data) return;
-      const workbook = XLSX.read(base64Data, { type: "base64" });
-      setSheetNames(workbook.SheetNames);
-      if (workbook.SheetNames.length > 0) {
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        setSheetData(data);
-        setActiveSheet(0);
+
+      const binaryString = window.atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
       }
-    } catch (err) {
-      console.error("Erro parsing Excel: ", err);
+
+      LuckyExcel.transformExcelToLucky(
+        bytes.buffer,
+        function (exportJson: any, luckysheetfile: any) {
+          if (exportJson.sheets == null || exportJson.sheets.length == 0) {
+            setError("Falha ao ler o conteúdo do arquivo excel.");
+            return;
+          }
+          setSheetData(exportJson.sheets);
+        },
+        function (err: any) {
+          console.error("Import failed", err);
+          setError("Falha ao importar o arquivo. Verifique se é um .xlsx válido.");
+        }
+      );
+    } catch (err: any) {
+      console.error(err);
+      setError("Erro ao processar o arquivo excel: " + err.message);
     }
   }, [base64Url]);
 
-  const handleSheetChange = (idx: number, names: string[], base64Str: string) => {
-    try {
-      const base64Parts = base64Str.split(";base64,");
-      const base64Data = base64Parts.length > 1 ? base64Parts[1] : base64Parts[0];
-      if (!base64Data) return;
-      const workbook = XLSX.read(base64Data, { type: "base64" });
-      const sheet = workbook.Sheets[names[idx]];
-      const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      setSheetData(data);
-      setActiveSheet(idx);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  if (sheetNames.length === 0) {
+  if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-slate-400 bg-slate-50 min-h-[300px]">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-xs font-bold font-mono text-emerald-700 animate-pulse">Lendo células e planilhas do Excel...</p>
+      <div className="flex flex-col items-center justify-center h-full p-8 text-red-500 bg-red-50 min-h-[300px]">
+        <AlertTriangle className="w-8 h-8 mb-2" />
+        <p className="text-xs font-bold">{error}</p>
       </div>
     );
   }
 
-  // Calculate maximum columns across all rows to render a complete spreadsheet grid
-  const maxCols = sheetData.length > 0 ? Math.max(...sheetData.map(r => Array.isArray(r) ? r.length : 0)) : 0;
+  if (sheetData.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-slate-400 bg-slate-50 min-h-[300px]">
+        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs font-bold font-mono text-emerald-700 animate-pulse">
+          Lendo células e planilhas do Excel...
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden rounded-xl border border-slate-200">
-      {/* Sheet Tabs */}
-      <div className="flex bg-slate-100 border-b border-slate-200 overflow-x-auto shrink-0 select-none scrollbar-thin">
-        {sheetNames.map((name, idx) => (
-          <button
-            key={name}
-            onClick={() => handleSheetChange(idx, sheetNames, base64Url)}
-            className={`px-4 py-2 px-6 text-[10px] whitespace-nowrap font-extrabold border-r border-slate-200 uppercase tracking-widest transition-colors ${
-              activeSheet === idx
-                ? "bg-white text-emerald-700 border-t-2 border-t-emerald-600"
-                : "text-slate-500 hover:text-slate-800 hover:bg-slate-50/55"
-            }`}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
-
-      {/* Spreadsheet grid cells with column mapping */}
-      <div className="flex-1 p-3 overflow-auto max-h-[60vh]">
-        {sheetData.length > 0 ? (
-          <div className="overflow-x-auto inline-block min-w-full align-middle border border-slate-150 rounded-lg shadow-inner bg-white">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-150">
-                <tr>
-                  <th className="px-2 py-1.5 text-center text-[9px] font-bold text-slate-400 border-r border-b border-slate-200 w-8 bg-slate-100 uppercase tracking-wider">
-                    #
-                  </th>
-                  {Array.from({ length: maxCols }).map((_, colIdx) => (
-                    <th key={colIdx} className="px-4 py-1.5 text-left text-[9px] font-bold text-slate-500 border-r border-b border-slate-200 bg-slate-100 uppercase tracking-wider font-mono">
-                      {String.fromCharCode(65 + (colIdx % 26)) + (colIdx >= 26 ? Math.floor(colIdx / 26) : "")}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-100 text-left">
-                {sheetData.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-slate-50/40">
-                    <td className="px-2 py-1 text-center text-[9px] font-extrabold text-slate-450 border-r border-slate-150 bg-slate-50 font-mono">
-                      {rowIdx + 1}
-                    </td>
-                    {Array.from({ length: maxCols }).map((_, colIdx) => {
-                      const cellVal = Array.isArray(row) ? row[colIdx] : undefined;
-                      return (
-                        <td key={colIdx} className="px-4 py-1.5 text-[10px] border-r border-slate-150 font-sans text-slate-700 whitespace-nowrap">
-                          {cellVal !== undefined ? String(cellVal) : ""}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="py-24 text-center text-slate-400 font-mono text-[10px] font-bold">
-            Planilha vazia ou sem dados legíveis.
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col h-[600px] w-full relative overflow-hidden rounded-xl border border-slate-200">
+      <Workbook data={sheetData} />
     </div>
   );
 }
@@ -255,6 +208,38 @@ export default function ObraDetailView() {
       ...prev,
       [itemId]: !prev[itemId]
     }));
+  };
+
+  const handleExportToExcel = () => {
+    import("xlsx").then((XLSX) => {
+      // Create project details rows
+      const projectDetails = [
+        { Propriedade: "Contrato", Valor: project?.nome },
+        { Propriedade: "ID", Valor: project?.id },
+        { Propriedade: "Status", Valor: project?.status },
+        { Propriedade: "Data de Criação", Valor: project?.createdAt ? new Date(project.createdAt).toLocaleDateString("pt-BR") : "" },
+        {},
+        { Propriedade: "---", Valor: "---" },
+        { Propriedade: "ITENS DO CONTRATO", Valor: "" }
+      ];
+
+      const itemRows = localItems.map((item) => ({
+        "Descrição": item.descricao,
+        "Categoria": item.categoria?.nome || "-",
+        "Valor Original (R$)": item.valor,
+        "Subitens": item.subitens?.map(s => s.descricao + ": " + formatBRL(s.valor)).join(" | ") || "-",
+        "Status": item.status,
+        "Observação": item.observacao || "-",
+      }));
+
+      const workbook = XLSX.utils.book_new();
+
+      const worksheetDados = XLSX.utils.json_to_sheet(projectDetails, { skipHeader: true });
+      XLSX.utils.sheet_add_json(worksheetDados, itemRows, { origin: "A8" });
+
+      XLSX.utils.book_append_sheet(workbook, worksheetDados, "Contrato e Itens");
+      XLSX.writeFile(workbook, `Contrato_${project?.nome || "Detalhes"}.xlsx`);
+    });
   };
 
   const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -426,6 +411,9 @@ export default function ObraDetailView() {
     const updatedSubs = [...currentSubs, newSub];
     const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
 
+    // Optimistic UI Update for memory/DB failure fallback
+    setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, subitens: updatedSubs, valor: newTotal } : i));
+
     updateItemMutation.mutate({
       itemId: item.id,
       payload: {
@@ -450,6 +438,9 @@ export default function ObraDetailView() {
     const updatedSubs = currentSubs.map(s => s.id === subId ? { ...s, descricao: tempSubItemDesc.trim(), valor: val } : s);
     const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
 
+    // Optimistic UI Update for memory/DB failure fallback
+    setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, subitens: updatedSubs, valor: newTotal } : i));
+
     updateItemMutation.mutate({
       itemId: item.id,
       payload: {
@@ -467,6 +458,9 @@ export default function ObraDetailView() {
     const currentSubs = item.subitens || [];
     const updatedSubs = currentSubs.filter(s => s.id !== subId);
     const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+
+    // Optimistic UI Update for memory/DB failure fallback
+    setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, subitens: updatedSubs, valor: newTotal } : i));
 
     updateItemMutation.mutate({
       itemId: item.id,
@@ -590,23 +584,18 @@ export default function ObraDetailView() {
   };
 
   const handleSoftDeleteItem = (item: ItemOrcamento) => {
-    if (item.id.startsWith("fixed-")) {
-      setFixedItemToDelete(item);
-      setIsPermanentDeleteOfFixed(false);
-      return;
-    }
+    // Optimistic UI update
+    setLocalItems(prev => prev.filter(i => i.id !== item.id));
+    
+    // Server update
     updateItemMutation.mutate({ itemId: item.id, payload: { status: "LIXEIRA" } });
   };
 
   const handlePermanentDeleteItem = (itemId: string) => {
-    if (itemId.startsWith("fixed-")) {
-      const item = project?.itens?.find((i: any) => i.id === itemId);
-      if (item) {
-        setFixedItemToDelete(item);
-        setIsPermanentDeleteOfFixed(true);
-        return;
-      }
-    }
+    // Optimistic UI update
+    setLocalItems(prev => prev.filter(i => i.id !== itemId));
+    
+    // Server update
     deleteItemMutation.mutate(itemId);
   };
 
@@ -742,6 +731,15 @@ export default function ObraDetailView() {
         </div>
 
         <div className="flex items-center flex-wrap gap-2">
+          {/* Exportar Excel */}
+          <button
+            onClick={handleExportToExcel}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+            id="export_excel_btn"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Exportar para Excel
+          </button>
           <button
             onClick={() => navigateToSteps(project.id)}
             className="px-3 py-1.5 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs"

@@ -406,6 +406,12 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
       const catImpostos = catImpostosRes.rows[0];
       const catAdm = catAdmRes.rows[0];
 
+      // DEBUG: Log all items
+      const allItems = await pool.query('SELECT descricao FROM itens_orcamento WHERE "obraId" = $1', [obraId]);
+      console.log(`[DEBUG] Items for obra ${obraId}:`, allItems.rows.map(r => r.descricao));
+
+      await pool.query('DELETE FROM itens_orcamento WHERE "obraId" = $1 AND descricao = $2', [obraId, "PIS/COFINS/IRPJ/CSLL"]);
+
       if (catImpostos) {
         const impostoItemRes = await pool.query('SELECT * FROM itens_orcamento WHERE "obraId" = $1 AND descricao = $2 LIMIT 1', [obraId, "Imposto Fixo"]);
         const impostoItem = impostoItemRes.rows[0];
@@ -457,6 +463,8 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
   }
 
   // Always sync internal memory arrays for robust dual-track execution
+  memoryItens = memoryItens.filter(i => !(i.obraId === obraId && i.descricao === "PIS/COFINS/IRPJ/CSLL"));
+  
   const mImpostos = memoryCategorias.find(c => c.nome === "Impostos");
   const mAdm = memoryCategorias.find(c => c.nome === "Administração");
 
@@ -1659,11 +1667,14 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   // POST Adicionar Item ao Orçamento de uma Obra
   app.post(["/api/obras/:id/itens", "/api/projetos/:id/itens"], async (req, res) => {
     const { id: obraId } = req.params;
-    const { descricao, categoriaId, valor, status, observacao } = req.body;
+    const { descricao, categoriaId, valor, status, observacao, subitens } = req.body;
 
     if (!descricao || !categoriaId || valor === undefined) {
       return res.status(400).json({ error: "Descrição, categoria e valor são obrigatórios" });
     }
+
+    const subitensArray = subitens || [];
+    const subitensString = JSON.stringify(subitensArray);
 
     try {
       let novoItem: any = null;
@@ -1681,7 +1692,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             await pool.query(`
               INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, subitens, "obraId", "categoriaId", "createdAt", "updatedAt")
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-            `, [itemId, descricao, Number(valor), status || "ATIVO", observacao || null, currentCount, '[]', obraId, categoriaId]);
+            `, [itemId, descricao, Number(valor), status || "ATIVO", observacao || null, currentCount, subitensString, obraId, categoriaId]);
 
             novoItem = {
               id: itemId,
@@ -1690,7 +1701,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               status: status || "ATIVO",
               observacao: observacao || null,
               ordem: currentCount,
-              subitens: [],
+              subitens: subitensArray,
               obraId,
               categoriaId,
               categoria: {
@@ -1725,7 +1736,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           status: status || "ATIVO",
           observacao: observacao || null,
           ordem: currentCount,
-          subitens: [],
+          subitens: subitensArray,
           obraId,
           categoriaId,
           createdAt: new Date(),

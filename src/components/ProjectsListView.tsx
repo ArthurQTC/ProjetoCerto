@@ -10,7 +10,8 @@ import {
   Coins,
   DollarSign,
   Edit2,
-  Trash2
+  Trash2,
+  FileSpreadsheet
 } from "lucide-react";
 import { useUIStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
@@ -110,6 +111,65 @@ export default function ProjectsListView() {
     setIsNewProjectModalOpen(true);
   };
 
+  const handleExportToExcel = () => {
+    import("xlsx").then((XLSX) => {
+      if (filteredProjects.length === 0) {
+        alert("Nenhum contrato para exportar.");
+        return;
+      }
+
+      const workbook = XLSX.utils.book_new();
+
+      filteredProjects.forEach((project: any) => {
+        // Create project details rows
+        const projectDetails = [
+          { Propriedade: "Contrato", Valor: project.nome },
+          { Propriedade: "ID", Valor: project.id },
+          { Propriedade: "Status", Valor: project.statusContrato },
+          { Propriedade: "Data de Criação", Valor: project.createdAt ? new Date(project.createdAt).toLocaleDateString("pt-BR") : "" },
+          { Propriedade: "Cliente", Valor: project.cliente || "-" },
+          { Propriedade: "Receita", Valor: project.valorContrato ? formatBRL(project.valorContrato) : "-" },
+          { Propriedade: "Custo Direto", Valor: project.visaoGeral ? formatBRL(project.visaoGeral) : "-" },
+          { Propriedade: "Margem Líquida", Valor: project.margemLiquida ? formatBRL(project.margemLiquida) : "-" },
+          { Propriedade: "Despesa ADM", Valor: project.despesaAdm ? formatBRL(project.despesaAdm) : "-" },
+          { Propriedade: "Prazo da Obra", Valor: project.prazo || "-" },
+          { Propriedade: "Nº do Pedido", Valor: project.numeroPedido || "-" },
+          {},
+          { Propriedade: "---", Valor: "---" },
+          { Propriedade: "ITENS DO CONTRATO", Valor: "" }
+        ];
+
+        const itemRows = (project.itens || []).map((item: any) => ({
+          "Descrição": item.descricao,
+          "Categoria": item.categoria?.nome || "-",
+          "Valor Original (R$)": item.valor,
+          "Subitens": item.subitens && item.subitens.length > 0 ? item.subitens.map((s: any) => s.descricao + ": " + formatBRL(s.valor)).join(" | ") : "-",
+          "Status": item.status,
+          "Observação": item.observacao || "-",
+        }));
+
+        const worksheetDados = XLSX.utils.json_to_sheet(projectDetails, { skipHeader: true });
+        XLSX.utils.sheet_add_json(worksheetDados, itemRows, { origin: "A16" });
+
+        // Ensure valid sheet name
+        let sheetName = project.nome ? project.nome.substring(0, 31).replace(/[\\/*?:\[\]]/g, '') : "Contrato";
+        
+        // Handle duplicate sheet names if projects have same name
+        let count = 1;
+        const baseName = sheetName;
+        while (workbook.SheetNames.includes(sheetName)) {
+          const suffix = ` (${count})`;
+          sheetName = baseName.substring(0, 31 - suffix.length) + suffix;
+          count++;
+        }
+
+        XLSX.utils.book_append_sheet(workbook, worksheetDados, sheetName);
+      });
+
+      XLSX.writeFile(workbook, `Contratos_${projectFilter === "A_FECHAR" ? "Orcamentos" : "Consolidados"}_Export-${new Date().toISOString().split('T')[0]}.xlsx`);
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
@@ -186,7 +246,16 @@ export default function ProjectsListView() {
             {projectFilter === "A_FECHAR" ? "Gestão de Orçamentos a Fechar" : "Gestão de Contratos"}
           </h1>
         </div>
-        <div>
+        <div className="flex items-center gap-2">
+          {/* Exportar Excel */}
+          <button
+            onClick={handleExportToExcel}
+            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+            id="export_all_projects_excel_btn"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span className="hidden sm:inline">Exportar Excel</span>
+          </button>
           <button
             onClick={() => {
               setProjectToEdit(null);
