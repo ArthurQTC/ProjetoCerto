@@ -502,8 +502,8 @@ const formatObraWithMetrics = (obra: any) => {
 
 async function bootstrap() {
   const app = express();
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "150mb" }));
+  app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
   // API Status / Health Check
   app.get("/api/health", (req, res) => {
@@ -724,11 +724,14 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             status VARCHAR(255) NOT NULL DEFAULT 'ATIVO',
             observacao TEXT,
             ordem INTEGER NOT NULL DEFAULT 0,
+            subitens TEXT NOT NULL DEFAULT '[]',
             "obraId" VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
             "categoriaId" VARCHAR(255) NOT NULL REFERENCES categorias(id) ON DELETE CASCADE,
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
+
+          ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS subitens TEXT NOT NULL DEFAULT '[]';
         `);
 
         console.log("Populando dados padrão...");
@@ -806,6 +809,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               ordem: Number(i.ordem),
               obraId: i.obraId,
               categoriaId: i.categoriaId,
+              subitens: typeof i.subitens === 'string' ? JSON.parse(i.subitens) : (i.subitens || []),
               createdAt: i.createdAt,
               updatedAt: i.updatedAt,
               categoria: {
@@ -832,6 +836,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         freshObras = memoryObras.map(o => {
           const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
             ...i,
+            subitens: i.subitens || [],
             categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
           }));
           return {
@@ -991,6 +996,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               ordem: Number(i.ordem),
               obraId: i.obraId,
               categoriaId: i.categoriaId,
+              subitens: typeof i.subitens === 'string' ? JSON.parse(i.subitens) : (i.subitens || []),
               createdAt: i.createdAt,
               updatedAt: i.updatedAt,
               categoria: {
@@ -1015,6 +1021,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         freshObras = memoryObras.map(o => {
           const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
             ...i,
+            subitens: i.subitens || [],
             categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
           }));
           return {
@@ -1090,6 +1097,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         }
         const items = memoryItens.filter(i => i.obraId === o.id).map(i => ({
           ...i,
+          subitens: i.subitens || [],
           categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
         }));
         dbObra = {
@@ -1208,6 +1216,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
         const items = memoryItens.filter(i => i.obraId === id).map(i => ({
           ...i,
+          subitens: i.subitens || [],
           categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
         }));
 
@@ -1366,6 +1375,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
           const items = memoryItens.filter(i => i.obraId === id).map(i => ({
             ...i,
+            subitens: i.subitens || [],
             categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
           }));
 
@@ -1625,9 +1635,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
             const itemId = "item-" + generateId();
             await pool.query(`
-              INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, "obraId", "categoriaId", "createdAt", "updatedAt")
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-            `, [itemId, descricao, Number(valor), status || "ATIVO", observacao || null, currentCount, obraId, categoriaId]);
+              INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, subitens, "obraId", "categoriaId", "createdAt", "updatedAt")
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+            `, [itemId, descricao, Number(valor), status || "ATIVO", observacao || null, currentCount, '[]', obraId, categoriaId]);
 
             novoItem = {
               id: itemId,
@@ -1636,6 +1646,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               status: status || "ATIVO",
               observacao: observacao || null,
               ordem: currentCount,
+              subitens: [],
               obraId,
               categoriaId,
               categoria: {
@@ -1670,6 +1681,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           status: status || "ATIVO",
           observacao: observacao || null,
           ordem: currentCount,
+          subitens: [],
           obraId,
           categoriaId,
           createdAt: new Date(),
@@ -1709,16 +1721,50 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             }
 
             const updatedDesc = descricao !== undefined ? descricao : existing.descricao;
-            const updatedValor = valor !== undefined ? Number(valor) : Number(existing.valor);
             const updatedStatus = status !== undefined ? status : existing.status;
             const updatedObs = observacao !== undefined ? (observacao || null) : existing.observacao;
-            const updatedSub = subitens !== undefined ? (typeof subitens === "string" ? subitens : JSON.stringify(subitens)) : (existing.subitens || "[]");
 
-            await pool.query(`
-              UPDATE itens_orcamento SET
-                descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, "updatedAt" = NOW()
-              WHERE id = $7
-            `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, itemId]);
+            // Recalcula o valor total baseado nos subitens se forem fornecidos ou existentes
+            let updatedSubArray: any[] = [];
+            if (subitens !== undefined) {
+              updatedSubArray = typeof subitens === "string" ? JSON.parse(subitens) : subitens;
+            } else {
+              const currentSubStr = existing.subitens || "[]";
+              updatedSubArray = typeof currentSubStr === "string" ? JSON.parse(currentSubStr) : (currentSubStr || []);
+            }
+
+            let updatedValor = valor !== undefined ? Number(valor) : Number(existing.valor);
+            if (Array.isArray(updatedSubArray) && updatedSubArray.length > 0) {
+              updatedValor = updatedSubArray.reduce((acc, sub) => acc + (Number(sub.valor) || 0), 0);
+            }
+
+            const updatedSub = typeof subitens === "string" ? subitens : JSON.stringify(updatedSubArray);
+
+            try {
+              await pool.query(`
+                UPDATE itens_orcamento SET
+                  descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, "updatedAt" = NOW()
+                WHERE id = $7
+              `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, itemId]);
+            } catch (queryErr: any) {
+              // Auto-reparação: Se a coluna subitens estiver ausente por algum motivo histórico no banco real do cliente
+              if (queryErr.message && (queryErr.message.includes("subitens") || queryErr.message.includes("column"))) {
+                console.log("[pg Self-Heal] Tentando auto-reparar coluna subitens...");
+                try {
+                  await pool.query("ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS subitens TEXT NOT NULL DEFAULT '[]'");
+                  // Tenta novamente a query original de UPDATE
+                  await pool.query(`
+                    UPDATE itens_orcamento SET
+                      descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, "updatedAt" = NOW()
+                    WHERE id = $7
+                  `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, itemId]);
+                } catch (retryErr: any) {
+                  throw new Error(`Erro na auto-reparação da coluna e gravação: ${retryErr.message}`);
+                }
+              } else {
+                throw queryErr;
+              }
+            }
 
             const freshCatRes = await pool.query('SELECT * FROM categorias WHERE id = $1 LIMIT 1', [finalCatId]);
 
@@ -1729,7 +1775,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               valor: updatedValor,
               status: updatedStatus,
               observacao: updatedObs,
-              subitens: JSON.parse(updatedSub),
+              subitens: updatedSubArray,
               ordem: existing.ordem,
               obraId: existing.obraId,
               categoria: freshCatRes.rows.length > 0 ? {
@@ -1739,8 +1785,10 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               } : null
             };
           }
-        } catch (dbErr) {
+        } catch (dbErr: any) {
           console.error(`Erro atualizando item ${itemId} no pg:`, dbErr);
+          // Se o Postgres está selecionado/ativo e deu erro, retorna o erro 500 para ficar exposto
+          return res.status(500).json({ error: "Erro no banco de dados ao atualizar item", details: dbErr.message });
         }
       }
 
@@ -1759,14 +1807,27 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           }
         }
 
+        let updatedSubArray: any[] = [];
+        if (subitens !== undefined) {
+          updatedSubArray = typeof subitens === "string" ? JSON.parse(subitens) : subitens;
+        } else {
+          const currentSub = existing.subitens || [];
+          updatedSubArray = typeof currentSub === "string" ? JSON.parse(currentSub) : currentSub;
+        }
+
+        let updatedValor = valor !== undefined ? Number(valor) : existing.valor;
+        if (Array.isArray(updatedSubArray) && updatedSubArray.length > 0) {
+          updatedValor = updatedSubArray.reduce((acc, sub) => acc + (Number(sub.valor) || 0), 0);
+        }
+
         const updated = {
           ...existing,
           descricao: descricao !== undefined ? descricao : existing.descricao,
           categoriaId: categoriaId !== undefined ? categoriaId : existing.categoriaId,
-          valor: valor !== undefined ? Number(valor) : existing.valor,
+          valor: updatedValor,
           status: status !== undefined ? status : existing.status,
           observacao: observacao !== undefined ? (observacao || null) : existing.observacao,
-          subitens: subitens !== undefined ? subitens : existing.subitens,
+          subitens: updatedSubArray,
           updatedAt: new Date()
         };
         memoryItens[itemIdx] = updated;
