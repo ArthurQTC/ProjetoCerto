@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ItemOrcamento, SubItem } from "./types";
 
 interface UIState {
   activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase";
@@ -30,4 +31,96 @@ export const useUIStore = create<UIState>((set) => ({
   navigateToSupabase: () => set({ activeView: "supabase", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
   setSearchTerm: (term) => set({ searchTerm: term }),
   setProjectFilter: (filter) => set({ projectFilter: filter }),
+}));
+
+interface ItemsState {
+  items: ItemOrcamento[];
+  setItems: (items: ItemOrcamento[]) => void;
+  addSubItem: (itemId: string, subItem: Omit<SubItem, "id">) => ItemOrcamento | undefined;
+  updateSubItem: (itemId: string, subId: string, subItem: Partial<SubItem>) => ItemOrcamento | undefined;
+  deleteSubItem: (itemId: string, subId: string) => ItemOrcamento | undefined;
+  updateItemValor: (itemId: string, newValor: number) => ItemOrcamento | undefined;
+  removeItem: (itemId: string) => void;
+  moveItem: (dragIndex: number, hoverIndex: number) => void;
+}
+
+export const useItemsStore = create<ItemsState>((set, get) => ({
+  items: [],
+  setItems: (items) => set({ items }),
+  
+  addSubItem: (itemId, subItemPayload) => {
+    let updatedItem: ItemOrcamento | undefined;
+    set((state) => {
+      const newItems = state.items.map(item => {
+        if (item.id !== itemId) return item;
+        const currentSubs = item.subitens || [];
+        const newSub = { id: `sub-${Date.now()}`, ...subItemPayload };
+        const updatedSubs = [...currentSubs, newSub];
+        const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+        updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
+        return updatedItem;
+      });
+      return { items: newItems };
+    });
+    return updatedItem;
+  },
+
+  updateSubItem: (itemId, subId, payload) => {
+    let updatedItem: ItemOrcamento | undefined;
+    set((state) => {
+      const newItems = state.items.map(item => {
+        if (item.id !== itemId) return item;
+        const currentSubs = item.subitens || [];
+        const updatedSubs = currentSubs.map(s => s.id === subId ? { ...s, ...payload } : s);
+        const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+        updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
+        return updatedItem;
+      });
+      return { items: newItems };
+    });
+    return updatedItem;
+  },
+
+  deleteSubItem: (itemId, subId) => {
+    let updatedItem: ItemOrcamento | undefined;
+    set((state) => {
+      const newItems = state.items.map(item => {
+        if (item.id !== itemId) return item;
+        const currentSubs = item.subitens || [];
+        const updatedSubs = currentSubs.filter(s => s.id !== subId);
+        const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+        updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
+        return updatedItem;
+      });
+      return { items: newItems };
+    });
+    return updatedItem;
+  },
+
+  updateItemValor: (itemId, newValor) => {
+    let updatedItem: ItemOrcamento | undefined;
+    set((state) => {
+      return {
+        items: state.items.map(item => {
+          if (item.id === itemId) {
+            updatedItem = { ...item, valor: newValor };
+            return updatedItem;
+          }
+          return item;
+        })
+      };
+    });
+    return updatedItem;
+  },
+
+  removeItem: (itemId) => set((state) => ({
+    items: state.items.filter(i => i.id !== itemId)
+  })),
+
+  moveItem: (dragIndex, hoverIndex) => set((state) => {
+    const newItems = [...state.items];
+    const [removed] = newItems.splice(dragIndex, 1);
+    newItems.splice(hoverIndex, 0, removed);
+    return { items: newItems };
+  }),
 }));

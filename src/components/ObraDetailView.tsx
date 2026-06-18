@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 import { Projeto, ItemOrcamento } from "../types";
-import { useUIStore } from "../store";
+import { useUIStore, useItemsStore } from "../store";
 import ItemFormModal from "./ItemFormModal";
 import CreateProjectModal from "./CreateObraModal";
 import CreateCategoryModal from "./CreateCategoryModal";
@@ -310,7 +310,7 @@ export default function ObraDetailView() {
   };
 
   // Local state to support instant, smooth real-time drag and drop
-  const [localItems, setLocalItems] = useState<ItemOrcamento[]>([]);
+  const { items: localItems, setItems: setLocalItems, addSubItem, updateSubItem, deleteSubItem, removeItem, moveItem } = useItemsStore();
   
   // Drag and Drop ordering states
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -409,26 +409,21 @@ export default function ObraDetailView() {
     }
     const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
     
-    const newSub = {
-      id: "sub-" + Date.now(),
+    // Optimistic UI Update for memory/DB failure fallback using Zustand
+    const updatedItem = addSubItem(item.id, {
       descricao: tempSubItemDesc.trim(),
       valor: val
-    };
-
-    const currentSubs = item.subitens || [];
-    const updatedSubs = [...currentSubs, newSub];
-    const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
-
-    // Optimistic UI Update for memory/DB failure fallback
-    setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, subitens: updatedSubs, valor: newTotal } : i));
-
-    updateItemMutation.mutate({
-      itemId: item.id,
-      payload: {
-        subitens: updatedSubs,
-        valor: newTotal
-      }
     });
+
+    if (updatedItem) {
+      updateItemMutation.mutate({
+        itemId: item.id,
+        payload: {
+          subitens: updatedItem.subitens,
+          valor: updatedItem.valor
+        }
+      });
+    }
 
     setAddingSubItemForId(null);
     setTempSubItemDesc("");
@@ -442,20 +437,21 @@ export default function ObraDetailView() {
     }
     const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
 
-    const currentSubs = item.subitens || [];
-    const updatedSubs = currentSubs.map(s => s.id === subId ? { ...s, descricao: tempSubItemDesc.trim(), valor: val } : s);
-    const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
-
     // Optimistic UI Update for memory/DB failure fallback
-    setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, subitens: updatedSubs, valor: newTotal } : i));
-
-    updateItemMutation.mutate({
-      itemId: item.id,
-      payload: {
-        subitens: updatedSubs,
-        valor: newTotal
-      }
+    const updatedItem = updateSubItem(item.id, subId, {
+      descricao: tempSubItemDesc.trim(),
+      valor: val
     });
+
+    if (updatedItem) {
+      updateItemMutation.mutate({
+        itemId: item.id,
+        payload: {
+          subitens: updatedItem.subitens,
+          valor: updatedItem.valor
+        }
+      });
+    }
 
     setEditingSubItemId(null);
     setTempSubItemDesc("");
@@ -463,20 +459,18 @@ export default function ObraDetailView() {
   };
 
   const handleDeleteSubItem = async (item: ItemOrcamento, subId: string) => {
-    const currentSubs = item.subitens || [];
-    const updatedSubs = currentSubs.filter(s => s.id !== subId);
-    const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
-
     // Optimistic UI Update for memory/DB failure fallback
-    setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, subitens: updatedSubs, valor: newTotal } : i));
+    const updatedItem = deleteSubItem(item.id, subId);
 
-    updateItemMutation.mutate({
-      itemId: item.id,
-      payload: {
-        subitens: updatedSubs,
-        valor: newTotal
-      }
-    });
+    if (updatedItem) {
+      updateItemMutation.mutate({
+        itemId: item.id,
+        payload: {
+          subitens: updatedItem.subitens,
+          valor: updatedItem.valor
+        }
+      });
+    }
   };
 
   // Delete item
@@ -593,7 +587,7 @@ export default function ObraDetailView() {
 
   const handleSoftDeleteItem = (item: ItemOrcamento) => {
     // Optimistic UI update
-    setLocalItems(prev => prev.filter(i => i.id !== item.id));
+    removeItem(item.id);
     
     // Server update
     updateItemMutation.mutate({ itemId: item.id, payload: { status: "LIXEIRA" } });
@@ -601,7 +595,7 @@ export default function ObraDetailView() {
 
   const handlePermanentDeleteItem = (itemId: string) => {
     // Optimistic UI update
-    setLocalItems(prev => prev.filter(i => i.id !== itemId));
+    removeItem(itemId);
     
     // Server update
     deleteItemMutation.mutate(itemId);
@@ -648,11 +642,7 @@ export default function ObraDetailView() {
     const idxOfHovered = localItems.findIndex((i) => i.id === hoveredId);
 
     if (idxOfDragged !== -1 && idxOfHovered !== -1) {
-      const newLocalItems = [...localItems];
-      const [removed] = newLocalItems.splice(idxOfDragged, 1);
-      newLocalItems.splice(idxOfHovered, 0, removed);
-
-      setLocalItems(newLocalItems);
+      moveItem(idxOfDragged, idxOfHovered);
     }
   };
 
