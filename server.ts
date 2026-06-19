@@ -114,38 +114,104 @@ import pg from "pg";
 const { Pool } = pg;
 
 const PORT = 3000;
-let pool: pg.Pool | null = null;
+let rdsPoolNative: pg.Pool | null = null;
+let supabasePoolNative: pg.Pool | null = null;
+
+let dbConnectedRds = false;
+let dbConnectedSupabase = false;
 
 let dbConnected = false;
 let dbCheckInProgress = false;
 
-// Dynamic pool client recreation to use newly configured/loaded environment variables on-demand
-function recreateDbClient() {
-  let url = process.env.DATABASE_URL || "";
-  url = sanitizeDbUrl(url);
+function checkHasPlaceholder(url: string) {
+  return url.includes("[PASSWORD]") || 
+         url.includes("<PASSWORD>") || 
+         url.includes("[SENHA]") || 
+         url.includes("<SENHA>") ||
+         url.includes("[YOUR_PASSWORD]") ||
+         url.includes("SENHA_DO_BANCO") ||
+         url.includes("YOUR_PASSWORD") ||
+         url.includes("[PROJETO]");
+}
 
-  if (url && (url.startsWith("postgres://") || url.startsWith("postgresql://"))) {
-    try {
-      if (pool) {
-        pool.end().catch(() => {});
+// Wrapper pool que decide dinamicamente a rota da query
+const pool = {
+  query: async (...args: any[]) => {
+    if (dbConnectedRds && rdsPoolNative) {
+      try {
+        return await rdsPoolNative.query(...args as [any]);
+      } catch (e: any) {
+        console.warn(`[RDS] Falha na query, tentando Supabase fallback. ${e.message}`);
+        if (dbConnectedSupabase && supabasePoolNative) {
+          return await supabasePoolNative.query(...args as [any]);
+        }
+        throw e; // RDS falhou e Supabase off
       }
-      pool = new Pool({
-        connectionString: url,
-        ssl: {
-          rejectUnauthorized: false
-        },
+    } else if (dbConnectedSupabase && supabasePoolNative) {
+      return await supabasePoolNative.query(...args as [any]);
+    }
+    throw new Error("No database connection available");
+  },
+  connect: async () => {
+    if (dbConnectedRds && rdsPoolNative) {
+      try {
+        return await rdsPoolNative.connect();
+      } catch (e: any) {
+        console.warn(`[RDS] Falha no pool connect, tentando Supabase fallback. ${e.message}`);
+        if (dbConnectedSupabase && supabasePoolNative) {
+          return await supabasePoolNative.connect(); // Retorna o client do supabase
+        }
+        throw e;
+      }
+    } else if (dbConnectedSupabase && supabasePoolNative) {
+      return await supabasePoolNative.connect();
+    }
+    throw new Error("No database connection available");
+  }
+} as pg.Pool;
+
+// Dynamic pool client recreation
+function recreateDbClient() {
+  let urlRds = process.env.DATABASE_URL_RDS || "";
+  let urlSupabase = process.env.DATABASE_URL || "";
+  
+  urlRds = sanitizeDbUrl(urlRds);
+  urlSupabase = sanitizeDbUrl(urlSupabase);
+
+  // Tentando RDS
+  if (urlRds && (urlRds.startsWith("postgres://") || urlRds.startsWith("postgresql://")) && !checkHasPlaceholder(urlRds)) {
+    try {
+      if (rdsPoolNative) rdsPoolNative.end().catch(() => {});
+      rdsPoolNative = new Pool({
+        connectionString: urlRds,
+        ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 5000,
       });
-      console.log("[pg] Pool de conexão criado dinamicamente com o Postgres.");
-    } catch (poolErr) {
-      console.error("[pg] Erro criando pool de conexão:", poolErr);
+      console.log("[pg] Pool RDS (AWS) instanciado.");
+    } catch (err) {
+      console.error("[pg] Erro instanciando pool RDS:", err);
     }
   } else {
-    if (pool) {
-      pool.end().catch(() => {});
+    if (rdsPoolNative) rdsPoolNative.end().catch(() => {});
+    rdsPoolNative = null;
+  }
+
+  // Tentando Supabase (Fallback)
+  if (urlSupabase && (urlSupabase.startsWith("postgres://") || urlSupabase.startsWith("postgresql://")) && !checkHasPlaceholder(urlSupabase)) {
+    try {
+      if (supabasePoolNative) supabasePoolNative.end().catch(() => {});
+      supabasePoolNative = new Pool({
+        connectionString: urlSupabase,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 5000,
+      });
+      console.log("[pg] Pool Supabase instanciado.");
+    } catch (err) {
+      console.error("[pg] Erro instanciando pool Supabase:", err);
     }
-    pool = null;
-    console.log("[pg] Pool de conexão desativado / banco de dados não configurado.");
+  } else {
+    if (supabasePoolNative) supabasePoolNative.end().catch(() => {});
+    supabasePoolNative = null;
   }
 }
 
@@ -153,42 +219,47 @@ async function checkDbConnection() {
   if (dbCheckInProgress) return dbConnected;
   dbCheckInProgress = true;
   
-  let url = process.env.DATABASE_URL || "";
-  url = sanitizeDbUrl(url);
-
-  const isPostgres = url.startsWith("postgres://") || url.startsWith("postgresql://");
-  if (!isPostgres) {
-    dbConnected = false;
-    dbCheckInProgress = false;
-    return false;
-  }
-
-  const hasPlaceholder = url.includes("[PASSWORD]") || 
-                         url.includes("<PASSWORD>") || 
-                         url.includes("[SENHA]") || 
-                         url.includes("<SENHA>") ||
-                         url.includes("[YOUR_PASSWORD]") ||
-                         url.includes("SENHA_DO_BANCO") ||
-                         url.includes("YOUR_PASSWORD") ||
-                         url.includes("[PROJETO]");
-
-  if (hasPlaceholder) {
-    dbConnected = false;
-    dbCheckInProgress = false;
-    return false;
-  }
-
   try {
     recreateDbClient();
-    if (pool) {
-      // Timeout of 4s to prevent long hanging starts if DB is physically offline/firewalled
-      await Promise.race([
-        pool.query("SELECT 1"),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexão (4s)")), 4000))
-      ]);
-      
-      dbConnected = true;
 
+    // 1. Testa RDS
+    if (rdsPoolNative) {
+      try {
+        await Promise.race([
+          rdsPoolNative.query("SELECT 1"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexão RDS (4s)")), 4000))
+        ]);
+        dbConnectedRds = true;
+        console.log("[pg] Conexão com AWS RDS estabelecida com sucesso.");
+      } catch (e: any) {
+        dbConnectedRds = false;
+        console.warn(`[pg] AWS RDS falhou no Health Check: ${e.message}`);
+      }
+    } else {
+      dbConnectedRds = false;
+    }
+
+    // 2. Testa Supabase
+    if (supabasePoolNative) {
+      try {
+        await Promise.race([
+          supabasePoolNative.query("SELECT 1"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexão Supabase (4s)")), 4000))
+        ]);
+        dbConnectedSupabase = true;
+        console.log("[pg] Conexão com Supabase estabelecida com sucesso.");
+      } catch (e: any) {
+        dbConnectedSupabase = false;
+        console.warn(`[pg] Supabase falhou no Health Check: ${e.message}`);
+      }
+    } else {
+      dbConnectedSupabase = false;
+    }
+
+    dbConnected = dbConnectedRds || dbConnectedSupabase;
+
+    if (dbConnected) {
+      console.log(`[pg] Sistema conectado. Fonte primária: ${dbConnectedRds ? "AWS RDS" : "Supabase Fallback"}`);
       // Automatically create and migrate all tables
       try {
         console.log("[pg Sync] Inicializando/Verificando tabelas no banco de dados...");
