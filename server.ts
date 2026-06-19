@@ -115,10 +115,7 @@ const { Pool } = pg;
 
 const PORT = 3000;
 let rdsPoolNative: pg.Pool | null = null;
-let supabasePoolNative: pg.Pool | null = null;
-
 let dbConnectedRds = false;
-let dbConnectedSupabase = false;
 
 let dbConnected = false;
 let dbCheckInProgress = false;
@@ -180,8 +177,9 @@ function recreateDbClient() {
   if (urlRds && (urlRds.startsWith("postgres://") || urlRds.startsWith("postgresql://")) && !checkHasPlaceholder(urlRds)) {
     try {
       if (rdsPoolNative) rdsPoolNative.end().catch(() => {});
+      const cleanUrl = urlRds.replace(/sslmode=[^&]+/g, "").replace(/\?&/g, "?").replace(/&&/g, "&");
       rdsPoolNative = new Pool({
-        connectionString: urlRds,
+        connectionString: cleanUrl,
         ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 5000,
       });
@@ -206,21 +204,21 @@ async function checkDbConnection() {
     // 1. Testa RDS ÚNICO
     if (rdsPoolNative) {
       try {
-        await Promise.race([
-          rdsPoolNative.query("SELECT 1"),
+        const res = await Promise.race([
+          rdsPoolNative.query("SELECT 1 AS ok"),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexão RDS (4s)")), 4000))
-        ]);
+        ]) as any;
         dbConnectedRds = true;
-        console.log("[pg] Conexão EXCLUSIVA com AWS RDS estabelecida com sucesso.");
+        console.log("[pg] Conexão EXCLUSIVA com AWS RDS estabelecida com sucesso. SELECT 1 status:", res.rows[0].ok);
+        console.log("RDS CONNECTION ACTIVE");
       } catch (e: any) {
         dbConnectedRds = false;
-        console.warn(`[pg] AWS RDS falhou no Health Check: ${e.message}`);
+        console.warn(`[pg] AWS RDS falhou no Health Check:`, e);
       }
     } else {
       dbConnectedRds = false;
     }
 
-    dbConnectedSupabase = false; // Forçar falso
     dbConnected = dbConnectedRds;
 
     if (dbConnected) {
@@ -345,92 +343,10 @@ async function checkDbConnection() {
   return dbConnected;
 }
 
-// Flag to use fully local in-memory DB to comply with "forget database for now, keep running in AI Studio"
-const useInMemoryDb = false;
-
 // Standard mock ID generator
 function generateId() {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
-
-// Memory database collections (populated with full design-guided seed data)
-const memoryCategorias = [
-  { id: "cat-1", nome: "Materiais", grupoCalculo: "MATERIAL" },
-  { id: "cat-2", nome: "Insumos", grupoCalculo: "MATERIAL" },
-  { id: "cat-3", nome: "Mão de Obra", grupoCalculo: "MAO_OBRA" },
-  { id: "cat-4", nome: "Administração", grupoCalculo: "ADMINISTRACAO" },
-  { id: "cat-5", nome: "Impostos", grupoCalculo: "IMPOSTOS" },
-  { id: "cat-6", nome: "Transporte / Logística", grupoCalculo: "LOGISTICA" },
-  { id: "cat-7", nome: "Margem Líquida", grupoCalculo: "MARGEM" },
-];
-
-let memoryObras: any[] = [];
-
-let memoryItens: any[] = [];
-
-// Persistent memory fallback on filesystem
-const FALLBACK_DATA_FILE = path.join(process.cwd(), "dev_fallback_data.json");
-
-const loadMemoryDb = () => {
-  try {
-    if (fs.existsSync(FALLBACK_DATA_FILE)) {
-      const raw = fs.readFileSync(FALLBACK_DATA_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed.memoryObras && Array.isArray(parsed.memoryObras)) {
-        memoryObras = parsed.memoryObras;
-      }
-      if (parsed.memoryItens && Array.isArray(parsed.memoryItens)) {
-        memoryItens = parsed.memoryItens;
-      }
-      console.log(`[DEBUG] Persistent memory loaded from disk. Projects: ${memoryObras.length}, Items: ${memoryItens.length}`);
-    } else {
-      console.log("[DEBUG] No persistent memory fallback file found. Starting fresh.");
-    }
-  } catch (err) {
-    console.error("[DEBUG] Error loading persistent memory fallback file:", err);
-  }
-};
-
-const saveMemoryDb = () => {
-  try {
-    const payload = {
-      memoryObras,
-      memoryItens
-    };
-    fs.writeFileSync(FALLBACK_DATA_FILE, JSON.stringify(payload, null, 2), "utf-8");
-    console.log(`[DEBUG] Persistent memory saved to disk. Projects: ${memoryObras.length}, Items: ${memoryItens.length}`);
-  } catch (err) {
-    console.error("[DEBUG] Error saving persistent memory fallback file:", err);
-  }
-};
-
-// Immediately load fallback database on boot
-loadMemoryDb();
-
-const getMemoryProjectItems = (obraId: string) => {
-  console.log(`[DEBUG] getMemoryProjectItems called for obraId: ${obraId}. current memoryItens count: ${memoryItens.length}`);
-  return memoryItens.filter(i => i.obraId === obraId).map(i => {
-    let parsedSubs: any[] = [];
-    if (i.subitens) {
-      if (typeof i.subitens === 'string') {
-        try {
-          parsedSubs = JSON.parse(i.subitens);
-        } catch (e) {
-          console.error(`[DEBUG] getMemoryProjectItems: JSON parse failed for subitens of item ${i.id}:`, i.subitens, e);
-          parsedSubs = [];
-        }
-      } else if (Array.isArray(i.subitens)) {
-        parsedSubs = i.subitens;
-      }
-    }
-    console.log(`[DEBUG] Item ${i.id} (${i.descricao}) has ${parsedSubs.length} parsed subitens. Raw subitens content:`, i.subitens);
-    return {
-      ...i,
-      subitens: parsedSubs,
-      categoria: memoryCategorias.find(c => c.id === i.categoriaId) || null
-    };
-  });
-};
 
 const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: number) => {
   const valueContract = Number(valorContrato) || 0;
@@ -494,69 +410,11 @@ const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: num
       }
 
     } catch (pgErr) {
-      console.error("Erro recriando/recalculando itens fixos no Postgres, usando fallback mental:", pgErr);
+      console.error("[RDS ERROR] Erro recriando/recalculando itens fixos no Postgres:");
+      console.error(pgErr);
+      throw pgErr;
     }
   }
-
-  // Always sync internal memory arrays for robust dual-track execution
-  memoryItens = memoryItens.filter(i => !(i.obraId === obraId && i.descricao === "PIS/COFINS/IRPJ/CSLL"));
-  
-  const mImpostos = memoryCategorias.find(c => c.nome === "Impostos");
-  const mAdm = memoryCategorias.find(c => c.nome === "Administração");
-
-  if (mImpostos) {
-    let impostoItem = memoryItens.find(i => i.obraId === obraId && i.descricao === "Imposto Fixo");
-    if (!impostoItem) {
-      const idx = memoryItens.filter(i => i.obraId === obraId).length;
-      memoryItens.push({
-        id: `fixed-imposto-${obraId}`,
-        descricao: "Imposto Fixo",
-        valor: Math.round(valueContract * 0.098 * 100) / 100,
-        status: "ATIVO",
-        observacao: "9.8%",
-        ordem: idx,
-        obraId,
-        categoriaId: mImpostos.id,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    }
-  }
-
-  if (mAdm) {
-    let admItem = memoryItens.find(i => i.obraId === obraId && i.descricao === "Custo ADM");
-    if (!admItem) {
-      const idx = memoryItens.filter(i => i.obraId === obraId).length;
-      memoryItens.push({
-        id: `fixed-custo-adm-${obraId}`,
-        descricao: "Custo ADM",
-        valor: Math.round(valueContract * 0.05 * 100) / 100,
-        status: "ATIVO",
-        observacao: "5%",
-        ordem: idx + 1,
-        obraId,
-        categoriaId: mAdm.id,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    }
-  }
-
-  // Dual track memory check for any items with '%' in observation
-  memoryItens.forEach((item) => {
-    if (item.obraId === obraId) {
-      const obs = item.observacao || "";
-      if (obs.includes("%")) {
-        const pct = parseFloat(obs.replace(/[^0-9.]/g, ""));
-        if (!isNaN(pct)) {
-          item.valor = Math.round(valueContract * (pct / 100) * 100) / 100;
-          item.updatedAt = new Date();
-        }
-      }
-    }
-  });
-
-  saveMemoryDb();
 };
 
 const formatObraWithMetrics = (obra: any) => {
@@ -935,20 +793,17 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               itens: items
             };
           });
-        } catch (dbErr) {
-          console.error("Erro consultando dashboard no pg, usando fallback mental:", dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS SELECT ERROR] Erro consultando dashboard no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão inicial com Postgres está inativa. Verifique o AWS RDS.");
       }
 
-      // Fallback arrays if postgres query returned zero or failed or db is disconnected
-      if (!dbConnected || freshObras.length === 0) {
-        await Promise.all(memoryObras.map(o => ensureAndRecalculateFixedItems(o.id, Number(o.valorContrato))));
-        freshObras = memoryObras.map(o => {
-          return {
-            ...o,
-            itens: getMemoryProjectItems(o.id)
-          };
-        });
+      if (!dbConnected) {
+        throw new Error("Conexão inicial com Postgres está inativa. Verifique o AWS RDS.");
       }
 
       const allCalculated = freshObras.map(formatObraWithMetrics);
@@ -1068,7 +923,8 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         })),
       });
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao buscar métricas do Dashboard", details: error.message });
+      console.error("[GET /api/dashboard] FAILED:", error);
+      res.status(500).json({ error: error.message || "Erro ao buscar métricas do Dashboard", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1117,24 +973,24 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               itens: items
             };
           });
-        } catch (dbErr) {
-          console.error("Erro lendo obras no pg:", dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS SELECT ERROR] Erro lendo obras no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão inicial com Postgres está inativa. Verifique o AWS RDS.");
       }
 
-      if (!dbConnected || freshObras.length === 0) {
-        freshObras = memoryObras.map(o => {
-          return {
-            ...o,
-            itens: getMemoryProjectItems(o.id)
-          };
-        });
+      if (!dbConnected) {
+        throw new Error("Conexão inicial com Postgres está inativa. Verifique o AWS RDS.");
       }
 
       const obrasCalculadas = freshObras.map(formatObraWithMetrics);
       res.json(obrasCalculadas);
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao buscar lista de projetos", details: error.message });
+      console.error("[GET /api/obras] FAILED:", error);
+      res.status(500).json({ error: error.message || "Erro ao buscar lista de projetos", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1185,25 +1041,27 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               itens: items
             };
           }
-        } catch (dbErr) {
-          console.error(`Erro buscando obra ${id} no pg:`, dbErr);
+        } catch (dbErr: any) {
+          console.error(`[RDS SELECT ERROR] Erro buscando obra ${id} no pg:`);
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão inicial com Postgres está inativa. Verifique o AWS RDS.");
       }
 
-      if (!dbConnected || !dbObra) {
-        const o = memoryObras.find(x => x.id === id);
-        if (!o) {
-          return res.status(404).json({ error: "Projeto não encontrado" });
-        }
-        dbObra = {
-          ...o,
-          itens: getMemoryProjectItems(o.id)
-        };
+      if (!dbConnected) {
+        throw new Error("Conexão inicial com Postgres está inativa. Verifique o AWS RDS.");
+      }
+
+      if (!dbObra) {
+        return res.status(404).json({ error: "Projeto não encontrado" });
       }
 
       res.json(formatObraWithMetrics(dbObra));
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao buscar detalhes do projeto", details: error.message });
+      console.error(`[GET /api/obras/${req.params.id}] FAILED:`, error);
+      res.status(500).json({ error: error.message || "Erro ao buscar detalhes do projeto", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1471,17 +1329,22 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         try {
           const catsRes = await pool.query('SELECT * FROM categorias ORDER BY nome ASC');
           sorted = catsRes.rows;
-        } catch (dbErr) {
-          console.error("Erro listando categorias no pg, usando fallback mental:", dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS SELECT ERROR] Erro listando categorias no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS inativa.");
       }
 
-      if (!dbConnected || sorted.length === 0) {
-        sorted = [...memoryCategorias].sort((a, b) => a.nome.localeCompare(b.nome));
+      if (!dbConnected) {
+        throw new Error("Conexão com banco de dados indisponível");
       }
 
       res.json(sorted);
     } catch (error: any) {
+      console.error("[GET /api/categorias] FAILED:", error);
       res.status(500).json({ error: error.message || "Erro ao buscar categorias", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
