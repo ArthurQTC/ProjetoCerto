@@ -183,7 +183,13 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || "Erro ao salvar item no banco");
+        const fullErrorMessage = [
+          errData.error,
+          errData.details ? `Detalhes: ${errData.details}` : "",
+          errData.table ? `Tabela: ${errData.table}` : "",
+          errData.hint ? `Dica: ${errData.hint}` : ""
+        ].filter(Boolean).join(" | ");
+        throw new Error(fullErrorMessage || "Erro ao salvar item no banco");
       }
 
       onSuccess();

@@ -134,49 +134,47 @@ function checkHasPlaceholder(url: string) {
          url.includes("[PROJETO]");
 }
 
-// Wrapper pool que decide dinamicamente a rota da query
+// Wrapper pool isolado exclusivamente para o AWS RDS
 const pool = {
   query: async (...args: any[]) => {
-    if (dbConnectedRds && rdsPoolNative) {
-      try {
-        return await rdsPoolNative.query(...args as [any]);
-      } catch (e: any) {
-        console.warn(`[RDS] Falha na query, tentando Supabase fallback. ${e.message}`);
-        if (dbConnectedSupabase && supabasePoolNative) {
-          return await supabasePoolNative.query(...args as [any]);
-        }
-        throw e; // RDS falhou e Supabase off
-      }
-    } else if (dbConnectedSupabase && supabasePoolNative) {
-      return await supabasePoolNative.query(...args as [any]);
+    if (!dbConnectedRds || !rdsPoolNative) {
+      throw new Error("Erro Crítico: AWS RDS não está conectado ou configurado.");
     }
-    throw new Error("No database connection available");
+
+    const queryStr = typeof args[0] === 'string' ? args[0].toUpperCase() : '';
+    const isWrite = queryStr.includes('INSERT ') || queryStr.includes('UPDATE ') || queryStr.includes('DELETE ');
+
+    if (isWrite) {
+      console.log("WRITING TO: AWS RDS");
+      console.log(`QUERY: ${queryStr.substring(0, 50)}...`);
+    }
+
+    try {
+      const result = await rdsPoolNative.query(...args as [any]);
+      if (isWrite) {
+        console.log("INSERT EXECUTED ON RDS");
+      }
+      return result;
+    } catch (e: any) {
+      console.error(`[RDS INSERT ERROR] Falha na query.`);
+      console.error(`Query Executada:`, args[0]);
+      console.error(`Values:`, args[1]);
+      console.error(`Erro completo do PostgreSQL:`, e);
+      throw e;
+    }
   },
   connect: async () => {
-    if (dbConnectedRds && rdsPoolNative) {
-      try {
-        return await rdsPoolNative.connect();
-      } catch (e: any) {
-        console.warn(`[RDS] Falha no pool connect, tentando Supabase fallback. ${e.message}`);
-        if (dbConnectedSupabase && supabasePoolNative) {
-          return await supabasePoolNative.connect(); // Retorna o client do supabase
-        }
-        throw e;
-      }
-    } else if (dbConnectedSupabase && supabasePoolNative) {
-      return await supabasePoolNative.connect();
+    if (!dbConnectedRds || !rdsPoolNative) {
+      throw new Error("Erro Crítico: AWS RDS não está conectado.");
     }
-    throw new Error("No database connection available");
+    return await rdsPoolNative.connect();
   }
 } as pg.Pool;
 
 // Dynamic pool client recreation
 function recreateDbClient() {
   let urlRds = process.env.DATABASE_URL_RDS || "";
-  let urlSupabase = process.env.DATABASE_URL || "";
-  
   urlRds = sanitizeDbUrl(urlRds);
-  urlSupabase = sanitizeDbUrl(urlSupabase);
 
   // Tentando RDS
   if (urlRds && (urlRds.startsWith("postgres://") || urlRds.startsWith("postgresql://")) && !checkHasPlaceholder(urlRds)) {
@@ -187,31 +185,14 @@ function recreateDbClient() {
         ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 5000,
       });
-      console.log("[pg] Pool RDS (AWS) instanciado.");
+      console.log("[pg] Pool RDS (AWS) instanciado com exclusividade.");
     } catch (err) {
       console.error("[pg] Erro instanciando pool RDS:", err);
     }
   } else {
     if (rdsPoolNative) rdsPoolNative.end().catch(() => {});
     rdsPoolNative = null;
-  }
-
-  // Tentando Supabase (Fallback)
-  if (urlSupabase && (urlSupabase.startsWith("postgres://") || urlSupabase.startsWith("postgresql://")) && !checkHasPlaceholder(urlSupabase)) {
-    try {
-      if (supabasePoolNative) supabasePoolNative.end().catch(() => {});
-      supabasePoolNative = new Pool({
-        connectionString: urlSupabase,
-        ssl: { rejectUnauthorized: false },
-        connectionTimeoutMillis: 5000,
-      });
-      console.log("[pg] Pool Supabase instanciado.");
-    } catch (err) {
-      console.error("[pg] Erro instanciando pool Supabase:", err);
-    }
-  } else {
-    if (supabasePoolNative) supabasePoolNative.end().catch(() => {});
-    supabasePoolNative = null;
+    console.error("[pg] Nenhuma DATABASE_URL_RDS válida configurada.");
   }
 }
 
@@ -222,7 +203,7 @@ async function checkDbConnection() {
   try {
     recreateDbClient();
 
-    // 1. Testa RDS
+    // 1. Testa RDS ÚNICO
     if (rdsPoolNative) {
       try {
         await Promise.race([
@@ -230,7 +211,7 @@ async function checkDbConnection() {
           new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexão RDS (4s)")), 4000))
         ]);
         dbConnectedRds = true;
-        console.log("[pg] Conexão com AWS RDS estabelecida com sucesso.");
+        console.log("[pg] Conexão EXCLUSIVA com AWS RDS estabelecida com sucesso.");
       } catch (e: any) {
         dbConnectedRds = false;
         console.warn(`[pg] AWS RDS falhou no Health Check: ${e.message}`);
@@ -239,27 +220,11 @@ async function checkDbConnection() {
       dbConnectedRds = false;
     }
 
-    // 2. Testa Supabase
-    if (supabasePoolNative) {
-      try {
-        await Promise.race([
-          supabasePoolNative.query("SELECT 1"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexão Supabase (4s)")), 4000))
-        ]);
-        dbConnectedSupabase = true;
-        console.log("[pg] Conexão com Supabase estabelecida com sucesso.");
-      } catch (e: any) {
-        dbConnectedSupabase = false;
-        console.warn(`[pg] Supabase falhou no Health Check: ${e.message}`);
-      }
-    } else {
-      dbConnectedSupabase = false;
-    }
-
-    dbConnected = dbConnectedRds || dbConnectedSupabase;
+    dbConnectedSupabase = false; // Forçar falso
+    dbConnected = dbConnectedRds;
 
     if (dbConnected) {
-      console.log(`[pg] Sistema conectado. Fonte primária: ${dbConnectedRds ? "AWS RDS" : "Supabase Fallback"}`);
+      console.log(`[pg] Sistema conectado. FONTE ÚNICA DE ESCRITA: AWS RDS`);
       // Automatically create and migrate all tables
       try {
         console.log("[pg Sync] Inicializando/Verificando tabelas no banco de dados...");
@@ -1315,44 +1280,28 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             documentos: typeof obra.documentos === 'string' ? JSON.parse(obra.documentos) : (obra.documentos || []),
             itens: items
           };
-        } catch (dbErr) {
-          console.error("Erro criando obra no pg, usando fallback mental:", dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS INSERT ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !resultObra) {
-        const id = "p-" + generateId();
-        const novaObra = {
-          id,
-          nome,
-          cliente: cliente || null,
-          observacoes: observacoes || null,
-          valorContrato: Number(valorContrato) || 0.0,
-          statusContrato: statusContrato || "CONSOLIDADO",
-          documentos: normalizedDocs,
-          etapaLevantamento: etapaLevantamento !== undefined ? !!etapaLevantamento : false,
-          etapaProjeto: etapaProjeto !== undefined ? !!etapaProjeto : false,
-          etapaCotacao: etapaCotacao !== undefined ? !!etapaCotacao : false,
-          etapaFabricacao: etapaFabricacao !== undefined ? !!etapaFabricacao : false,
-          prazo: prazo || null,
-          numeroPedido: numeroPedido || null,
-          dataInicioContrato: dataInicioContrato || null,
-          dataFimContrato: dataFimContrato || null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-        memoryObras.push(novaObra);
-        await ensureAndRecalculateFixedItems(id, novaObra.valorContrato);
-
-        resultObra = {
-          ...novaObra,
-          itens: getMemoryProjectItems(id)
-        };
+      if (!resultObra) {
+        throw new Error("AWS RDS processou sem gerar erros, mas não retornou a obra.");
       }
 
       res.status(201).json(formatObraWithMetrics(resultObra));
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao cadastrar projeto", details: error.message });
+      res.status(500).json({ 
+        error: error.message || "Erro crítico no banco de dados", 
+        stack: error.stack,
+        details: error.detail,
+        table: error.table,
+        hint: error.hint
+      });
     }
   });
 
@@ -1459,50 +1408,13 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               itens: items
             };
           }
-        } catch (dbErr) {
-          console.error(`Erro atualizando obra ${id} no pg:`, dbErr);
-          throw dbErr; // Propagar erro para ser tratado pelo catch principal
+        } catch (dbErr: any) {
+          console.error("[RDS UPDATE ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
-      }
-
-      if (!dbConnected || !resultObra) {
-        const existingIdx = memoryObras.findIndex(x => x.id === id);
-        if (existingIdx !== -1) {
-          const existing = memoryObras[existingIdx];
-          const parsedDocs = documentos !== undefined 
-            ? (Array.isArray(documentos) ? documentos : (typeof documentos === "string" ? JSON.parse(documentos) : []))
-            : (existing.documentos || []);
-
-          const updated = {
-            ...existing,
-            nome: nome !== undefined ? nome : existing.nome,
-            cliente: cliente !== undefined ? (cliente || null) : existing.cliente,
-            observacoes: observacoes !== undefined ? (observacoes || null) : existing.observacoes,
-            valorContrato: valorContrato !== undefined ? Number(valorContrato) : existing.valorContrato,
-            statusContrato: statusContrato !== undefined ? statusContrato : existing.statusContrato,
-            documentos: parsedDocs,
-            etapaLevantamento: etapaLevantamento !== undefined ? !!etapaLevantamento : existing.etapaLevantamento,
-            etapaProjeto: etapaProjeto !== undefined ? !!etapaProjeto : existing.etapaProjeto,
-            etapaCotacao: etapaCotacao !== undefined ? !!etapaCotacao : existing.etapaCotacao,
-            etapaFabricacao: etapaFabricacao !== undefined ? !!etapaFabricacao : existing.etapaFabricacao,
-             prazo: prazo !== undefined ? prazo : existing.prazo,
-            numeroPedido: numeroPedido !== undefined ? numeroPedido : existing.numeroPedido,
-            dataInicioContrato: dataInicioContrato !== undefined ? (dataInicioContrato || null) : existing.dataInicioContrato,
-            dataFimContrato: dataFimContrato !== undefined ? (dataFimContrato || null) : existing.dataFimContrato,
-            updatedAt: new Date()
-          };
-          memoryObras[existingIdx] = updated;
-
-          if (valorContrato !== undefined && Number(valorContrato) !== existing.valorContrato) {
-            await ensureAndRecalculateFixedItems(id, updated.valorContrato);
-          }
-
-          resultObra = {
-            ...updated,
-            itens: getMemoryProjectItems(id)
-          };
-          saveMemoryDb();
-        }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
       if (!resultObra) {
@@ -1513,7 +1425,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       res.json(formatObraWithMetrics(resultObra));
     } catch (error: any) {
       console.error("Erro na rota PUT /api/obras/:id:", error);
-      res.status(500).json({ error: "Erro ao atualizar dados do projeto", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao atualizar dados do projeto", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1531,28 +1443,22 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             await pool.query('DELETE FROM obras WHERE id = $1', [id]);
             isRemoved = true;
           }
-        } catch (dbErr) {
-          console.error(`Erro deletando obra ${id} no pg:`, dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS DELETE ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !isRemoved) {
-        const existingIdx = memoryObras.findIndex(x => x.id === id);
-        if (existingIdx === -1) {
-          return res.status(404).json({ error: "Projeto não encontrado" });
-        }
-        memoryObras.splice(existingIdx, 1);
-        
-        // Remove associated items cascade
-        const keepItems = memoryItens.filter(i => i.obraId !== id);
-        memoryItens.length = 0;
-        memoryItens.push(...keepItems);
-        saveMemoryDb();
+      if (!isRemoved) {
+        return res.status(404).json({ error: "Projeto não encontrado ou falha ao excluir" });
       }
 
       res.json({ success: true, message: "Projeto excluído com êxito" });
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao remover projeto", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao remover projeto", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1576,7 +1482,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
       res.json(sorted);
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao buscar categorias", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao buscar categorias", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1600,28 +1506,22 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           const catId = "cat-" + generateId();
           await pool.query('INSERT INTO categorias (id, nome, "grupoCalculo") VALUES ($1, $2, $3)', [catId, nome, "OUTROS"]);
           novaCategoria = { id: catId, nome, grupoCalculo: "OUTROS" };
-        } catch (dbErr) {
-          console.error("Erro criando categoria no pg, usando fallback mental:", dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS INSERT ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !novaCategoria) {
-        const dup = memoryCategorias.find(c => c.nome.toLowerCase() === nome.toLowerCase());
-        if (dup) {
-          return res.status(400).json({ error: "Já existe uma categoria cadastrada com este nome" });
-        }
-
-        novaCategoria = {
-          id: "cat-" + generateId(),
-          nome,
-          grupoCalculo: "OUTROS",
-        };
-        memoryCategorias.push(novaCategoria);
+      if (!novaCategoria) {
+        throw new Error("AWS RDS processou sem gerar erros, mas não retornou a categoria.");
       }
 
       res.status(201).json(novaCategoria);
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao cadastrar categoria", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao cadastrar categoria", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1637,28 +1537,22 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           await pool.query('DELETE FROM itens_orcamento WHERE "categoriaId" = $1', [id]);
           const delRes = await pool.query('DELETE FROM categorias WHERE id = $1', [id]);
           isRemoved = (delRes.rowCount ?? 0) > 0;
-        } catch (dbErr) {
-          console.error(`Erro excluindo categoria ${id} no pg:`, dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS DELETE ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !isRemoved) {
-        const idx = memoryCategorias.findIndex(c => c.id === id);
-        if (idx === -1) {
-          return res.status(404).json({ error: "Categoria informada não existe" });
-        }
-        memoryCategorias.splice(idx, 1);
-        
-        // Remove cascading memory items
-        const keepItems = memoryItens.filter(i => i.categoriaId !== id);
-        memoryItens.length = 0;
-        memoryItens.push(...keepItems);
-        saveMemoryDb();
+      if (!isRemoved) {
+        return res.status(404).json({ error: "Categoria informada não existe ou falha ao excluir" });
       }
 
       res.json({ success: true, message: "Categoria e seus itens foram removidos permanentemente." });
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao excluir categoria", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao excluir categoria", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1672,23 +1566,18 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         try {
           const delRes = await pool.query('DELETE FROM itens_orcamento WHERE "obraId" = $1 AND status = $2', [id, "LIXEIRA"]);
           countRemoved = delRes.rowCount ?? 0;
-        } catch (dbErr) {
-          console.error(`Erro limpando lixeira da obra ${id} no pg:`, dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS DELETE ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
-      }
-
-      if (!dbConnected || countRemoved === 0) {
-        const initialLen = memoryItens.length;
-        const keepItems = memoryItens.filter(i => !(i.obraId === id && i.status === "LIXEIRA"));
-        memoryItens.length = 0;
-        memoryItens.push(...keepItems);
-        countRemoved = initialLen - memoryItens.length;
-        saveMemoryDb();
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
       res.json({ success: true, message: `${countRemoved} itens removidos permanentemente.` });
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao esvaziar lixeira", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao esvaziar lixeira", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1711,27 +1600,21 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           }
           await client.query('COMMIT');
           orderedOk = true;
-        } catch (dbErr) {
+        } catch (dbErr: any) {
           await client.query('ROLLBACK');
-          console.error("Erro reordenando itens no pg tx:", dbErr);
+          console.error("[RDS UPDATE ERROR] Erro bruto do driver no pg (reordenar):");
+          console.error(dbErr);
+          throw dbErr;
         } finally {
           client.release();
         }
-      }
-
-      if (!dbConnected || !orderedOk) {
-        itemIds.forEach((itemId, idx) => {
-          const item = memoryItens.find(i => i.id === itemId);
-          if (item) {
-            item.ordem = idx;
-          }
-        });
-        saveMemoryDb();
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
       res.json({ success: true, message: "Itens reordenados com sucesso" });
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao reordenar itens", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao reordenar itens", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1782,45 +1665,22 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               }
             };
           }
-        } catch (dbErr) {
-          console.error("Erro inserindo item de orçamento no pg:", dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS INSERT ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !novoItem) {
-        const obraExists = memoryObras.some(o => o.id === obraId);
-        if (!obraExists) {
-          return res.status(404).json({ error: "Projeto não encontrado" });
-        }
-
-        const categoriaObj = memoryCategorias.find(c => c.id === categoriaId);
-        if (!categoriaObj) {
-          return res.status(400).json({ error: "Categoria informada não existe" });
-        }
-
-        const currentCount = memoryItens.filter(i => i.obraId === obraId).length;
-
-        novoItem = {
-          id: "item-" + generateId(),
-          descricao,
-          valor: Number(valor),
-          status: status || "ATIVO",
-          observacao: observacao || null,
-          ordem: currentCount,
-          subitens: subitensArray,
-          obraId,
-          categoriaId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          categoria: categoriaObj
-        };
-        memoryItens.push(novoItem);
-        saveMemoryDb();
+      if (!novoItem) {
+         throw new Error("AWS RDS processou sem gerar erros, mas não retornou o item.");
       }
 
       res.status(201).json(novoItem);
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao adicionar item de orçamento", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao adicionar item de orçamento", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -1930,80 +1790,21 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             };
           }
         } catch (dbErr: any) {
-          console.error(`Erro atualizando item ${itemId} no pg:`, dbErr);
-          // Se o Postgres está selecionado/ativo e deu erro, retorna o erro 500 para ficar exposto
-          return res.status(500).json({ error: "Erro no banco de dados ao atualizar item", details: dbErr.message });
+          console.error("[RDS UPDATE ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !updatedItem) {
-        console.log(`[DEBUG] PUT /api/itens/${itemId} (memory block) received. body:`, req.body);
-        const itemIdx = memoryItens.findIndex(i => i.id === itemId);
-        if (itemIdx === -1) {
-          console.log(`[DEBUG] PUT /api/itens/${itemId} - Item not found in memoryItens!`);
-          return res.status(404).json({ error: "Item de orçamento não localizado" });
-        }
-
-        const existing = memoryItens[itemIdx];
-        console.log(`[DEBUG] PUT /api/itens/${itemId} existing item:`, existing);
-
-        if (categoriaId) {
-          const catExists = memoryCategorias.find(c => c.id === categoriaId);
-          if (!catExists) {
-            return res.status(400).json({ error: "Categoria informada não existe" });
-          }
-        }
-
-        let updatedSubArray: any[] = [];
-        if (subitens !== undefined) {
-          if (typeof subitens === "string") {
-            try {
-              updatedSubArray = JSON.parse(subitens);
-            } catch (e) {
-              updatedSubArray = [];
-            }
-          } else if (Array.isArray(subitens)) {
-            updatedSubArray = subitens;
-          }
-        } else {
-          const currentSub = existing.subitens || [];
-          updatedSubArray = typeof currentSub === "string" ? JSON.parse(currentSub) : currentSub;
-        }
-
-        let updatedValor = valor !== undefined ? Number(valor) : existing.valor;
-        if (Array.isArray(updatedSubArray) && updatedSubArray.length > 0) {
-          updatedValor = updatedSubArray.reduce((acc, sub) => acc + (Number(sub.valor) || 0), 0);
-          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens.length: ${updatedSubArray.length}. Recalculated total weight: ${updatedValor}`);
-        } else {
-          console.log(`[DEBUG] PUT /api/itens/${itemId} - subitens is empty or not array. Keeping valor:`, updatedValor);
-        }
-
-        const updated = {
-          ...existing,
-          descricao: descricao !== undefined ? descricao : existing.descricao,
-          categoriaId: categoriaId !== undefined ? categoriaId : existing.categoriaId,
-          valor: updatedValor,
-          status: status !== undefined ? status : existing.status,
-          observacao: observacao !== undefined ? (observacao || null) : existing.observacao,
-          subitens: updatedSubArray,
-          updatedAt: new Date()
-        };
-        memoryItens[itemIdx] = updated;
-        console.log(`[DEBUG] PUT /api/itens/${itemId} - memoryItens[${itemIdx}] updated:`, updated);
-
-        const catObj = memoryCategorias.find(c => c.id === updated.categoriaId) || null;
-
-        updatedItem = {
-          ...updated,
-          subitens: updatedSubArray,
-          categoria: catObj
-        };
-        saveMemoryDb();
+      if (!updatedItem) {
+        return res.status(404).json({ error: "Item de orçamento não localizado ou falha ao atualizar" });
       }
 
       res.json(updatedItem);
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao atualizar item do orçamento", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao atualizar item do orçamento", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 
@@ -2017,23 +1818,22 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         try {
           const delRes = await pool.query('DELETE FROM itens_orcamento WHERE id = $1', [itemId]);
           isRemoved = (delRes.rowCount ?? 0) > 0;
-        } catch (dbErr) {
-          console.error(`Erro removendo item ${itemId} no pg:`, dbErr);
+        } catch (dbErr: any) {
+          console.error("[RDS DELETE ERROR] Erro bruto do driver no pg:");
+          console.error(dbErr);
+          throw dbErr;
         }
+      } else {
+        throw new Error("Conexão com AWS RDS não está ativa.");
       }
 
-      if (!dbConnected || !isRemoved) {
-        const itemIdx = memoryItens.findIndex(i => i.id === itemId);
-        if (itemIdx === -1) {
-          return res.status(404).json({ error: "Item de orçamento não localizado" });
-        }
-        memoryItens.splice(itemIdx, 1);
-        saveMemoryDb();
+      if (!isRemoved) {
+        return res.status(404).json({ error: "Item de orçamento não localizado ou falha ao excluir" });
       }
 
       res.json({ success: true, message: "Item removido com sucesso" });
     } catch (error: any) {
-      res.status(500).json({ error: "Erro ao deletar item do orçamento", details: error.message });
+      res.status(500).json({ error: error.message || "Erro ao deletar item do orçamento", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
     }
   });
 

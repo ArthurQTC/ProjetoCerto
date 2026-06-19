@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { ItemOrcamento, SubItem } from "./types";
+import { ItemOrcamento, SubItemOrcamento } from "./types";
 
 interface UIState {
   activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase";
@@ -36,8 +36,8 @@ export const useUIStore = create<UIState>((set) => ({
 interface ItemsState {
   items: ItemOrcamento[];
   setItems: (items: ItemOrcamento[]) => void;
-  addSubItem: (itemId: string, subItem: Omit<SubItem, "id">) => ItemOrcamento | undefined;
-  updateSubItem: (itemId: string, subId: string, subItem: Partial<SubItem>) => ItemOrcamento | undefined;
+  addSubItem: (itemId: string, subItem: Omit<SubItemOrcamento, "id">) => ItemOrcamento | undefined;
+  updateSubItem: (itemId: string, subId: string, subItem: Partial<SubItemOrcamento>) => ItemOrcamento | undefined;
   deleteSubItem: (itemId: string, subId: string) => ItemOrcamento | undefined;
   updateItemValor: (itemId: string, newValor: number) => ItemOrcamento | undefined;
   removeItem: (itemId: string) => void;

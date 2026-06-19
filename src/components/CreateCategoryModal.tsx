@@ -60,7 +60,13 @@ export default function CreateCategoryModal({ isOpen, onClose, onSuccess }: Crea
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "Falha ao cadastrar categoria");
+        const fullErrorMessage = [
+          errorData.error,
+          errorData.details ? `Detalhes: ${errorData.details}` : "",
+          errorData.table ? `Tabela: ${errorData.table}` : "",
+          errorData.hint ? `Dica: ${errorData.hint}` : ""
+        ].filter(Boolean).join(" | ");
+        throw new Error(fullErrorMessage || "Falha ao cadastrar categoria");
       }
 
       setNome("");
@@ -82,7 +88,13 @@ export default function CreateCategoryModal({ isOpen, onClose, onSuccess }: Crea
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "Falha ao excluir categoria");
+        const fullErrorMessage = [
+          errorData.error,
+          errorData.details ? `Detalhes: ${errorData.details}` : "",
+          errorData.table ? `Tabela: ${errorData.table}` : "",
+          errorData.hint ? `Dica: ${errorData.hint}` : ""
+        ].filter(Boolean).join(" | ");
+        throw new Error(fullErrorMessage || "Falha ao excluir categoria");
       }
 
       await loadCategories();

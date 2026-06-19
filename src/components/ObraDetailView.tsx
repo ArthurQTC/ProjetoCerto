@@ -216,7 +216,7 @@ export default function ObraDetailView() {
       const projectDetails = [
         { Propriedade: "Contrato", Valor: project?.nome },
         { Propriedade: "ID", Valor: project?.id },
-        { Propriedade: "Status", Valor: project?.status },
+        { Propriedade: "Status", Valor: project?.statusContrato },
         { Propriedade: "Data de Criação", Valor: project?.createdAt ? new Date(project.createdAt).toLocaleDateString("pt-BR") : "" },
         {},
         { Propriedade: "---", Valor: "---" },
