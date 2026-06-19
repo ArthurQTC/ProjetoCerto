@@ -1,0 +1,96 @@
+-- CRIAÇÃO DAS TABELAS NORMALIZADAS
+
+-- 1. Categorias de Orçamento
+CREATE TABLE categorias_orcamento (
+    id VARCHAR(255) PRIMARY KEY,
+    nome VARCHAR(255) UNIQUE NOT NULL,
+    "grupoCalculo" VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Obras / Projetos
+CREATE TABLE obras (
+    id VARCHAR(255) PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    cliente VARCHAR(255),
+    observacoes TEXT,
+    "valorContrato" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    "statusContrato" VARCHAR(255) NOT NULL DEFAULT 'CONSOLIDADO',
+    "etapaLevantamento" BOOLEAN NOT NULL DEFAULT FALSE,
+    "etapaProjeto" BOOLEAN NOT NULL DEFAULT FALSE,
+    "etapaCotacao" BOOLEAN NOT NULL DEFAULT FALSE,
+    "etapaFabricacao" BOOLEAN NOT NULL DEFAULT FALSE,
+    prazo VARCHAR(255),
+    "numeroPedido" VARCHAR(255),
+    "dataInicioContrato" VARCHAR(255),
+    "dataFimContrato" VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Documentos Anexos (AWS S3)
+CREATE TABLE documentos (
+    id VARCHAR(255) PRIMARY KEY,
+    obra_id VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+    categoria VARCHAR(100),
+    nome_original VARCHAR(255) NOT NULL,
+    nome_armazenado VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100),
+    tamanho BIGINT,
+    s3_key VARCHAR(500) NOT NULL,
+    bucket VARCHAR(255) NOT NULL,
+    url TEXT,
+    versao INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Itens do Orçamento
+CREATE TABLE itens_orcamento (
+    id VARCHAR(255) PRIMARY KEY,
+    descricao VARCHAR(255) NOT NULL,
+    valor DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    status VARCHAR(255) NOT NULL DEFAULT 'ATIVO',
+    observacao TEXT,
+    ordem INTEGER NOT NULL DEFAULT 0,
+    obra_id VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+    categoria_id VARCHAR(255) NOT NULL REFERENCES categorias_orcamento(id) ON DELETE RESTRICT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Subitens do Orçamento (Normalizado)
+CREATE TABLE subitens_orcamento (
+    id VARCHAR(255) PRIMARY KEY,
+    item_id VARCHAR(255) NOT NULL REFERENCES itens_orcamento(id) ON DELETE CASCADE,
+    descricao VARCHAR(500) NOT NULL,
+    quantidade DOUBLE PRECISION DEFAULT 1,
+    unidade VARCHAR(50) DEFAULT 'un',
+    valor_unitario DOUBLE PRECISION DEFAULT 0.0,
+    valor_total DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Tarefas (Futuro)
+CREATE TABLE tarefas (
+    id VARCHAR(255) PRIMARY KEY,
+    obra_id VARCHAR(255) REFERENCES obras(id) ON DELETE CASCADE,
+    titulo VARCHAR(255) NOT NULL,
+    descricao TEXT,
+    status VARCHAR(100) DEFAULT 'PENDENTE',
+    prazo TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. Checklist (Futuro)
+CREATE TABLE checklist (
+    id VARCHAR(255) PRIMARY KEY,
+    tarefa_id VARCHAR(255) REFERENCES tarefas(id) ON DELETE CASCADE,
+    descricao VARCHAR(255) NOT NULL,
+    concluido BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
