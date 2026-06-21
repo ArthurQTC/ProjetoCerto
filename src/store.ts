@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { ItemOrcamento, SubItemOrcamento } from "./types";
 
 interface UIState {
-  activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase";
+  activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase" | "levantamentos";
   projectFilter: "CONSOLIDADO" | "A_FECHAR";
   selectedProjectId: String | null;
   selectedObraId: String | null;
@@ -13,6 +13,7 @@ interface UIState {
   navigateToObra: (id: string) => void;
   navigateToSteps: (id?: string) => void;
   navigateToSupabase: () => void;
+  navigateToLevantamentos: () => void;
   setSearchTerm: (term: string) => void;
   setProjectFilter: (filter: "CONSOLIDADO" | "A_FECHAR") => void;
 }
@@ -29,6 +30,7 @@ export const useUIStore = create<UIState>((set) => ({
   navigateToObra: (id) => set({ activeView: "project-detail", selectedProjectId: id, selectedObraId: id, searchTerm: "" }),
   navigateToSteps: (id) => set({ activeView: "steps", selectedProjectId: id || null, selectedObraId: id || null, searchTerm: "" }),
   navigateToSupabase: () => set({ activeView: "supabase", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
+  navigateToLevantamentos: () => set({ activeView: "levantamentos", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
   setSearchTerm: (term) => set({ searchTerm: term }),
   setProjectFilter: (filter) => set({ projectFilter: filter }),
 }));

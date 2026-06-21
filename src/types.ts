@@ -69,6 +69,43 @@ export interface Obra {
 
 export type Projeto = Obra;
 
+export interface Material {
+  id: string;
+  codigo: string;
+  descricao: string;
+  ativo: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LevantamentoSubestrutura {
+  materialId: string;
+  qtdM2: number;
+  valorUnitario: number;
+  material?: Material | null;
+}
+
+export interface Levantamento {
+  id: string;
+  ref: string;
+  obra: string;
+  cliente: string;
+  dataSolicitacao: string; // "DD/MM/AAAA" or YYYY-MM-DD
+  abc: string;
+  solicitante: string;
+  responsavel: "Andrew" | "Mayra";
+  status: "Concluído" | "Em Desenvolvimento" | "Pendente";
+  previsao: string; // "DD/MM/AAAA" or YYYY-MM-DD
+  materialId?: string | null;
+  material?: Material | null;
+  qtdM2?: number | null;
+  statusEnvio: "Enviado" | "Pendente";
+  contratoAFecharId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  subestruturas?: LevantamentoSubestrutura[];
+}
+
 export interface ObraSummary {
   id: string;
   nome: string;

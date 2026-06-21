@@ -19,6 +19,7 @@ import DashboardView from "./components/DashboardView";
 import ProjectsListView from "./components/ProjectsListView";
 import ObraDetailView from "./components/ObraDetailView";
 import ContractStepsView from "./components/ContractStepsView";
+import LevantamentosView from "./components/LevantamentosView";
 
 // Initialize React Query Client for server state management
 const queryClient = new QueryClient({
@@ -38,6 +39,7 @@ function AppContent() {
   const navigateToDashboard = useUIStore((state) => state.navigateToDashboard);
   const navigateToProjects = useUIStore((state) => state.navigateToProjects);
   const navigateToSteps = useUIStore((state) => state.navigateToSteps);
+  const navigateToLevantamentos = useUIStore((state) => state.navigateToLevantamentos);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
@@ -161,24 +163,21 @@ function AppContent() {
                 <Lock className="w-3.5 h-3.5 text-[#D9A441] opacity-70 animate-pulse" />
               </button>
 
-              {/* Levantamentos/Orçamentos - Ghost / Locked Module with maintenance control */}
+              {/* Levantamentos/Orçamentos - Fully Functional Module */}
               <button
                 onClick={() => {
-                  setMaintenanceModule("Levantamentos/Orçamentos");
+                  navigateToLevantamentos();
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center justify-between transition-all duration-200 ${
-                  maintenanceModule === "Levantamentos/Orçamentos"
-                    ? "bg-white/10 text-white font-extrabold border-l-2 border-brand-accent/60 pl-2.5"
-                    : "text-white/40 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                  activeView === "levantamentos"
+                    ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                    : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
                 }`}
                 id="sidebar_nav_levantamentos"
               >
-                <div className="flex items-center gap-2.5">
-                  <Coins className="w-4 h-4 text-brand-accent/50" />
-                  <span>Levantamentos/Orçamentos</span>
-                </div>
-                <Lock className="w-3.5 h-3.5 text-[#D9A441] opacity-70 animate-pulse" />
+                <Coins className="w-4 h-4 text-brand-accent" />
+                <span>Levantamentos/Orçamentos</span>
               </button>
             </nav>
           </div>
@@ -248,6 +247,8 @@ function AppContent() {
               <ProjectsListView />
             ) : activeView === "steps" ? (
               <ContractStepsView />
+            ) : activeView === "levantamentos" ? (
+              <LevantamentosView />
             ) : (
               <ObraDetailView />
             )}

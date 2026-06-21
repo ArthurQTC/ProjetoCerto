@@ -13,15 +13,31 @@
     "@google/genai": "latest",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "pg": "^8.12.0"
+    "pg": "^8.12.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@tanstack/react-query": "^5.50.1",
+    "lucide-react": "^0.395.0",
+    "recharts": "^2.12.7",
+    "zustand": "^4.5.2",
+    "xlsx": "^0.18.5",
+    "@fortune-sheet/react": "latest",
+    "luckyexcel": "^1.0.1",
+    "framer-motion": "latest",
+    "motion": "latest"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.9",
     "@types/pg": "^8.11.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "esbuild": "^0.21.5",
     "tsx": "^4.15.6",
     "typescript": "^5.2.2",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "tailwindcss": "latest",
+    "@tailwindcss/vite": "latest"
   }
 }
