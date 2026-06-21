@@ -10,34 +10,38 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1073.0",
+    "@aws-sdk/s3-request-presigner": "^3.1073.0",
+    "@fortune-sheet/react": "latest",
     "@google/genai": "latest",
+    "@tanstack/react-query": "^5.50.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "framer-motion": "latest",
+    "lucide-react": "^0.395.0",
+    "luckyexcel": "^1.0.1",
+    "motion": "latest",
+    "multer": "^2.2.0",
     "pg": "^8.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@tanstack/react-query": "^5.50.1",
-    "lucide-react": "^0.395.0",
     "recharts": "^2.12.7",
-    "zustand": "^4.5.2",
     "xlsx": "^0.18.5",
-    "@fortune-sheet/react": "latest",
-    "luckyexcel": "^1.0.1",
-    "framer-motion": "latest",
-    "motion": "latest"
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "latest",
     "@types/express": "^4.17.21",
+    "@types/multer": "^2.1.0",
     "@types/node": "^20.14.9",
     "@types/pg": "^8.11.6",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
     "esbuild": "^0.21.5",
+    "tailwindcss": "latest",
     "tsx": "^4.15.6",
     "typescript": "^5.2.2",
-    "vite": "^5.3.1",
-    "@vitejs/plugin-react": "^4.3.1",
-    "tailwindcss": "latest",
-    "@tailwindcss/vite": "latest"
+    "vite": "^5.3.1"
   }
 }

@@ -4,6 +4,38 @@ dotenv.config();
 import express from "express";
 import path from "path";
 import fs from "fs";
+import multer from "multer";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+// AWS S3 Setup
+const REQUIRED_AWS_VARS = ["AWS_REGION", "AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
+let awsConfigValid = true;
+
+for (const varName of REQUIRED_AWS_VARS) {
+  if (!process.env[varName]) {
+    console.error(`[ERROR] Variável de ambiente ${varName} ausente.`);
+    awsConfigValid = false;
+  }
+}
+
+if (!awsConfigValid) {
+  console.error("[ERROR] Configuração AWS inválida. O upload S3 estará desativado.");
+}
+
+const s3Client = awsConfigValid ? new S3Client({
+  region: process.env.AWS_REGION!,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+  },
+}) : null;
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || "projetocerto-documentos-prod";
+const upload = multer({ storage: multer.memoryStorage() });
+
+/*
+  S3 Folder Structure: obras/{obra_id}/{categoria_lower}/
+*/
 
 // Sanitize and normalize database connection string
 function sanitizeDbUrl(rawUrl: string): string {
@@ -232,8 +264,43 @@ async function checkDbConnection() {
             id VARCHAR(255) PRIMARY KEY,
             nome VARCHAR(255) UNIQUE NOT NULL,
             "grupoCalculo" VARCHAR(255) NOT NULL
-          )
+          );
+          
+          DO $$ BEGIN
+              CREATE TYPE categoria_documento AS ENUM (
+                'EDITAL', 'CONTRATO', 'MEDICAO', 'ART', 'CNO', 'ORCAMENTO', 
+                'LEVANTAMENTO', 'NF', 'COMPROVANTE', 'OUTROS'
+              );
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END $$;
+          
+          CREATE TABLE IF NOT EXISTS documentos (
+            id VARCHAR(255) PRIMARY KEY,
+            obra_id VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            nome_arquivo VARCHAR(255) NOT NULL,
+            nome_original VARCHAR(255) NOT NULL,
+            extensao VARCHAR(50) NOT NULL,
+            mime_type VARCHAR(100) NOT NULL,
+            tamanho_bytes BIGINT NOT NULL,
+            categoria categoria_documento NOT NULL,
+            s3_key VARCHAR(512) NOT NULL,
+            s3_url VARCHAR(1024) NOT NULL,
+            hash_arquivo VARCHAR(255),
+            observacao TEXT,
+            uploaded_by VARCHAR(255),
+            versao INTEGER DEFAULT 1,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            deleted_at TIMESTAMP WITH TIME ZONE
+          );
+          
+          CREATE INDEX IF NOT EXISTS idx_documentos_obra_id ON documentos(obra_id);
+          CREATE INDEX IF NOT EXISTS idx_documentos_obra_categoria ON documentos(obra_id, categoria);
+          CREATE INDEX IF NOT EXISTS idx_documentos_categoria ON documentos(categoria);
+          CREATE INDEX IF NOT EXISTS idx_documentos_created_at ON documentos(created_at);
         `);
+
 
         await pool.query(`
           CREATE TABLE IF NOT EXISTS obras (
@@ -377,13 +444,8 @@ async function checkDbConnection() {
           { nome: 'Transporte / Logística', grupoCalculo: 'LOGISTICA' },
           { nome: 'Margem Líquida', grupoCalculo: 'MARGEM' },
         ];
-        for (const cat of defaultCategories) {
-          await pool.query(`
-            INSERT INTO categorias (id, nome, "grupoCalculo")
-            VALUES ($1, $2, $3)
-            ON CONFLICT (nome) DO UPDATE SET "grupoCalculo" = EXCLUDED."grupoCalculo"
-          `, ["cat-" + Math.random().toString(36).substring(2, 10), cat.nome, cat.grupoCalculo]);
-        }
+        // Seed default categories
+        await seedCategories(pool);
 
         // ONE-TIME CLEAN REMOVED: Automatic database wiping is strictly disabled to prevent loss of user data on server restart.
         console.log("[pg Sync] Carga de tabelas garantida e protegida contra limpezas involuntárias.");
@@ -408,6 +470,47 @@ async function checkDbConnection() {
 function generateId() {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
+
+const seedCategories = async (pool: any) => {
+  const mandatoryCategories = [
+    { nome: 'Materiais', grupoCalculo: 'MATERIAL' },
+    { nome: 'Insumos', grupoCalculo: 'MATERIAL' },
+    { nome: 'Mão de Obra', grupoCalculo: 'MAO_OBRA' },
+    { nome: 'Administração', grupoCalculo: 'ADMINISTRACAO' },
+    { nome: 'Impostos', grupoCalculo: 'IMPOSTOS' },
+    { nome: 'Transporte / Logística', grupoCalculo: 'LOGISTICA' },
+    { nome: 'Margem Líquida', grupoCalculo: 'MARGEM' },
+  ];
+
+  console.log("[BOOTSTRAP] Verificando categorias obrigatórias...");
+  let createdCount = 0;
+  let verifiedCount = 0;
+
+  for (const cat of mandatoryCategories) {
+    try {
+      const res = await pool.query(`
+        INSERT INTO categorias (id, nome, "grupoCalculo")
+        VALUES ($1, $2, $3)
+        ON CONFLICT (nome) DO UPDATE SET "grupoCalculo" = EXCLUDED."grupoCalculo"
+        RETURNING (xmax = 0) AS inserted;
+      `, ["cat-" + Math.random().toString(36).substring(2, 10), cat.nome, cat.grupoCalculo]);
+      
+      verifiedCount++;
+      if (res.rows[0].inserted) {
+        console.log(`[BOOTSTRAP] Categoria ${cat.nome} criada.`);
+        createdCount++;
+      } else {
+        console.log(`[BOOTSTRAP] Categoria ${cat.nome} OK.`);
+      }
+    } catch (err) {
+      console.error(`[BOOTSTRAP] Falha ao criar categoria ${cat.nome}:`, err);
+      throw new Error(`Bootstrap Failure: categoria "${cat.nome}" não pôde ser criada.`);
+    }
+  }
+
+  console.log(`[BOOTSTRAP] Total categorias verificadas: ${verifiedCount}`);
+  console.log(`[BOOTSTRAP] Total categorias criadas: ${createdCount}`);
+};
 
 const ensureAndRecalculateFixedItems = async (obraId: string, valorContrato: number) => {
   const valueContract = Number(valorContrato) || 0;
@@ -1166,7 +1269,56 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   });
 
   // GET Custo ADM Global
-  app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
+  
+// --- Documentos Endpoints ---
+app.post("/api/documentos/upload", upload.single("file"), async (req, res) => {
+  if (!s3Client) return res.status(503).json({ error: "Serviço S3 não configurado" });
+  try {
+    const { obra_id, categoria, observacao } = req.body;
+    const file = req.file;
+    if (!file || !obra_id || !categoria) return res.status(400).json({ error: "Dados incompletos" });
+
+    const s3Key = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
+    await s3Client.send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key, Body: file.buffer, ContentType: file.mimetype }));
+
+    const docId = `doc-${Math.random().toString(36).substring(2, 9)}`;
+    const [ext] = file.originalname.split('.').reverse();
+    await pool.query(`INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, 
+      [docId, obra_id, file.originalname, file.originalname, ext, file.mimetype, file.size, categoria, s3Key, `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`]);
+
+    res.status(201).json({ id: docId });
+  } catch (err) { console.error(err); res.status(500).json({ error: "Falha upload" }); }
+});
+
+app.get("/api/documentos/:obra_id", async (req, res) => {
+  try {
+    const docs = await pool.query('SELECT * FROM documentos WHERE obra_id = $1 AND deleted_at IS NULL', [req.params.obra_id]);
+    res.json(docs.rows);
+  } catch (err) { res.status(500).json({ error: "Falha busca" }); }
+});
+
+app.get("/api/documentos/:id/download", async (req, res) => {
+  if (!s3Client) return res.status(503).json({ error: "Serviço S3 não configurado" });
+  try {
+    const doc = await pool.query('SELECT s3_key FROM documentos WHERE id = $1', [req.params.id]);
+    if (doc.rows.length === 0) return res.status(404).end();
+    const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: BUCKET_NAME, Key: doc.rows[0].s3_key }), { expiresIn: 3600 });
+    res.json({ url });
+  } catch (err) { res.status(500).json({ error: "Falha url" }); }
+});
+
+app.delete("/api/documentos/:id", async (req, res) => {
+  if (!s3Client) return res.status(503).json({ error: "Serviço S3 não configurado" });
+  try {
+    const doc = await pool.query('SELECT s3_key FROM documentos WHERE id = $1', [req.params.id]);
+    if (doc.rows.length === 0) return res.status(404).end();
+    await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: doc.rows[0].s3_key }));
+    await pool.query('DELETE FROM documentos WHERE id = $1', [req.params.id]);
+    res.status(204).end();
+  } catch (err) { res.status(500).json({ error: "Falha exclusão" }); }
+});
+
+app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
     try {
       let globalValue = 5.0; // fallback standard default
       if (dbConnected && pool) {
@@ -1319,6 +1471,8 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
 
       if (dbConnected && pool) {
         try {
+          await seedCategories(pool);
+          
           const id = "p-" + generateId();
           await pool.query(`
             INSERT INTO obras (
