@@ -145,7 +145,7 @@ import { createServer as createViteServer } from "vite";
 import pg from "pg";
 const { Pool } = pg;
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 let rdsPoolNative: pg.Pool | null = null;
 let dbConnectedRds = false;
 
@@ -666,6 +666,7 @@ const formatObraWithMetrics = (obra: any) => {
 };
 
 async function bootstrap() {
+  console.log(`[BOOT] Inicializando servidor na porta ${PORT}...`);
   const app = express();
   app.use(express.json({ limit: "150mb" }));
   app.use(express.urlencoded({ limit: "150mb", extended: true }));
@@ -2613,6 +2614,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT} at 0.0.0.0`);
+    console.log(`[S3 STATUS] ${s3Client ? "ATIVADO" : "DESATIVADO"}`);
     // Boot: trace the database state or use local fallback seamlessly
     checkDbConnection().then((connected) => {
       console.log(`[BOOT] Conexão inicial com banco de dados finalizada: ${connected ? "Supabase PostgreSQL ATIVO" : "Modo em Memória fall-back ATIVO"}`);
