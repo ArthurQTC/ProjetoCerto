@@ -31,6 +31,24 @@ const s3Client = awsConfigValid ? new S3Client({
   },
 }) : null;
 const BUCKET_NAME = process.env.AWS_S3_BUCKET || "projetocerto-documentos-prod";
+
+// Local storage setup
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const uploadLocal = multer({ storage: storage });
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 /*
@@ -284,8 +302,9 @@ async function checkDbConnection() {
             mime_type VARCHAR(100) NOT NULL,
             tamanho_bytes BIGINT NOT NULL,
             categoria categoria_documento NOT NULL,
-            s3_key VARCHAR(512) NOT NULL,
-            s3_url VARCHAR(1024) NOT NULL,
+            s3_key VARCHAR(512),
+            s3_url VARCHAR(1024),
+            caminho_local VARCHAR(512),
             hash_arquivo VARCHAR(255),
             observacao TEXT,
             uploaded_by VARCHAR(255),
@@ -294,6 +313,8 @@ async function checkDbConnection() {
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             deleted_at TIMESTAMP WITH TIME ZONE
           );
+          
+          ALTER TABLE documentos ADD COLUMN IF NOT EXISTS caminho_local VARCHAR(512);
           
           CREATE INDEX IF NOT EXISTS idx_documentos_obra_id ON documentos(obra_id);
           CREATE INDEX IF NOT EXISTS idx_documentos_obra_categoria ON documentos(obra_id, categoria);
@@ -1272,35 +1293,28 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   // GET Custo ADM Global
   
 // --- Documentos Endpoints ---
-app.post("/api/documentos/upload", upload.single("file"), async (req, res) => {
-  if (!s3Client) return res.status(503).json({ error: "Serviço S3 não configurado" });
+app.post("/documentos/upload", uploadLocal.single("file"), async (req, res) => {
   try {
-    console.log("[S3 DEBUG] Upload iniciado");
-    console.log("[S3 DEBUG] Bucket:", process.env.AWS_S3_BUCKET);
-    console.log("[S3 DEBUG] Region:", process.env.AWS_REGION);
-    console.log("[S3 DEBUG] File:", req.file?.originalname);
-    console.log("[S3 DEBUG] Size:", req.file?.size);
-
     const { obra_id, categoria, observacao } = req.body;
     const file = req.file;
-    if (!file || !obra_id || !categoria) return res.status(400).json({ error: "Dados incompletos" });
 
-    const s3Key = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
-    
-    console.log("[S3 DEBUG] Enviando para S3...");
-    const result = await s3Client.send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key, Body: file.buffer, ContentType: file.mimetype }));
-    console.log("[S3 DEBUG] Upload S3 SUCESSO:", result.$metadata);
+    if (!file || !obra_id || !categoria) {
+      return res.status(400).json({ error: "Dados incompletos" });
+    }
 
-    const docId = `doc-${Math.random().toString(36).substring(2, 9)}`;
-    const [ext] = file.originalname.split('.').reverse();
-    await pool.query(`INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, 
-      [docId, obra_id, file.originalname, file.originalname, ext, file.mimetype, file.size, categoria, s3Key, `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`]);
+    const docId = `doc-${generateId()}`;
+    const caminho_local = file.path;
 
-    console.log("[S3 DEBUG] Upload finalizado com sucesso");
-    res.status(201).json({ id: docId });
-  } catch (err) { 
-    console.error("[S3 DEBUG] ERRO REAL DO S3:", err);
-    res.status(500).json({ error: "Falha upload", details: err }); 
+    // Insert into DB
+    await pool.query(`
+      INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, caminho_local, observacao)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `, [docId, obra_id, file.filename, file.originalname, path.extname(file.originalname), file.mimetype, file.size, categoria, caminho_local, observacao]);
+
+    res.status(201).json({ id: docId, message: "Arquivo carregado com sucesso" });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: "Falha ao processar upload" });
   }
 });
 
