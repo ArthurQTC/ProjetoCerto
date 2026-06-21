@@ -1,67 +1,69 @@
--- ====================================================================================
--- SCRIPT DE INICIALIZAÇÃO AWS RDS POSTGRESQL (Compatível com DBeaver e Prisma)
--- ====================================================================================
+-- ====================================================================
+-- SCRIPT DE CRIAÇÃO E CONFIGURAÇÃO DO NOVO BANCO DE DATOS AWS RDS
+-- ====================================================================
+-- Este script recria de forma exata a estrutura do banco de dados 
+-- "gestao-obras" no novo banco de dados PostgreSQL.
+-- ====================================================================
 
--- 1. Criação do Schema (opcional, normalmente public já existe)
-CREATE SCHEMA IF NOT EXISTS public;
-
--- 2. Tabela: categorias 
--- (Sem dependências, deve ser criada primeiro)
-CREATE TABLE IF NOT EXISTS public.categorias (
-    id VARCHAR(255) PRIMARY KEY,
-    nome VARCHAR(255) UNIQUE NOT NULL,
-    "grupoCalculo" VARCHAR(255) NOT NULL
+-- 1. Criação da Tabela de Projetos / Obras
+CREATE TABLE IF NOT EXISTS "obras" (
+  "id" VARCHAR(255) PRIMARY KEY,
+  "nome" VARCHAR(255) NOT NULL,
+  "cliente" VARCHAR(255),
+  "observacoes" TEXT,
+  "valorContrato" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  "statusContrato" VARCHAR(255) NOT NULL DEFAULT 'CONSOLIDADO',
+  "etapaLevantamento" BOOLEAN NOT NULL DEFAULT false,
+  "etapaProjeto" BOOLEAN NOT NULL DEFAULT false,
+  "etapaCotacao" BOOLEAN NOT NULL DEFAULT false,
+  "etapaFabricacao" BOOLEAN NOT NULL DEFAULT false,
+  "prazo" VARCHAR(255),
+  "numeroPedido" VARCHAR(255),
+  "documentos" TEXT NOT NULL DEFAULT '[]',
+  "dataInicioContrato" VARCHAR(255),
+  "dataFimContrato" VARCHAR(255),
+  "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Tabela: obras
--- (Sem dependências de outras tabelas de negócios, serve de pai para os itens)
-CREATE TABLE IF NOT EXISTS public.obras (
-    id VARCHAR(255) PRIMARY KEY,
-    nome VARCHAR(255) NOT NULL,
-    cliente VARCHAR(255),
-    observacoes TEXT,
-    "valorContrato" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-    "statusContrato" VARCHAR(255) NOT NULL DEFAULT 'CONSOLIDADO',
-    "etapaLevantamento" BOOLEAN NOT NULL DEFAULT FALSE,
-    "etapaProjeto" BOOLEAN NOT NULL DEFAULT FALSE,
-    "etapaCotacao" BOOLEAN NOT NULL DEFAULT FALSE,
-    "etapaFabricacao" BOOLEAN NOT NULL DEFAULT FALSE,
-    prazo VARCHAR(255),
-    "numeroPedido" VARCHAR(255),
-    documentos TEXT NOT NULL DEFAULT '[]',
-    "dataInicioContrato" VARCHAR(255),
-    "dataFimContrato" VARCHAR(255),
-    "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+-- Índices de desempenho para a tabela de Obras
+CREATE INDEX IF NOT EXISTS "idx_obras_created_at" ON "obras" USING btree ("createdAt" DESC);
+CREATE INDEX IF NOT EXISTS "idx_obras_status" ON "obras" USING btree ("statusContrato");
+
+
+-- 2. Criação da Tabela de Categorias
+CREATE TABLE IF NOT EXISTS "categorias" (
+  "id" VARCHAR(255) PRIMARY KEY,
+  "nome" VARCHAR(255) UNIQUE NOT NULL,
+  "grupoCalculo" VARCHAR(255) NOT NULL
 );
 
--- 4. Tabela: itens_orcamento
--- (Depende de obras e categorias)
-CREATE TABLE IF NOT EXISTS public.itens_orcamento (
-    id VARCHAR(255) PRIMARY KEY,
-    descricao VARCHAR(255) NOT NULL,
-    valor DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-    status VARCHAR(255) NOT NULL DEFAULT 'ATIVO',
-    observacao TEXT,
-    ordem INTEGER NOT NULL DEFAULT 0,
-    subitens TEXT NOT NULL DEFAULT '[]',
-    "obraId" VARCHAR(255) NOT NULL REFERENCES public.obras(id) ON DELETE CASCADE,
-    "categoriaId" VARCHAR(255) NOT NULL REFERENCES public.categorias(id) ON DELETE CASCADE,
-    "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+
+-- 3. Criação da Tabela de Itens de Orçamento
+CREATE TABLE IF NOT EXISTS "itens_orcamento" (
+  "id" VARCHAR(255) PRIMARY KEY,
+  "descricao" VARCHAR(255) NOT NULL,
+  "valor" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  "status" VARCHAR(255) NOT NULL DEFAULT 'ATIVO',
+  "observacao" TEXT,
+  "ordem" INTEGER NOT NULL DEFAULT 0,
+  "subitens" TEXT NOT NULL DEFAULT '[]',
+  "obraId" VARCHAR(255) NOT NULL,
+  "categoriaId" VARCHAR(255) NOT NULL,
+  "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- ====================================================================================
--- ÍNDICES DE PERFORMANCE PARA BUSCAS E RELACIONAMENTOS (FOREIGN KEYS)
--- ====================================================================================
+-- Índices de desempenho e chaves estrangeiras para Itens de Orçamento
+CREATE INDEX IF NOT EXISTS "idx_itens_categoria_id" ON "itens_orcamento" USING btree ("categoriaId");
+CREATE INDEX IF NOT EXISTS "idx_itens_obra_id" ON "itens_orcamento" USING btree ("obraId");
+CREATE INDEX IF NOT EXISTS "idx_itens_ordem" ON "itens_orcamento" USING btree ("ordem");
 
--- Acelerar buscas por status e cronologia na listagem de obras
-CREATE INDEX IF NOT EXISTS idx_obras_status ON public.obras("statusContrato");
-CREATE INDEX IF NOT EXISTS idx_obras_created_at ON public.obras("createdAt" DESC);
+-- Restrições de Integridade (Chaves Estrangeiras) com ON DELETE CASCADE
+ALTER TABLE "itens_orcamento" 
+  ADD CONSTRAINT "itens_orcamento_obraId_fkey" 
+  FOREIGN KEY ("obraId") REFERENCES "obras"("id") ON DELETE CASCADE;
 
--- Acelerar leitura dos itens ao carregar uma obra e filtros por categoria
-CREATE INDEX IF NOT EXISTS idx_itens_obra_id ON public.itens_orcamento("obraId");
-CREATE INDEX IF NOT EXISTS idx_itens_categoria_id ON public.itens_orcamento("categoriaId");
-
--- Manter a ordenação do Drag-n-Drop rápida
-CREATE INDEX IF NOT EXISTS idx_itens_ordem ON public.itens_orcamento("ordem" ASC);
+ALTER TABLE "itens_orcamento" 
+  ADD CONSTRAINT "itens_orcamento_categoriaId_fkey" 
+  FOREIGN KEY ("categoriaId") REFERENCES "categorias"("id") ON DELETE CASCADE;
