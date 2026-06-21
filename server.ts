@@ -2612,7 +2612,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Express gateway running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT} at 0.0.0.0`);
     // Boot: trace the database state or use local fallback seamlessly
     checkDbConnection().then((connected) => {
       console.log(`[BOOT] Conexão inicial com banco de dados finalizada: ${connected ? "Supabase PostgreSQL ATIVO" : "Modo em Memória fall-back ATIVO"}`);
