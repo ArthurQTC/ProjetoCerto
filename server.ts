@@ -1,6 +1,3 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -8,29 +5,29 @@ import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-// AWS S3 Setup
-const REQUIRED_AWS_VARS = ["AWS_REGION", "AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
-let awsConfigValid = true;
+// AWS S3 Client
+let s3Client: S3Client | null = null;
+const BUCKET_NAME = process.env.AWS_S3_BUCKET;
 
-for (const varName of REQUIRED_AWS_VARS) {
-  if (!process.env[varName]) {
-    console.error(`[ERROR] Variável de ambiente ${varName} ausente.`);
-    awsConfigValid = false;
+function initializeS3Client() {
+  const REQUIRED_AWS_VARS = ["AWS_REGION", "AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
+  
+  for (const varName of REQUIRED_AWS_VARS) {
+    if (!process.env[varName]) {
+      console.error(`[WARN] Variável de ambiente ${varName} ausente. S3 não será inicializado.`);
+      return;
+    }
   }
-}
 
-if (!awsConfigValid) {
-  console.error("[ERROR] Configuração AWS inválida. O upload S3 estará desativado.");
+  s3Client = new S3Client({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  });
+  console.log(`[BOOT] S3 Client inicializado com sucesso no bucket ${BUCKET_NAME}`);
 }
-
-const s3Client = awsConfigValid ? new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-  },
-}) : null;
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || "projetocerto-documentos-prod";
 
 // Local storage setup
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -685,6 +682,7 @@ const formatObraWithMetrics = (obra: any) => {
 
 async function bootstrap() {
   console.log(`[BOOT] Inicializando servidor na porta ${PORT}...`);
+  initializeS3Client();
   const app = express();
   app.use(express.json({ limit: "150mb" }));
   app.use(express.urlencoded({ limit: "150mb", extended: true }));
@@ -1042,7 +1040,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       let totalAdm = 0;
       obrasCalculadasConsolidadas.forEach((o) => {
         const activeAdm = o.itens
-          .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+          .filter((i: any) => i.status === "ATIVO" && i.descricao?.trim().toUpperCase() === "CUSTO ADM")
           .reduce((sum: number, item: any) => sum + Number(item.valor), 0);
         totalAdm += activeAdm;
       });
@@ -1110,7 +1108,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           observacoes: o.observacoes,
           despesaAdm: o.itens
             ? o.itens
-                .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+                .filter((i: any) => i.status === "ATIVO" && i.descricao?.trim().toUpperCase() === "CUSTO ADM")
                 .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
             : 0,
           itens: o.itens || [],
@@ -1138,7 +1136,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           observacoes: o.observacoes,
           despesaAdm: o.itens
             ? o.itens
-                .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+                .filter((i: any) => i.status === "ATIVO" && i.descricao?.trim().toUpperCase() === "CUSTO ADM")
                 .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
             : 0,
           itens: o.itens || [],
@@ -1291,8 +1289,14 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   
 // --- Documentos Endpoints ---
 app.post("/api/documentos/upload", upload.single("file"), async (req, res) => {
+  console.log("[UPLOAD START]");
+
+  if (!s3Client || !process.env.AWS_REGION || !process.env.AWS_S3_BUCKET || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.error("[UPLOAD ERROR] AWS S3 não configurado corretamente.");
+    return res.status(503).json({ error: "S3 não configurado corretamente" });
+  }
+
   try {
-    console.log("[UPLOAD] Iniciando upload");
     const { obra_id, categoria, observacao } = req.body;
     const file = req.file;
 
@@ -1300,42 +1304,34 @@ app.post("/api/documentos/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Dados incompletos" });
     }
 
-    let s3_key = null;
-    let s3_url = null;
-    let caminho_local = null;
-
-    if (s3Client) {
-      console.log("[UPLOAD] Salvando no S3...");
-      const s3KeyGenerated = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
-      await s3Client.send(new PutObjectCommand({ 
-        Bucket: BUCKET_NAME, 
-        Key: s3KeyGenerated, 
-        Body: file.buffer, 
-        ContentType: file.mimetype 
-      }));
-      s3_key = s3KeyGenerated;
-      s3_url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3KeyGenerated}`;
-      console.log("[UPLOAD] Salvo no S3 com sucesso");
-    } else {
-      console.log("[UPLOAD] Salvando local...");
-      const fileName = `obra-${obra_id}-${Date.now()}-${file.originalname}`;
-      const localPath = path.join(uploadDir, fileName);
-      fs.writeFileSync(localPath, file.buffer);
-      caminho_local = fileName;
-      console.log(`[UPLOAD] Salvo localmente em ${localPath}`);
-    }
+    console.log("[S3 UPLOAD START]");
+    const s3KeyGenerated = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
+    
+    await s3Client.send(new PutObjectCommand({ 
+      Bucket: BUCKET_NAME, 
+      Key: s3KeyGenerated, 
+      Body: file.buffer, 
+      ContentType: file.mimetype 
+    }));
+    
+    const s3_key = s3KeyGenerated;
+    const s3_url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3KeyGenerated}`;
+    
+    console.log(`[S3 UPLOAD SUCCESS] Key: ${s3_key}`);
 
     const docId = `doc-${generateId()}`;
+    
+    console.log("[DB INSERT START]");
     await pool.query(`
-      INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url, caminho_local, observacao)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-    `, [docId, obra_id, file.originalname, file.originalname, path.extname(file.originalname), file.mimetype, file.size, categoria, s3_key, s3_url, caminho_local, observacao]);
+      INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url, observacao)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `, [docId, obra_id, file.originalname, file.originalname, path.extname(file.originalname), file.mimetype, file.size, categoria, s3_key, s3_url, observacao]);
 
-    console.log("[UPLOAD] Insert no banco OK");
-    res.status(201).json({ id: docId, message: "Arquivo carregado com sucesso" });
+    console.log("[UPLOAD SUCCESS]");
+    res.status(201).json({ id: docId, url: s3_url, message: "Arquivo carregado no S3 com sucesso" });
   } catch (err) {
     console.error("[UPLOAD ERROR]:", err);
-    res.status(500).json({ error: "Falha ao processar upload" });
+    res.status(500).json({ error: "Falha na operação de upload S3" });
   }
 });
 

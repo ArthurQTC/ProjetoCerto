@@ -71,7 +71,7 @@ As rotinas para manter a auto-criação de tabelas caso não existam (Self Handl
 
 ```env
 # URL RDS da AWS (Ajuste usuário e senha)
-DATABASE_URL="postgresql://USUARIO:SENHA@gestao-obras-db.c96iewoq88g1.us-east-2.rds.amazonaws.com:5432/postgres?sslmode=require"
+DATABASE_URL="postgresql://USUARIO:SENHA@SEU-ENDPOINT.rds.amazonaws.com:5432/postgres?sslmode=require"
 
 # Futuro AWS S3 para documentações e imagens:
 AWS_REGION="us-east-2"
