@@ -1,9 +1,133 @@
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.production" });
 dotenv.config(); // fall back to standard .env if needed
-import express from "express";
+
+// ================= BOOT DIAGNOSTICS & SYSTEM AUDIT =================
 import path from "path";
 import fs from "fs";
+import pg from "pg";
+
+async function runBootDiagnostics() {
+  console.log("\n===============================================================================");
+  console.log("               DIAGNÓSTICO REAL DE AMBIENTE E BANCO DE DADOS (BOOT)");
+  console.log("===============================================================================");
+  
+  const envPath = path.join(process.cwd(), ".env");
+  const prodEnvPath = path.join(process.cwd(), ".env.production");
+  const pm2Path = path.join(process.cwd(), "ecosystem.config.cjs");
+
+  console.log("1. ARQUIVOS FÍSICOS PRESENTES NO DIRETÓRIO RAIZ:");
+  console.log(`   - [.env local] presente? ${fs.existsSync(envPath) ? "SIM (Carregado)" : "NÃO"}`);
+  console.log(`   - [.env.production (PM2)] presente? ${fs.existsSync(prodEnvPath) ? "SIM (Carregado)" : "NÃO"}`);
+  console.log(`   - [ecosystem.config.cjs] presente? ${fs.existsSync(pm2Path) ? "SIM" : "NÃO"}`);
+
+  console.log("\n2. VALORES ATUAIS DAS VARIÁVEIS DE AMBIENTE (REPRODUZIDO NO RUNTIME):");
+  const varsToCheck = [
+    "DATABASE_URL",
+    "DATABASE_URL_RDS",
+    "AWS_REGION",
+    "AWS_S3_BUCKET",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "PGHOST",
+    "PGPORT",
+    "PGUSER",
+    "PGDATABASE"
+  ];
+
+  const maskStr = (str: string) => {
+    if (!str) return "N/A";
+    const clean = str.replace(/"/g, "").trim();
+    return clean.replace(/:([^:@]+)@/, ":******@").replace(/AKIA[A-Z0-9]{16}/, "AKIA**************");
+  };
+
+  varsToCheck.forEach(v => {
+    console.log(`   - [${process.env[v] ? "SET" : "AUSENTE"}] ${v}: "${maskStr(process.env[v] || "")}"`);
+  });
+
+  console.log("\n3. ORIGEM DAS CONFIGURAÇÕES ENCONTRADAS EM DISCO:");
+  if (fs.existsSync(envPath)) {
+    console.log("   --> No arquivo .env local:");
+    fs.readFileSync(envPath, "utf-8").split("\n").forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("DATABASE_URL") || trimmed.startsWith("AWS_") || trimmed.startsWith("PG")) {
+        console.log(`       * ${trimmed.split("=")[0]}=${maskStr(trimmed.substring(trimmed.indexOf("=")+1))}`);
+      }
+    });
+  }
+
+  if (fs.existsSync(prodEnvPath)) {
+    console.log("   --> No arquivo .env.production:");
+    fs.readFileSync(prodEnvPath, "utf-8").split("\n").forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("DATABASE_URL") || trimmed.startsWith("AWS_") || trimmed.startsWith("PG")) {
+        console.log(`       * ${trimmed.split("=")[0]}=${maskStr(trimmed.substring(trimmed.indexOf("=")+1))}`);
+      }
+    });
+  }
+
+  const connStr = process.env.DATABASE_URL_RDS || process.env.DATABASE_URL;
+  console.log("\n4. ANÁLISE DE CONEXÃO RUNTIME:");
+  if (!connStr) {
+    console.error("   [ERRO CRÍTICO] Nenhuma Connection String foi informada/resolvida para o PostgreSQL!");
+    console.error("   O fallback para Memória será ativado devido à FALTA DE VARIÁVEIS.");
+    return;
+  }
+
+  const cleanUrl = connStr.replace(/"/g, "").trim().replace(/sslmode=[^&]+/g, "").replace(/\?&/g, "?").replace(/&&/g, "&");
+  const hostMatch = cleanUrl.match(/@([^/:]+)(?::([0-9]+))?\/([^?]+)/);
+  if (hostMatch) {
+    console.log(`   - Host Alvo: "${hostMatch[1]}"`);
+    console.log(`   - Porta Alvo: "${hostMatch[2] || "5432"}"`);
+    console.log(`   - Banco de Dados Alvo: "${hostMatch[3]}"`);
+  } else {
+    console.log("   - Formato de URL não-padrão detectado para parsing simples.");
+  }
+
+  console.log("   - Iniciando teste de handshake socket com o banco...");
+  const tPool = new pg.Pool({
+    connectionString: cleanUrl,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 5000,
+  });
+
+  const start = Date.now();
+  try {
+    const res = await tPool.query("SELECT 1 AS test_ok");
+    console.log(`   --> [SUCESSO] Conexão efetuada com sucesso em ${Date.now() - start}ms!`);
+    console.log(`   --> Status da Query de Verificação: OK (Retornou ${res.rows[0].test_ok})`);
+  } catch (err: any) {
+    console.error(`\n   [FALHA DE CONEXÃO GRÁVIDA] Erro após ${Date.now() - start}ms.`);
+    console.error(`   Identificador do Erro (code): ${err.code || "Sem Código"}`);
+    console.error(`   Mensagem Amigável: ${err.message}`);
+    if (err.address) console.error(`   Endereço Físico IP: ${err.address}`);
+    if (err.port) console.error(`   Porta do Erro: ${err.port}`);
+    console.error("\n   STACK TRACE COMPLETO DO CONTRATO DE CONEXÃO:");
+    console.error(err.stack);
+    console.error("\n   DIAGNÓSTICO DO FALLBACK MEMORY:");
+    if (err.code === "ETIMEOUT" || err.message.toLowerCase().includes("timeout")) {
+      console.error("   --> CAUSA: TIMEOUT. O banco não respondeu a tempo (bloqueio de Firewall, rede, ou security group in AWS RDS).");
+    } else if (err.code === "ENOTFOUND" || err.code === "EAI_AGAIN") {
+      console.error("   --> CAUSA: HOST NÃO ENCONTRADO/DNS. O host informado não existe ou DNS falhou.");
+    } else if (err.code === "ECONNREFUSED") {
+      console.error("   --> CAUSA: CONEXÃO RECUSADA. Porta fechada ou RDS não escutando.");
+    } else if (err.message.includes("certificate") || err.code === "SELF_SIGNED_CERT_IN_CHAIN") {
+      console.error("   --> CAUSA: ERRO DE CERTIFICADO SSL. Falha no handshake SSL/TSL.");
+    } else if (err.message.includes("password") || err.message.includes("authentication") || err.code === "28P01") {
+      console.error("   --> CAUSA: ERRO DE AUTENTICAÇÃO. Usuário ou senha incorretos.");
+    } else {
+      console.error("   --> CAUSA: ERRO DE REDE OU CONFIGURAÇÃO DESCONHECIDA.");
+    }
+  } finally {
+    await tPool.end().catch(() => {});
+    console.log("===============================================================================\n");
+  }
+}
+
+// Inicia diagnóstico de Boot assincronamente mas sem travar execução inicial
+runBootDiagnostics().catch(e => console.error("Erro rodando boot diagnostics:", e));
+
+import express from "express";
 import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -159,7 +283,6 @@ if (rawDbUrl !== "") {
 }
 
 import { createServer as createViteServer } from "vite";
-import pg from "pg";
 const { Pool } = pg;
 
 const PORT = Number(process.env.PORT) || 3000;
