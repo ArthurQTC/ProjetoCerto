@@ -480,11 +480,32 @@ export default function DashboardView() {
                               {p.percentualMargem.toFixed(2)}%
                             </span>
                           </td>
-                          <td className="py-2.5 px-4 text-center">
-                            <button className="p-0.5 px-2 hover:bg-brand-primary hover:text-white text-brand-primary border border-brand-primary/10 hover:border-transparent rounded-md transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold">
-                              Abrir
-                              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                            </button>
+                          <td className="py-2.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={(e) => handleEditCustoAdmClick(p, e)}
+                                className="p-1 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] font-bold cursor-pointer"
+                                title="Editar Custo ADM deste contrato"
+                              >
+                                <Percent className="w-2.5 h-2.5 text-brand-accent" />
+                                <span>Alterar Custo</span>
+                              </button>
+                              
+                              <button
+                                onClick={() => navigateToProject(p.id)}
+                                className="p-1 px-2 hover:bg-brand-primary hover:text-white text-brand-primary border border-brand-primary/10 hover:border-transparent rounded-md transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold cursor-pointer"
+                              >
+                                Abrir
+                                <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                              </button>
+                            </div>
+                            {p.custoAdm !== null && p.custoAdm !== undefined && (
+                              <div className="mt-1">
+                                <span className="text-[8px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200/50 px-1 py-0.5 rounded-sm">
+                                  Custo ADM: {p.custoAdm}%
+                                </span>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
