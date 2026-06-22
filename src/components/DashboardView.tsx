@@ -510,10 +510,10 @@ export default function DashboardView() {
       {/* ADM Despesas detail modal */}
       {showAdmDetails && (() => {
         const projectsForAdmModal = (data?.projetos || data?.obras || [])
-          .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
+          .filter((p) => p.statusContrato === "CONSOLIDADO")
           .map((p) => {
             const itensAdm = (p.itens || [])
-              .filter((i: any) => i.status === "ATIVO" && (i.categoria?.nome === "Administração" || i.categoriaId === "cat-adm"))
+              .filter((i: any) => i.status === "ATIVO" && i.descricao === "Custo ADM")
               .map((i: any) => {
                 const pct = p.valorContrato > 0 ? (Number(i.valor) / Number(p.valorContrato)) * 100 : 0;
                 return {

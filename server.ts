@@ -162,7 +162,7 @@ import { createServer as createViteServer } from "vite";
 import pg from "pg";
 const { Pool } = pg;
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 let rdsPoolNative: pg.Pool | null = null;
 let dbConnectedRds = false;
 
@@ -1034,7 +1034,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       }
 
       const allCalculated = freshObras.map(formatObraWithMetrics);
-      const obrasConsolidadas = freshObras.filter((o) => (o.statusContrato || "CONSOLIDADO") === "CONSOLIDADO");
+      const obrasConsolidadas = freshObras.filter((o) => o.statusContrato === "CONSOLIDADO");
       const obrasCalculadasConsolidadas = obrasConsolidadas.map(formatObraWithMetrics);
 
       const totalContratos = obrasCalculadasConsolidadas.reduce((acc, o) => acc + o.valorContrato, 0);
@@ -1047,7 +1047,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       let totalAdm = 0;
       obrasCalculadasConsolidadas.forEach((o) => {
         const activeAdm = o.itens
-          .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+          .filter((i: any) => i.status === "ATIVO" && i.descricao === "Custo ADM")
           .reduce((sum: number, item: any) => sum + Number(item.valor), 0);
         totalAdm += activeAdm;
       });
@@ -1115,7 +1115,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           observacoes: o.observacoes,
           despesaAdm: o.itens
             ? o.itens
-                .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+                .filter((i: any) => i.status === "ATIVO" && i.descricao === "Custo ADM")
                 .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
             : 0,
           itens: o.itens || [],
@@ -1143,7 +1143,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           observacoes: o.observacoes,
           despesaAdm: o.itens
             ? o.itens
-                .filter((i: any) => i.status === "ATIVO" && i.categoria?.nome === "Administração")
+                .filter((i: any) => i.status === "ATIVO" && i.descricao === "Custo ADM")
                 .reduce((sum: number, item: any) => sum + Number(item.valor), 0)
             : 0,
           itens: o.itens || [],
