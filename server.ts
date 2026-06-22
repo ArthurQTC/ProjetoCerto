@@ -314,12 +314,9 @@ async function checkDbConnection() {
             deleted_at TIMESTAMP WITH TIME ZONE
           );
           
+          ALTER TABLE documentos ALTER COLUMN s3_key DROP NOT NULL;
+          ALTER TABLE documentos ALTER COLUMN s3_url DROP NOT NULL;
           ALTER TABLE documentos ADD COLUMN IF NOT EXISTS caminho_local VARCHAR(512);
-          
-          CREATE INDEX IF NOT EXISTS idx_documentos_obra_id ON documentos(obra_id);
-          CREATE INDEX IF NOT EXISTS idx_documentos_obra_categoria ON documentos(obra_id, categoria);
-          CREATE INDEX IF NOT EXISTS idx_documentos_categoria ON documentos(categoria);
-          CREATE INDEX IF NOT EXISTS idx_documentos_created_at ON documentos(created_at);
         `);
 
 
@@ -1293,8 +1290,9 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   // GET Custo ADM Global
   
 // --- Documentos Endpoints ---
-app.post("/documentos/upload", uploadLocal.single("file"), async (req, res) => {
+app.post("/api/documentos/upload", upload.single("file"), async (req, res) => {
   try {
+    console.log("[UPLOAD] Iniciando upload");
     const { obra_id, categoria, observacao } = req.body;
     const file = req.file;
 
@@ -1302,18 +1300,41 @@ app.post("/documentos/upload", uploadLocal.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Dados incompletos" });
     }
 
+    let s3_key = null;
+    let s3_url = null;
+    let caminho_local = null;
+
+    if (s3Client) {
+      console.log("[UPLOAD] Salvando no S3...");
+      const s3KeyGenerated = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
+      await s3Client.send(new PutObjectCommand({ 
+        Bucket: BUCKET_NAME, 
+        Key: s3KeyGenerated, 
+        Body: file.buffer, 
+        ContentType: file.mimetype 
+      }));
+      s3_key = s3KeyGenerated;
+      s3_url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3KeyGenerated}`;
+      console.log("[UPLOAD] Salvo no S3 com sucesso");
+    } else {
+      console.log("[UPLOAD] Salvando local...");
+      const fileName = `obra-${obra_id}-${Date.now()}-${file.originalname}`;
+      const localPath = path.join(uploadDir, fileName);
+      fs.writeFileSync(localPath, file.buffer);
+      caminho_local = fileName;
+      console.log(`[UPLOAD] Salvo localmente em ${localPath}`);
+    }
+
     const docId = `doc-${generateId()}`;
-    const caminho_local = file.path;
-
-    // Insert into DB
     await pool.query(`
-      INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, caminho_local, observacao)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    `, [docId, obra_id, file.filename, file.originalname, path.extname(file.originalname), file.mimetype, file.size, categoria, caminho_local, observacao]);
+      INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url, caminho_local, observacao)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `, [docId, obra_id, file.originalname, file.originalname, path.extname(file.originalname), file.mimetype, file.size, categoria, s3_key, s3_url, caminho_local, observacao]);
 
+    console.log("[UPLOAD] Insert no banco OK");
     res.status(201).json({ id: docId, message: "Arquivo carregado com sucesso" });
   } catch (err) {
-    console.error("Upload error:", err);
+    console.error("[UPLOAD ERROR]:", err);
     res.status(500).json({ error: "Falha ao processar upload" });
   }
 });
