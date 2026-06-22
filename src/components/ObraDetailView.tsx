@@ -172,6 +172,7 @@ export default function ObraDetailView() {
   const navigateToProjects = useUIStore((state) => state.navigateToProjects);
   const navigateToSteps = useUIStore((state) => state.navigateToSteps);
   const selectedProjectId = useUIStore((state) => state.selectedProjectId || state.selectedObraId);
+  const projectFilter = useUIStore((state) => state.projectFilter);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -527,7 +528,7 @@ export default function ObraDetailView() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
-      navigateToProjects();
+      navigateToProjects(projectFilter);
     },
   });
 
@@ -546,7 +547,7 @@ export default function ObraDetailView() {
         <h3 className="font-bold text-base">Planilha de projeto indisponível</h3>
         <p className="text-xs mt-1.5 opacity-90">O cadastro pode ter sido removido ou o servidor Express está inoperante.</p>
         <button
-          onClick={() => navigateToProjects()}
+          onClick={() => navigateToProjects(projectFilter)}
           className="mt-4 px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl text-xs font-bold transition-colors"
         >
           Voltar à Lista de Projetos
@@ -703,7 +704,7 @@ export default function ObraDetailView() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigateToProjects()}
+            onClick={() => navigateToProjects(projectFilter)}
             className="p-1.5 border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-lg hover:text-slate-700 transition-colors"
             title="Voltar à Lista de Projetos"
             id="back_to_projects_list_btn"
