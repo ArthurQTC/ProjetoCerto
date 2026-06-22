@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
-dotenv.config();
-
+dotenv.config({ path: ".env.production" });
+dotenv.config(); // fall back to standard .env if needed
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -8,15 +8,46 @@ import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-// AWS S3 Setup
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+// AWS S3 Client
+let s3Client: S3Client | null = null;
+const BUCKET_NAME = process.env.AWS_S3_BUCKET;
+
+function initializeS3Client() {
+  const REQUIRED_AWS_VARS = ["AWS_REGION", "AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
+  
+  for (const varName of REQUIRED_AWS_VARS) {
+    if (!process.env[varName]) {
+      throw new Error(`[ERROR] Variável de ambiente ${varName} ausente.`);
+    }
+  }
+
+  s3Client = new S3Client({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  });
+  console.log(`[BOOT] S3 Client inicializado com sucesso no bucket ${BUCKET_NAME}`);
+}
+
+// Local storage setup
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
   },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
 });
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || "projetocerto-documentos-prod";
+const uploadLocal = multer({ storage: storage });
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 /*
@@ -131,7 +162,7 @@ import { createServer as createViteServer } from "vite";
 import pg from "pg";
 const { Pool } = pg;
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 let rdsPoolNative: pg.Pool | null = null;
 let dbConnectedRds = false;
 
@@ -270,8 +301,9 @@ async function checkDbConnection() {
             mime_type VARCHAR(100) NOT NULL,
             tamanho_bytes BIGINT NOT NULL,
             categoria categoria_documento NOT NULL,
-            s3_key VARCHAR(512) NOT NULL,
-            s3_url VARCHAR(1024) NOT NULL,
+            s3_key VARCHAR(512),
+            s3_url VARCHAR(1024),
+            caminho_local VARCHAR(512),
             hash_arquivo VARCHAR(255),
             observacao TEXT,
             uploaded_by VARCHAR(255),
@@ -281,10 +313,9 @@ async function checkDbConnection() {
             deleted_at TIMESTAMP WITH TIME ZONE
           );
           
-          CREATE INDEX IF NOT EXISTS idx_documentos_obra_id ON documentos(obra_id);
-          CREATE INDEX IF NOT EXISTS idx_documentos_obra_categoria ON documentos(obra_id, categoria);
-          CREATE INDEX IF NOT EXISTS idx_documentos_categoria ON documentos(categoria);
-          CREATE INDEX IF NOT EXISTS idx_documentos_created_at ON documentos(created_at);
+          ALTER TABLE documentos ALTER COLUMN s3_key DROP NOT NULL;
+          ALTER TABLE documentos ALTER COLUMN s3_url DROP NOT NULL;
+          ALTER TABLE documentos ADD COLUMN IF NOT EXISTS caminho_local VARCHAR(512);
         `);
 
 
@@ -652,6 +683,13 @@ const formatObraWithMetrics = (obra: any) => {
 };
 
 async function bootstrap() {
+  console.log(`[BOOT] Inicializando servidor na porta ${PORT}...`);
+  try {
+    initializeS3Client();
+  } catch (err: any) {
+    console.error(err.message);
+    process.exit(1);
+  }
   const app = express();
   app.use(express.json({ limit: "150mb" }));
   app.use(express.urlencoded({ limit: "150mb", extended: true }));
@@ -1258,21 +1296,50 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
   
 // --- Documentos Endpoints ---
 app.post("/api/documentos/upload", upload.single("file"), async (req, res) => {
+  console.log("[UPLOAD START]");
+
+  if (!s3Client || !process.env.AWS_REGION || !process.env.AWS_S3_BUCKET || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.error("[UPLOAD ERROR] AWS S3 não configurado corretamente.");
+    return res.status(503).json({ error: "S3 não configurado corretamente" });
+  }
+
   try {
     const { obra_id, categoria, observacao } = req.body;
     const file = req.file;
-    if (!file || !obra_id || !categoria) return res.status(400).json({ error: "Dados incompletos" });
 
-    const s3Key = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
-    await s3Client.send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key, Body: file.buffer, ContentType: file.mimetype }));
+    if (!file || !obra_id || !categoria) {
+      return res.status(400).json({ error: "Dados incompletos" });
+    }
 
-    const docId = `doc-${Math.random().toString(36).substring(2, 9)}`;
-    const [ext] = file.originalname.split('.').reverse();
-    await pool.query(`INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, 
-      [docId, obra_id, file.originalname, file.originalname, ext, file.mimetype, file.size, categoria, s3Key, `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`]);
+    console.log("[S3 UPLOAD START]");
+    const s3KeyGenerated = `obras/${obra_id}/${categoria.toLowerCase()}/${Date.now()}_${file.originalname}`;
+    
+    await s3Client.send(new PutObjectCommand({ 
+      Bucket: BUCKET_NAME, 
+      Key: s3KeyGenerated, 
+      Body: file.buffer, 
+      ContentType: file.mimetype 
+    }));
+    
+    const s3_key = s3KeyGenerated;
+    const s3_url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3KeyGenerated}`;
+    
+    console.log(`[S3 UPLOAD SUCCESS] Key: ${s3_key}`);
 
-    res.status(201).json({ id: docId });
-  } catch (err) { console.error(err); res.status(500).json({ error: "Falha upload" }); }
+    const docId = `doc-${generateId()}`;
+    
+    console.log("[DB INSERT START]");
+    await pool.query(`
+      INSERT INTO documentos (id, obra_id, nome_arquivo, nome_original, extensao, mime_type, tamanho_bytes, categoria, s3_key, s3_url, observacao)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `, [docId, obra_id, file.originalname, file.originalname, path.extname(file.originalname), file.mimetype, file.size, categoria, s3_key, s3_url, observacao]);
+
+    console.log("[UPLOAD SUCCESS]");
+    res.status(201).json({ id: docId, url: s3_url, message: "Arquivo carregado no S3 com sucesso" });
+  } catch (err) {
+    console.error("[UPLOAD ERROR]:", err);
+    res.status(500).json({ error: "Falha na operação de upload S3" });
+  }
 });
 
 app.get("/api/documentos/:obra_id", async (req, res) => {
@@ -1283,6 +1350,7 @@ app.get("/api/documentos/:obra_id", async (req, res) => {
 });
 
 app.get("/api/documentos/:id/download", async (req, res) => {
+  if (!s3Client) return res.status(503).json({ error: "Serviço S3 não configurado" });
   try {
     const doc = await pool.query('SELECT s3_key FROM documentos WHERE id = $1', [req.params.id]);
     if (doc.rows.length === 0) return res.status(404).end();
@@ -1292,6 +1360,7 @@ app.get("/api/documentos/:id/download", async (req, res) => {
 });
 
 app.delete("/api/documentos/:id", async (req, res) => {
+  if (!s3Client) return res.status(503).json({ error: "Serviço S3 não configurado" });
   try {
     const doc = await pool.query('SELECT s3_key FROM documentos WHERE id = $1', [req.params.id]);
     if (doc.rows.length === 0) return res.status(404).end();
@@ -2595,7 +2664,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Express gateway running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT} at 0.0.0.0`);
+    console.log(`[S3 STATUS] ${s3Client ? "ATIVADO" : "DESATIVADO"}`);
     // Boot: trace the database state or use local fallback seamlessly
     checkDbConnection().then((connected) => {
       console.log(`[BOOT] Conexão inicial com banco de dados finalizada: ${connected ? "Supabase PostgreSQL ATIVO" : "Modo em Memória fall-back ATIVO"}`);
