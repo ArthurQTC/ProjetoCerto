@@ -65,6 +65,7 @@ export interface Obra {
   numeroPedido?: string | null;
   dataInicioContrato?: string | null;
   dataFimContrato?: string | null;
+  custoAdm?: number | null;
 }
 
 export type Projeto = Obra;
@@ -128,6 +129,7 @@ export interface ObraSummary {
   updatedAt?: string;
   despesaAdm?: number;
   itens?: ItemOrcamento[];
+  custoAdm?: number | null;
 }
 
 export type ProjetoSummary = ObraSummary;

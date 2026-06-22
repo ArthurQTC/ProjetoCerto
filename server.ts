@@ -802,6 +802,7 @@ const formatObraWithMetrics = (obra: any) => {
     numeroPedido: obra.numeroPedido || null,
     dataInicioContrato: obra.dataInicioContrato || null,
     dataFimContrato: obra.dataFimContrato || null,
+    custoAdm: obra.custoAdm !== null && obra.custoAdm !== undefined ? Number(obra.custoAdm) : null,
   };
 };
 

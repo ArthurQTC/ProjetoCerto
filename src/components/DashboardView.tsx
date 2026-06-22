@@ -71,6 +71,30 @@ export default function DashboardView() {
   const [globalCostValue, setGlobalCostValue] = useState("");
   const [isGlobalConfirmOpen, setIsGlobalConfirmOpen] = useState(false);
 
+  // INDIVIDUAL CUSTO ADM STATES
+  const [selectedProjectForAdm, setSelectedProjectForAdm] = useState<any | null>(null);
+  const [individualCostValue, setIndividualCostValue] = useState("");
+  const [isIndividualModalOpen, setIsIndividualModalOpen] = useState(false);
+
+  const handleEditCustoAdmClick = (project: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedProjectForAdm(project);
+    
+    let initialVal = "";
+    if (project.custoAdm !== null && project.custoAdm !== undefined) {
+      initialVal = String(project.custoAdm);
+    } else {
+      const dbItem = project.itens?.find((i: any) => i.descricao === "Custo ADM");
+      if (dbItem && dbItem.observacao) {
+        initialVal = dbItem.observacao.replace("%", "").trim();
+      } else {
+        initialVal = "5";
+      }
+    }
+    setIndividualCostValue(initialVal);
+    setIsIndividualModalOpen(true);
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -560,6 +584,8 @@ export default function DashboardView() {
               cliente: p.cliente,
               valorContrato: p.valorContrato,
               despesaAdm: p.despesaAdm || 0,
+              custoAdm: p.custoAdm,
+              itens: p.itens,
               itensAdm,
             };
           })
@@ -626,6 +652,21 @@ export default function DashboardView() {
                                   {p.cliente}
                                 </p>
                               )}
+                              <div className="flex flex-wrap items-center gap-2 ml-8 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={(e) => handleEditCustoAdmClick(p, e)}
+                                  className="p-1 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] uppercase tracking-wider cursor-pointer font-sans"
+                                  title="Editar Custo ADM deste contrato"
+                                >
+                                  <Percent className="w-2.5 h-2.5 text-brand-accent animate-pulse" />
+                                  Alterar Custo ADM
+                                </button>
+                                {p.custoAdm !== null && p.custoAdm !== undefined && (
+                                  <span className="text-[9px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded-sm animate-pulse">
+                                    Individual: {p.custoAdm}%
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* Right info: Total value block, clean and without 'Total ADM: ' phrase */}
@@ -876,6 +917,106 @@ export default function DashboardView() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: INDIVIDUAL CUSTO ADM */}
+      <AnimatePresence>
+        {isIndividualModalOpen && selectedProjectForAdm && (
+          <div className="fixed inset-0 bg-slate-900/45 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-100 p-6 space-y-4 text-left"
+            >
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                <div className="p-2 bg-brand-primary/5 rounded-lg text-brand-primary">
+                  <Percent className="w-5 h-5 text-brand-accent animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-brand-text-primary tracking-wider" style={{ fontFamily: "Inter, sans-serif" }}>
+                    Editar Custo ADM
+                  </h3>
+                  <p className="text-[10px] font-bold text-slate-500 leading-tight">
+                    {selectedProjectForAdm.nome}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
+                  Custo ADM (%)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    placeholder="Ex: 8"
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary font-bold"
+                    value={individualCostValue}
+                    onChange={(e) => setIndividualCostValue(e.target.value)}
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                </div>
+                {individualCostValue !== "" && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIndividualCostValue("")}
+                      className="text-[10px] text-red-600 hover:underline font-bold"
+                    >
+                      Remover Custo Individual (Usar Global)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[10px] text-slate-450 leading-normal font-semibold">
+                Este percentual será aplicado exclusivamente a este registro. Ao limpar o campo, o projeto voltará a seguir o Custo ADM Global.
+              </p>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsIndividualModalOpen(false);
+                    setSelectedProjectForAdm(null);
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const costVal = individualCostValue === "" ? null : Number(individualCostValue);
+                      const res = await fetch(`/api/projetos/${selectedProjectForAdm.id}/custo-adm`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ custoAdm: costVal })
+                      });
+                      if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.error || "Erro ao atualizar custo ADM");
+                      }
+                      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+                      setIsIndividualModalOpen(false);
+                      setSelectedProjectForAdm(null);
+                    } catch (error: any) {
+                      alert(error.message);
+                    }
+                  }}
+                  className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+                >
+                  Salvar
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
