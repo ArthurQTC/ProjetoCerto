@@ -163,13 +163,25 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
     setLoading(true);
     setError(null);
 
-    const payload = {
+    const payload: any = {
       descricao: descricao.trim(),
       categoriaId,
       valor: parsedValor,
       status,
       observacao: savedObservacao,
     };
+
+    if (itemToEdit && hasSubItems) {
+      const isValorChanged = Math.abs(parsedValor - itemToEdit.valor) > 0.01;
+      if (isValorChanged) {
+        const confirmDelete = window.confirm("Este item possui composições de subitens. Deseja realmente excluir todos os subitens para definir um valor manual?");
+        if (!confirmDelete) {
+          setLoading(false);
+          return;
+        }
+        payload.subitens = [];
+      }
+    }
 
     try {
       const url = itemToEdit ? `/api/itens/${itemToEdit.id}` : `/api/projetos/${obraId}/itens`;
@@ -284,12 +296,12 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
                     placeholder="Ex: 5000"
                     value={valor}
                     onChange={(e) => setValor(e.target.value)}
-                    disabled={loading || hasSubItems}
+                    disabled={loading}
                     id="item_valor_input"
                   />
                   {hasSubItems && (
-                    <p className="mt-1 text-[8.5px] font-bold text-emerald-600 leading-tight">
-                      Calculado automaticamente a partir da soma dos subitens. Edite-os na lista do projeto.
+                    <p className="mt-1 text-[8.5px] font-bold text-amber-600 leading-tight">
+                      Este item possui composições de subitens. Alterar o valor aqui excluirá todos os subitens após confirmação.
                     </p>
                   )}
                   {valor && getBRLPreview(valor) && (

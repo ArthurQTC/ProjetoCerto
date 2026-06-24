@@ -19,6 +19,7 @@ export interface SubItemOrcamento {
   id: string;
   descricao: string;
   valor: number;
+  qtd?: number;
 }
 
 export interface ItemOrcamento {
@@ -49,7 +50,7 @@ export interface Obra {
   cliente: string | null;
   observacoes: string | null;
   valorContrato: number;
-  statusContrato: 'CONSOLIDADO' | 'A_FECHAR';
+  statusContrato: 'CONSOLIDADO' | 'A_FECHAR' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO';
   documentos: DocumentoAnexo[];
   createdAt: string;
   updatedAt: string;
@@ -80,10 +81,17 @@ export interface Material {
 }
 
 export interface LevantamentoSubestrutura {
-  materialId: string;
-  qtdM2: number;
+  material?: string;
+  materialId?: string;
+  qtdHD?: number;
+  qtdM2?: number; // fallback/legacy
   valorUnitario: number;
-  material?: Material | null;
+}
+
+export interface LevantamentoSubestruturaPC {
+  material: string;
+  qtdPC: number;
+  valorUnitario: number;
 }
 
 export interface Levantamento {
@@ -95,7 +103,7 @@ export interface Levantamento {
   abc: string;
   solicitante: string;
   responsavel: "Andrew" | "Mayra";
-  status: "Concluído" | "Em Desenvolvimento" | "Pendente";
+  status: "Concluído" | "Em Desenvolvimento" | "Pendente" | "EXCLUIDO";
   previsao: string; // "DD/MM/AAAA" or YYYY-MM-DD
   materialId?: string | null;
   material?: Material | null;
@@ -105,6 +113,7 @@ export interface Levantamento {
   createdAt?: string;
   updatedAt?: string;
   subestruturas?: LevantamentoSubestrutura[];
+  subestruturas_pc?: LevantamentoSubestruturaPC[];
 }
 
 export interface ObraSummary {
@@ -116,7 +125,7 @@ export interface ObraSummary {
   visaoGeral: number;
   margemLiquida: number;
   percentualMargem: number;
-  statusContrato: 'CONSOLIDADO' | 'A_FECHAR';
+  statusContrato: 'CONSOLIDADO' | 'A_FECHAR' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO';
   etapaLevantamento?: boolean;
   etapaProjeto?: boolean;
   etapaCotacao?: boolean;

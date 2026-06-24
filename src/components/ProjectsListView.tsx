@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -12,12 +12,12 @@ import {
   DollarSign,
   Edit2,
   Trash2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RotateCcw
 } from "lucide-react";
 import { useUIStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
 import CreateProjectModal from "./CreateObraModal";
-import DateRangePicker from "./DateRangePicker";
 
 const formatDateBR = (dateStr?: string | null) => {
   if (!dateStr) return "";
@@ -28,49 +28,18 @@ const formatDateBR = (dateStr?: string | null) => {
   return dateStr;
 };
 
-const parseLocalDate = (dateVal: any, isEnd = false): Date | null => {
-  if (!dateVal) return null;
-  
-  let dateStr = "";
-  if (dateVal instanceof Date) {
-    const y = dateVal.getFullYear();
-    const m = String(dateVal.getMonth() + 1).padStart(2, "0");
-    const d = String(dateVal.getDate()).padStart(2, "0");
-    dateStr = `${y}-${m}-${d}`;
-  } else if (typeof dateVal === "string") {
-    dateStr = dateVal;
-  } else {
-    return null;
-  }
-
-  const cleanStr = dateStr.trim().substring(0, 10);
-  const parts = cleanStr.split("-");
-  if (parts.length === 3) {
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      const date = new Date(year, month, day);
-      if (isEnd) {
-        date.setHours(23, 59, 59, 999);
-      } else {
-        date.setHours(0, 0, 0, 0);
-      }
-      return date;
-    }
-  }
-
-  return null;
-};
-
 export default function ProjectsListView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
   const projectFilter = useUIStore((state) => state.projectFilter);
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<Projeto | null>(null);
+  const [showLixeira, setShowLixeira] = useState(false);
+
+  // Auto-reset trash view on tab change
+  useEffect(() => {
+    setShowLixeira(false);
+  }, [projectFilter]);
 
   // GLOBAL CUSTO ADM STATES
   const [isGlobalCostModalOpen, setIsGlobalCostModalOpen] = useState(false);
@@ -104,12 +73,40 @@ export default function ProjectsListView() {
 
   const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Tem certeza que deseja excluir o projeto "${name}" e todos os seus itens de orçamento?`)) {
+    if (!confirm(`Tem certeza que deseja enviar o projeto "${name}" para a lixeira?`)) {
       return;
     }
     try {
       const res = await fetch(`/api/projetos/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Erro ao remover projeto");
+      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleRestoreProject = async (id: string, name: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Tem certeza que deseja restaurar o projeto "${name}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/projetos/${id}/restaurar`, { method: "POST" });
+      if (!res.ok) throw new Error("Erro ao restaurar projeto");
+      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteProjectPermanent = async (id: string, name: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`ATENÇÃO: Deseja realmente EXCLUIR PERMANENTEMENTE o projeto "${name}"?\nEsta ação excluirá todos os dados, subitens e orçamentos vinculados sem possibilidade de recuperação!`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/projetos/${id}?permanent=true`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Erro ao remover projeto permanentemente");
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
     } catch (err: any) {
       alert(err.message);
@@ -226,36 +223,14 @@ export default function ProjectsListView() {
 
   // Filter projects by search, statusContrato, and contract date range
   const filteredProjects = (data.projetos || data.obras || []).filter((o) => {
-    const matchesStatus = (o.statusContrato || "CONSOLIDADO") === projectFilter;
+    const targetStatus = showLixeira 
+      ? (projectFilter === "A_FECHAR" ? "EXCLUIDO_ORCAMENTO" : "EXCLUIDO_CONTRATO")
+      : projectFilter;
+    const matchesStatus = (o.statusContrato || "CONSOLIDADO") === targetStatus;
     const matchesSearch = o.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (o.cliente && o.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    let matchesDate = true;
-    
-    // Determine contract start and end dates in a timezone-safe manner
-    const contractStart = parseLocalDate(o.dataInicioContrato || o.createdAt, false);
-    const contractEnd = parseLocalDate(o.dataFimContrato || o.dataInicioContrato || o.createdAt, true);
-
-    if (startDate && contractEnd) {
-      const filterStart = parseLocalDate(startDate, false);
-      if (filterStart && contractEnd < filterStart) {
-        matchesDate = false;
-      }
-    }
-
-    if (endDate && contractStart) {
-      const filterEnd = parseLocalDate(endDate, true);
-      if (filterEnd && contractStart > filterEnd) {
-        matchesDate = false;
-      }
-    }
-
-    // If a date filter is applied but the project has no valid tracking date, hide it
-    if ((startDate || endDate) && !contractStart) {
-      matchesDate = false;
-    }
-
-    return matchesStatus && matchesSearch && matchesDate;
+    return matchesStatus && matchesSearch;
   });
 
   // Calculate dynamic metrics specifically for projects of the selected status and date filters
@@ -323,6 +298,31 @@ export default function ProjectsListView() {
         </div>
       </div>
 
+      {/* Sub-tabs for Active vs. Lixeira (Deleted) */}
+      <div className="flex border-b border-slate-100 gap-6 pb-0.5">
+        <button
+          onClick={() => setShowLixeira(false)}
+          className={`pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            !showLixeira 
+              ? "border-brand-primary text-brand-primary font-black" 
+              : "border-transparent text-slate-400 hover:text-slate-600 font-semibold"
+          }`}
+        >
+          Ativos
+        </button>
+        <button
+          onClick={() => setShowLixeira(true)}
+          className={`pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            showLixeira 
+              ? "border-red-500 text-red-600 font-black" 
+              : "border-transparent text-slate-400 hover:text-slate-600 font-semibold"
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+          Lixeira (Excluídos)
+        </button>
+      </div>
+
       {/* Mini Overview Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-xs flex items-center gap-3">
@@ -385,20 +385,6 @@ export default function ProjectsListView() {
             </p>
           </div>
 
-          {/* Date Filters Row */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Filtrar Período:</span>
-              <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                onChange={(start, end) => {
-                  setStartDate(start);
-                  setEndDate(end);
-                }}
-              />
-            </div>
-          </div>
         </div>
 
         <div className="overflow-x-auto rounded-b-2xl overflow-hidden">
@@ -426,8 +412,16 @@ export default function ProjectsListView() {
                   return (
                     <tr
                       key={p.id}
-                      onClick={() => navigateToProject(p.id)}
-                      className="hover:bg-brand-primary/5 cursor-pointer transition-colors group"
+                      onClick={() => {
+                        if (!showLixeira) {
+                          navigateToProject(p.id);
+                        }
+                      }}
+                      className={
+                        showLixeira 
+                          ? "transition-colors group" 
+                          : "hover:bg-brand-primary/5 cursor-pointer transition-colors group"
+                      }
                     >
                       <td className="py-3.5 px-5 group-hover:text-brand-primary transition-colors">
                         <div className="font-extrabold text-brand-text-primary group-hover:text-brand-primary transition-colors text-sm">
@@ -473,28 +467,59 @@ export default function ProjectsListView() {
                       </td>
                       <td className="py-3.5 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={(e) => handleEditProjectClick(p, e)}
-                            className="p-1 px-2 hover:bg-slate-100 text-brand-text-secondary hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={(e) => handleEditCustoAdmClick(p, e)}
-                            className="p-1 px-2 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
-                            title="Editar Custo ADM deste contrato"
-                          >
-                            <Percent className="w-3 h-3 text-brand-accent animate-pulse" />
-                            Editar Custo ADM
-                          </button>
-                          <button
-                            onClick={() => navigateToProject(p.id)}
-                            className="p-1 px-2.5 bg-brand-primary/5 hover:bg-brand-primary text-brand-primary hover:text-white font-bold rounded-md transition-colors inline-flex items-center gap-0.5 text-[10px]"
-                          >
-                            Abrir
-                            <ChevronRight className="w-3 h-3" />
-                          </button>
+                          {showLixeira ? (
+                            <>
+                              <button
+                                onClick={(e) => handleRestoreProject(p.id, p.nome, e)}
+                                className="p-1 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                title="Restaurar"
+                              >
+                                <RotateCcw className="w-3 h-3 text-emerald-600" />
+                                Restaurar
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteProjectPermanent(p.id, p.nome, e)}
+                                className="p-1 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                title="Excluir Permanentemente"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-500" />
+                                Excluir Permanente
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={(e) => handleEditProjectClick(p, e)}
+                                className="p-1 px-2 hover:bg-slate-100 text-brand-text-secondary hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Editar
+                              </button>
+                              <button
+                                onClick={(e) => handleEditCustoAdmClick(p, e)}
+                                className="p-1 px-2 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                title="Editar Custo ADM deste contrato"
+                              >
+                                <Percent className="w-3 h-3 text-brand-accent animate-pulse" />
+                                Editar Custo ADM
+                              </button>
+                              <button
+                                onClick={() => navigateToProject(p.id)}
+                                className="p-1 px-2.5 bg-brand-primary/5 hover:bg-brand-primary text-brand-primary hover:text-white font-bold rounded-md transition-colors inline-flex items-center gap-0.5 text-[10px]"
+                              >
+                                Abrir
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteProject(p.id, p.nome, e)}
+                                className="p-1 px-2 hover:bg-red-50 text-slate-400 hover:text-red-600 font-bold border border-slate-200/65 hover:border-red-200 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                title="Enviar para a lixeira"
+                              >
+                                <Trash2 className="w-3 h-3 text-slate-400 group-hover:text-red-500" />
+                                Excluir
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

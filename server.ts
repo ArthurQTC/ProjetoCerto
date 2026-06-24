@@ -538,10 +538,11 @@ async function checkDbConnection() {
           )
         `);
 
-        // Check columns and add link to Obras
+                // Check columns and add link to Obras
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "levantamentoId" VARCHAR(255)');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS "contratoAFecharId" VARCHAR(255)');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas TEXT');
+        await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas_pc TEXT');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "materialId" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "qtdM2" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "cliente" DROP NOT NULL');
@@ -1859,16 +1860,41 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   // DELETE Excluir Obra
   app.delete(["/api/obras/:id", "/api/projetos/:id"], async (req, res) => {
     const { id } = req.params;
+    const { permanent } = req.query;
     try {
       let isRemoved = false;
+      let msg = "";
 
       if (dbConnected && pool) {
         try {
           const existingRes = await pool.query('SELECT * FROM obras WHERE id = $1 LIMIT 1', [id]);
           if (existingRes.rows.length > 0) {
-            await pool.query('DELETE FROM itens_orcamento WHERE "obraId" = $1', [id]);
-            await pool.query('DELETE FROM obras WHERE id = $1', [id]);
-            isRemoved = true;
+            const row = existingRes.rows[0];
+            const originalStatus = row.statusContrato;
+            const levId = row.levantamentoId;
+
+            if (permanent === "true") {
+              // Reset linked levantamentos if permanent deletion
+              if (levId) {
+                await pool.query('UPDATE levantamentos SET "contratoAFecharId" = NULL, "statusEnvio" = \'Pendente\' WHERE id = $1', [levId]);
+              }
+              await pool.query('DELETE FROM itens_orcamento WHERE "obraId" = $1', [id]);
+              await pool.query('DELETE FROM obras WHERE id = $1', [id]);
+              isRemoved = true;
+              msg = "Projeto excluído permanentemente";
+            } else {
+              // Soft delete
+              const nextStatus = originalStatus === "A_FECHAR" ? "EXCLUIDO_ORCAMENTO" : "EXCLUIDO_CONTRATO";
+              await pool.query('UPDATE obras SET "statusContrato" = $1 WHERE id = $2', [nextStatus, id]);
+              
+              // Reset linked levantamentos on soft deletion too so they can be re-sent if needed
+              if (levId) {
+                await pool.query('UPDATE levantamentos SET "contratoAFecharId" = NULL, "statusEnvio" = \'Pendente\' WHERE id = $1', [levId]);
+              }
+
+              isRemoved = true;
+              msg = "Projeto enviado para a Lixeira";
+            }
           }
         } catch (dbErr: any) {
           console.error("[RDS DELETE ERROR] Erro bruto do driver no pg:");
@@ -1876,16 +1902,51 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           throw dbErr;
         }
       } else {
-        throw new Error("Conexão com AWS RDS não está ativa.");
+        throw new Error("Conexão com AWS RDS não está activa.");
       }
 
       if (!isRemoved) {
         return res.status(404).json({ error: "Projeto não encontrado ou falha ao excluir" });
       }
 
-      res.json({ success: true, message: "Projeto excluído com êxito" });
+      res.json({ success: true, message: msg });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Erro ao remover projeto", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
+    }
+  });
+
+  // POST Restaurar Obra
+  app.post(["/api/obras/:id/restaurar", "/api/projetos/:id/restaurar"], async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (dbConnected && pool) {
+        const checkRes = await pool.query('SELECT * FROM obras WHERE id = $1', [id]);
+        if (checkRes.rows.length === 0) {
+          return res.status(404).json({ error: "Projeto não encontrado." });
+        }
+        const row = checkRes.rows[0];
+        let nextStatus = "CONSOLIDADO";
+        if (row.statusContrato === "EXCLUIDO_ORCAMENTO") {
+          nextStatus = "A_FECHAR";
+        }
+        
+        // Relink levantamento if applicable
+        if (row.levantamentoId) {
+          await pool.query(`
+            UPDATE levantamentos 
+            SET "contratoAFecharId" = $1, "statusEnvio" = 'Enviado' 
+            WHERE id = $2
+          `, [id, row.levantamentoId]);
+        }
+
+        await pool.query('UPDATE obras SET "statusContrato" = $1 WHERE id = $2', [nextStatus, id]);
+        res.json({ success: true, message: "Projeto restaurado com sucesso." });
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
+      }
+    } catch (error: any) {
+      console.error("Erro ao restaurar obra:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -1986,13 +2047,12 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   });
 
   // GET Levantamentos (all, joined with materials map)
-  app.get("/api/levantamentos", async (req, res) => {
+  app.get("/api/levantamentos", async (req, res) => { // get levantamentos route
     try {
       if (dbConnected && pool) {
         const query = `
-          SELECT l.*, m.codigo as "material_codigo", m.descricao as "material_descricao", m.ativo as "material_ativo"
+          SELECT l.*
           FROM levantamentos l
-          LEFT JOIN materiais m ON l."materialId" = m.id
           ORDER BY l."dataSolicitacao" DESC, l."createdAt" DESC
         `;
         const result = await pool.query(query);
@@ -2018,16 +2078,28 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
              }
            }
 
-           const enrichedSubs = subList.map((item: any) => {
-             const mat = matsMap.get(item.materialId) || null;
+           const enrichedHD = subList.map((item: any) => {
+             const mat = item.materialId ? matsMap.get(item.materialId) : null;
              return {
-               ...item,
-               material: mat ? {
-                 id: mat.id,
-                 codigo: mat.codigo,
-                 descricao: mat.descricao,
-                 ativo: mat.ativo
-               } : null
+               material: item.material || (mat ? mat.descricao : "Produto HD"),
+               qtdHD: Number(item.qtdHD !== undefined ? item.qtdHD : (item.qtdM2 || 0)),
+               valorUnitario: Number(item.valorUnitario || 0)
+             };
+           });
+
+           let subListPC: any[] = [];
+           if (row.subestruturas_pc) {
+             try {
+               subListPC = typeof row.subestruturas_pc === "string" ? JSON.parse(row.subestruturas_pc) : row.subestruturas_pc;
+             } catch (e) {
+               subListPC = [];
+             }
+           }
+           const enrichedPC = subListPC.map((item: any) => {
+             return {
+               material: item.material || "Produto PC",
+               qtdPC: Number(item.qtdPC !== undefined ? item.qtdPC : 0),
+               valorUnitario: Number(item.valorUnitario || 0)
              };
            });
 
@@ -2048,13 +2120,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
              contratoAFecharId: row.contratoAFecharId,
              createdAt: row.createdAt,
              updatedAt: row.updatedAt,
-             subestruturas: enrichedSubs,
-             material: {
-               id: row.materialId,
-               codigo: row.material_codigo,
-               descricao: row.material_descricao,
-               ativo: row.material_ativo
-             }
+             subestruturas: enrichedHD,
+             subestruturas_pc: enrichedPC
            };
          });
          res.json(list);
@@ -2069,7 +2136,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
   // POST Criar Levantamento
   app.post("/api/levantamentos", async (req, res) => {
-    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, statusEnvio } = req.body;
+    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio } = req.body;
     if (!obra || !dataSolicitacao || !responsavel || !status || !statusEnvio) {
       return res.status(400).json({ error: "Faltam campos obrigatórios." });
     }
@@ -2088,15 +2155,15 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         }
         const ref = `LV${String(nextNum).padStart(3, '0')}`;
 
-        const subList = Array.isArray(subestruturas) ? subestruturas : [];
-        const legacyMatId = subList[0]?.materialId || null;
-        const legacyQtd = subList.reduce((acc, item) => acc + (Number(item.qtdM2) || 0), 0);
-        const subStr = JSON.stringify(subList);
+        const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
+        const subListPC = Array.isArray(subestruturas_pc) ? subestruturas_pc : [];
+        const subStrHD = JSON.stringify(subListHD);
+        const subStrPC = JSON.stringify(subListPC);
 
         await pool.query(`
           INSERT INTO levantamentos (
-            id, ref, obra, cliente, "dataSolicitacao", abc, solicitante, responsavel, status, previsao, "materialId", "qtdM2", "statusEnvio", subestruturas
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            id, ref, obra, cliente, "dataSolicitacao", abc, solicitante, responsavel, status, previsao, "statusEnvio", subestruturas, subestruturas_pc
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `, [
           id,
           ref,
@@ -2108,30 +2175,22 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           responsavel,
           status,
           previsao || "",
-          legacyMatId,
-          legacyQtd,
           statusEnvio,
-          subStr
+          subStrHD,
+          subStrPC
         ]);
 
         const query = `
-          SELECT l.*, m.codigo as "material_codigo", m.descricao as "material_descricao", m.ativo as "material_ativo"
+          SELECT l.*
           FROM levantamentos l
-          LEFT JOIN materiais m ON l."materialId" = m.id
           WHERE l.id = $1
         `;
         const createdRes = await pool.query(query, [id]);
         const row = createdRes.rows[0];
         res.json({
           ...row,
-          qtdM2: Number(row.qtdM2),
-          material: {
-            id: row.materialId,
-            codigo: row.material_codigo,
-            descricao: row.material_descricao,
-            ativo: row.material_ativo
-          },
-          subestruturas: subList
+          subestruturas: subListHD,
+          subestruturas_pc: subListPC
         });
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
@@ -2145,7 +2204,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   // PUT Atualizar Levantamento
   app.put("/api/levantamentos/:id", async (req, res) => {
     const { id } = req.params;
-    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, statusEnvio } = req.body;
+    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio } = req.body;
     try {
       if (dbConnected && pool) {
         const checkRes = await pool.query('SELECT * FROM levantamentos WHERE id = $1', [id]);
@@ -2153,10 +2212,10 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           return res.status(404).json({ error: "Levantamento não encontrado." });
         }
 
-        const subList = Array.isArray(subestruturas) ? subestruturas : [];
-        const legacyMatId = subList[0]?.materialId || null;
-        const legacyQtd = subList.reduce((acc, item) => acc + (Number(item.qtdM2) || 0), 0);
-        const subStr = JSON.stringify(subList);
+        const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
+        const subListPC = Array.isArray(subestruturas_pc) ? subestruturas_pc : [];
+        const subStrHD = JSON.stringify(subListHD);
+        const subStrPC = JSON.stringify(subListPC);
 
         await pool.query(`
           UPDATE levantamentos SET
@@ -2168,12 +2227,11 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             responsavel = COALESCE($6, responsavel),
             status = COALESCE($7, status),
             previsao = COALESCE($8, previsao),
-            "materialId" = $9,
-            "qtdM2" = $10,
-            "statusEnvio" = COALESCE($11, "statusEnvio"),
-            subestruturas = $12,
+            "statusEnvio" = COALESCE($9, "statusEnvio"),
+            subestruturas = $10,
+            subestruturas_pc = $11,
             "updatedAt" = CURRENT_TIMESTAMP
-          WHERE id = $13
+          WHERE id = $12
         `, [
           obra || null,
           cliente || "",
@@ -2183,31 +2241,23 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           responsavel || null,
           status || null,
           previsao === undefined ? null : previsao,
-          legacyMatId,
-          legacyQtd,
           statusEnvio || null,
-          subStr,
+          subStrHD,
+          subStrPC,
           id
          ]);
 
          const query = `
-           SELECT l.*, m.codigo as "material_codigo", m.descricao as "material_descricao", m.ativo as "material_ativo"
+           SELECT l.*
            FROM levantamentos l
-           LEFT JOIN materiais m ON l."materialId" = m.id
            WHERE l.id = $1
          `;
          const updatedRes = await pool.query(query, [id]);
          const row = updatedRes.rows[0];
          res.json({
            ...row,
-           qtdM2: Number(row.qtdM2),
-           material: {
-             id: row.materialId,
-             codigo: row.material_codigo,
-             descricao: row.material_descricao,
-             ativo: row.material_ativo
-           },
-           subestruturas: subList
+           subestruturas: subListHD,
+           subestruturas_pc: subListPC
          });
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
@@ -2221,16 +2271,45 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   // DELETE Excluir Levantamento
   app.delete("/api/levantamentos/:id", async (req, res) => {
     const { id } = req.params;
+    const { permanent } = req.query;
     try {
       if (dbConnected && pool) {
-        await pool.query('UPDATE obras SET "levantamentoId" = NULL WHERE "levantamentoId" = $1', [id]);
-        await pool.query('DELETE FROM levantamentos WHERE id = $1', [id]);
-        res.json({ success: true, message: "Levantamento excluído com sucesso." });
+        if (permanent === "true") {
+          await pool.query('UPDATE obras SET "levantamentoId" = NULL WHERE "levantamentoId" = $1', [id]);
+          await pool.query('DELETE FROM levantamentos WHERE id = $1', [id]);
+          res.json({ success: true, message: "Levantamento excluído permanentemente." });
+        } else {
+          await pool.query('UPDATE levantamentos SET status = \'EXCLUIDO\' WHERE id = $1', [id]);
+          res.json({ success: true, message: "Levantamento enviado para a Lixeira." });
+        }
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
       }
     } catch (error: any) {
       console.error("Erro no DELETE /api/levantamentos/:id:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST Restaurar Levantamento
+  app.post("/api/levantamentos/:id/restaurar", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (dbConnected && pool) {
+        const checkRes = await pool.query('SELECT * FROM levantamentos WHERE id = $1', [id]);
+        if (checkRes.rows.length === 0) {
+          return res.status(404).json({ error: "Levantamento não encontrado." });
+        }
+        const row = checkRes.rows[0];
+        // If it was linked to a contract, restored status is Concluído, otherwise Pendente
+        const nextStatus = row.contratoAFecharId ? "Concluído" : "Pendente";
+        await pool.query('UPDATE levantamentos SET status = $1 WHERE id = $2', [nextStatus, id]);
+        res.json({ success: true, message: "Levantamento restaurado com sucesso." });
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
+      }
+    } catch (error: any) {
+      console.error("Erro no POST /api/levantamentos/:id/restaurar:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -2255,39 +2334,28 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           return res.status(400).json({ error: "Este levantamento já foi enviado para Orçamentos a Fechar." });
         }
 
-        // Parse subestruturas
-        let subList: any[] = [];
-        if (lev.subestruturas) {
+        // Parse subestruturas_pc
+        let subListPC: any[] = [];
+        if (lev.subestruturas_pc) {
           try {
-            subList = typeof lev.subestruturas === 'string' ? JSON.parse(lev.subestruturas) : lev.subestruturas;
+            subListPC = typeof lev.subestruturas_pc === 'string' ? JSON.parse(lev.subestruturas_pc) : lev.subestruturas_pc;
           } catch (e) {
-            subList = [];
+            subListPC = [];
           }
         }
-        if (!subList || subList.length === 0) {
-          if (lev.materialId && lev.qtdM2) {
-            subList = [{
-              materialId: lev.materialId,
-              qtdM2: Number(lev.qtdM2),
-              valorUnitario: 0.0
-            }];
-          }
+        if (!subListPC || subListPC.length === 0) {
+          return res.status(400).json({ error: "Faltando item em Material PC" });
         }
-
-        // Fetch materials to get details
-        const matsRes = await pool.query('SELECT * FROM materiais');
-        const matsMap = new Map(matsRes.rows.map(m => [m.id, m]));
 
         // Calculate total value
         let totalValor = 0;
-        const processedItems = subList.map((item: any) => {
-          const mat = matsMap.get(item.materialId);
-          const itemVal = (Number(item.qtdM2) || 0) * (Number(item.valorUnitario) || 0);
+        const processedItems = subListPC.map((item: any) => {
+          const itemVal = (Number(item.qtdPC) || 0) * (Number(item.valorUnitario) || 0);
           totalValor += itemVal;
           return {
-            ...item,
-            codigo: mat ? mat.codigo : "MAT",
-            descricao: mat ? mat.descricao : "Produto",
+            material: item.material || "Produto PC",
+            qtdPC: Number(item.qtdPC) || 0,
+            valorUnitario: Number(item.valorUnitario) || 0,
             itemVal
           };
         });
@@ -2295,40 +2363,40 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         const obraId = "p-" + generateId().substring(0, 10);
         
         // Build observation list
-        const obsLines = [
-          `Gerado a partir do Levantamento ${lev.ref}.`,
-          `Responsável: ${lev.responsavel}`,
-          `Status de Envio: Enviado para Orçamentos a Fechar`,
-          `Subestruturas inclusas:`
-        ];
-        processedItems.forEach(item => {
-          obsLines.push(` - [${item.codigo}] ${item.descricao}: ${item.qtdM2} m² @ R$ ${item.valorUnitario || 0}/m²`);
-        });
-        const obs = obsLines.join("\n");
+        const obs = `Enviado a partir do Levantamento ${lev.ref}.`;
 
-        // Insert new Obra as A_FECHAR (Orçamentos a fechar)
-        await pool.query(`
-          INSERT INTO obras (
-            id, nome, cliente, observacoes, "valorContrato", "statusContrato", "levantamentoId", "prazo"
-          ) VALUES ($1, $2, $3, $4, $5, 'A_FECHAR', $6, $7)
-        `, [obraId, lev.obra, lev.cliente || "", obs, totalValor, lev.id, lev.previsao || 'Não definido']);
+        // Start transaction
+        await pool.query('BEGIN');
+        try {
+          // Insert new Obra as A_FECHAR (Orçamentos a fechar)
+          await pool.query(`
+            INSERT INTO obras (
+              id, nome, cliente, observacoes, "valorContrato", "statusContrato", "levantamentoId", "prazo"
+            ) VALUES ($1, $2, $3, $4, $5, 'A_FECHAR', $6, $7)
+          `, [obraId, lev.obra, lev.cliente || "", obs, totalValor, lev.id, lev.previsao || 'Não definido']);
 
-        // Find or create Subestruturas category
-        let catId = "cat-subestruturas";
-        const catRes = await pool.query('SELECT id FROM categorias WHERE LOWER(nome) = LOWER($1) LIMIT 1', ["Subestruturas"]);
-        if (catRes.rows.length > 0) {
-          catId = catRes.rows[0].id;
-        } else {
-          await pool.query('INSERT INTO categorias (id, nome, "grupoCalculo") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [catId, "Subestruturas", "MATERIAL"]);
-        }
+          // Find or create SUBESTRUTURA category
+          let catId = "cat-subestrutura";
+          const catRes = await pool.query('SELECT id FROM categorias WHERE LOWER(nome) = LOWER($1) LIMIT 1', ["SUBESTRUTURA"]);
+          if (catRes.rows.length > 0) {
+            catId = catRes.rows[0].id;
+          } else {
+            await pool.query('INSERT INTO categorias (id, nome, "grupoCalculo") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [catId, "SUBESTRUTURA", "MATERIAL"]);
+          }
 
-        // Insert individual itens_orcamento for each subestrutura (Subestrutura nomenclatura)
-        for (let i = 0; i < processedItems.length; i++) {
-          const item = processedItems[i];
+          // Insert ONE itens_orcamento for all subestrutura PC
           const itemId = "item-" + generateId().substring(0, 10);
-          const itemDescStr = `Subestrutura: ${item.codigo} - ${item.descricao}`;
-          const itemObsStr = `Subestrutura de Levantamento ${lev.ref}. Quantidade: ${item.qtdM2} m² a R$ ${item.valorUnitario || 0}/m².`;
-
+          const itemDescStr = `MATERIAL SUB ESTRUTURA`;
+          const itemObsStr = `Enviado a partir do Levantamento ${lev.ref}.`;
+          
+          // Map processedItems to subitems format
+          const subitens = processedItems.map(item => ({
+            id: generateId(),
+            descricao: item.material,
+            qtd: parseFloat(item.qtdPC as any) || 0,
+            valor: parseFloat(item.valorUnitario as any) || 0
+          }));
+          
           await pool.query(`
             INSERT INTO itens_orcamento (
               id, descricao, valor, status, observacao, ordem, subitens, "obraId", "categoriaId"
@@ -2336,19 +2404,25 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           `, [
             itemId,
             itemDescStr,
-            item.itemVal,
+            totalValor,
             'ATIVO',
             itemObsStr,
-            i + 1,
-            '[]',
+            1,
+            JSON.stringify(subitens),
             obraId,
             catId
           ]);
-        }
 
-        await pool.query(`
-          UPDATE levantamentos SET "contratoAFecharId" = $1, "statusEnvio" = 'Enviado', "updatedAt" = CURRENT_TIMESTAMP WHERE id = $2
-        `, [obraId, id]);
+          await pool.query(`
+            UPDATE levantamentos SET "contratoAFecharId" = $1, "statusEnvio" = 'Enviado', "updatedAt" = CURRENT_TIMESTAMP WHERE id = $2
+          `, [obraId, id]);
+
+          await pool.query('COMMIT');
+        } catch (err) {
+          await pool.query('ROLLBACK');
+          console.error("Error in transaction:", err);
+          throw err;
+        }
 
         res.json({
           success: true,
@@ -2646,7 +2720,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
             let updatedValor = valor !== undefined ? Number(valor) : Number(existing.valor);
             if (Array.isArray(updatedSubArray) && updatedSubArray.length > 0) {
-              updatedValor = updatedSubArray.reduce((acc, sub) => acc + (Number(sub.valor) || 0), 0);
+              updatedValor = updatedSubArray.reduce((acc, sub) => acc + ((Number(sub.qtd !== undefined ? sub.qtd : 1) * Number(sub.valor)) || 0), 0);
             }
 
             const updatedSub = JSON.stringify(updatedSubArray);

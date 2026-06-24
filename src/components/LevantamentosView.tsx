@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Coins,
@@ -15,7 +16,8 @@ import {
   Edit,
   SlidersHorizontal,
   X,
-  Tag
+  Tag,
+  RotateCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useUIStore } from "../store";
@@ -94,11 +96,11 @@ export default function LevantamentosView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
 
   // Filter States
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [filterCliente, setFilterCliente] = useState("");
   const [filterResponsavel, setFilterResponsavel] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterMaterialId, setFilterMaterialId] = useState("");
+  const [showLixeira, setShowLixeira] = useState(false);
 
   // Modals States
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
@@ -106,6 +108,7 @@ export default function LevantamentosView() {
   const [isMaterialCatalogOpen, setIsMaterialCatalogOpen] = useState(false);
   const [isNewMaterialOpen, setIsNewMaterialOpen] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+  const [permanentDeleteConfirmationId, setPermanentDeleteConfirmationId] = useState<string | null>(null);
 
   // Material Form State
   const [materialCodigo, setMaterialCodigo] = useState("");
@@ -123,7 +126,8 @@ export default function LevantamentosView() {
   const [formStatusEnvio, setFormStatusEnvio] = useState<"Enviado" | "Pendente">("Pendente");
   
   // Dynamic list of multiple materials / subestruturas
-  const [formSubestruturas, setFormSubestruturas] = useState<{ materialId: string; qtdM2: string; valorUnitario: string }[]>([]);
+  const [formSubestruturas, setFormSubestruturas] = useState<{ materialId?: string; material: string; qtdHD: string; valorUnitario: string }[]>([]);
+  const [formSubestruturasPC, setFormSubestruturasPC] = useState<{ material: string; qtdPC: string; valorUnitario: string }[]>([]);
 
   // Success Conversion modal state
   const [conversionSuccess, setConversionSuccess] = useState<{
@@ -132,6 +136,25 @@ export default function LevantamentosView() {
     ref: string;
     obra: string;
   } | null>(null);
+
+  const [alertPopupOpen, setAlertPopupOpen] = useState(false);
+  const [tooltip, setTooltip] = useState<{
+    visible: boolean;
+    content: React.ReactNode;
+    x: number;
+    y: number;
+  }>({ visible: false, content: null, x: 0, y: 0 });
+
+  const handleMouseEnter = (e: React.MouseEvent, content: React.ReactNode) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      visible: true,
+      content,
+      x: rect.left + window.scrollX,
+      y: rect.bottom + window.scrollY + 8,
+    });
+  };
+  const handleMouseLeave = () => setTooltip({ ...tooltip, visible: false });
 
   // Queries
   const { data: levantamentos = [], isLoading: isLevLoading } = useQuery<Levantamento[]>({
@@ -152,57 +175,14 @@ export default function LevantamentosView() {
     }
   });
 
-  // Unique month groups available
-  const availableMonthGroups = useMemo(() => {
-    const months = levantamentos.map(l => getMonthGroup(l.dataSolicitacao));
-    const unique = Array.from(new Set(months));
-    
-    return unique.sort((a, b) => {
-      if (a === "Outros / Em aberto") return 1;
-      if (b === "Outros / Em aberto") return -1;
-      
-      const getMonthVal = (groupStr: string) => {
-        const parts = groupStr.split(" ");
-        if (parts.length !== 2) return 0;
-        const mIdx = MONTH_NAMES.indexOf(parts[0]);
-        const year = parseInt(parts[1], 10);
-        return new Date(year, mIdx === -1 ? 0 : mIdx, 1).getTime();
-      };
-      
-      return getMonthVal(b) - getMonthVal(a); // Descending (Newest months first)
-    });
-  }, [levantamentos]);
-
-  // Handle active month selection fallback
-  const activeMonthGroup = useMemo(() => {
-    if (selectedMonth && availableMonthGroups.includes(selectedMonth)) {
-      return selectedMonth;
-    }
-    if (availableMonthGroups.length > 0) {
-      return availableMonthGroups[0];
-    }
-    const d = new Date();
-    return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-  }, [selectedMonth, availableMonthGroups]);
-
-  const monthGroupsToRender = useMemo(() => {
-    if (availableMonthGroups.length > 0) return availableMonthGroups;
-    const now = new Date();
-    return [`${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`];
-  }, [availableMonthGroups]);
-
-  // Set default active month on mount/data received
-  if (!selectedMonth && availableMonthGroups.length > 0) {
-    setSelectedMonth(availableMonthGroups[0]);
-  }
-
   // Filtered Surveys matching filters AND selected dynamic month group
   const filteredLevantamentos = useMemo(() => {
     return levantamentos.filter(lev => {
-      // 1. Month Tab Match
-      const levMonthGroup = getMonthGroup(lev.dataSolicitacao);
-      if (levMonthGroup !== activeMonthGroup) {
-        return false;
+      // Trash filter
+      if (showLixeira) {
+        if (lev.status !== "EXCLUIDO") return false;
+      } else {
+        if (lev.status === "EXCLUIDO") return false;
       }
       // 2. Client search
       if (filterCliente && !lev.cliente.toLowerCase().includes(filterCliente.toLowerCase()) && !lev.obra.toLowerCase().includes(filterCliente.toLowerCase())) {
@@ -224,27 +204,43 @@ export default function LevantamentosView() {
       }
       return true;
     });
-  }, [levantamentos, activeMonthGroup, filterCliente, filterResponsavel, filterStatus, filterMaterialId]);
+  }, [levantamentos, filterCliente, filterResponsavel, filterStatus, filterMaterialId, showLixeira]);
 
   // Total metros quadrados dynamic KPI summation
   const totalMetrosQuadrados = useMemo(() => {
     return filteredLevantamentos.reduce((acc, current) => {
       const subs = current.subestruturas || [];
       if (subs.length > 0) {
-        return acc + subs.reduce((itemSum, s) => itemSum + (Number(s.qtdM2) || 0), 0);
+        return acc + subs.reduce((itemSum, s) => {
+          const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
+          return itemSum + (Number(q) || 0);
+        }, 0);
       }
       return acc + (Number(current.qtdM2) || 0);
     }, 0);
   }, [filteredLevantamentos]);
 
+  // Safe helper to obtain sum value for a single row
+  const getLevantamentoTotalVal = (lev: Levantamento): number => {
+    const subsHD = lev.subestruturas || [];
+    const subsPC = lev.subestruturas_pc || [];
+    
+    const hdVal = subsHD.reduce((sum, s) => {
+      const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
+      return sum + (Number(q) * (Number(s.valorUnitario) || 0));
+    }, 0);
+
+    const pcVal = subsPC.reduce((sum, s) => {
+      return sum + ((Number(s.qtdPC) || 0) * (Number(s.valorUnitario) || 0));
+    }, 0);
+
+    return hdVal + pcVal;
+  };
+
   // Total monetário valor calculated as summation of (qtd * unit price) for filtered subset
   const totalValueSum = useMemo(() => {
     return filteredLevantamentos.reduce((acc, current) => {
-      const subs = current.subestruturas || [];
-      if (subs.length > 0) {
-        return acc + subs.reduce((itemSum, s) => itemSum + ((Number(s.qtdM2) || 0) * (Number(s.valorUnitario) || 0)), 0);
-      }
-      return acc; // legacy items don't have valorUnitario (default to 0.00)
+      return acc + getLevantamentoTotalVal(current);
     }, 0);
   }, [filteredLevantamentos]);
 
@@ -259,15 +255,7 @@ export default function LevantamentosView() {
     setFilterResponsavel("");
     setFilterStatus("");
     setFilterMaterialId("");
-  };
-
-  // Safe helper to obtain sum value for a single row
-  const getLevantamentoTotalVal = (lev: Levantamento): number => {
-    const subs = lev.subestruturas || [];
-    if (subs.length > 0) {
-      return subs.reduce((sum, s) => sum + ((Number(s.qtdM2) || 0) * (Number(s.valorUnitario) || 0)), 0);
-    }
-    return 0;
+    setShowLixeira(false);
   };
 
   // --- MUTATIONS ---
@@ -310,6 +298,36 @@ export default function LevantamentosView() {
     },
     onError: (err: any) => {
       alert("Falha ao excluir registro: " + err.message);
+    }
+  });
+
+  // Restore Survey
+  const restoreSurveyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/levantamentos/${id}/restaurar`, { method: "POST" });
+      if (!res.ok) throw new Error("Erro de servidor ao restaurar registro");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["levantamentos"] });
+    },
+    onError: (err: any) => {
+      alert("Falha ao restaurar registro: " + err.message);
+    }
+  });
+
+  // Permanent Delete Survey
+  const permanentDeleteSurveyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/levantamentos/${id}?permanent=true`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Erro de servidor ao excluir permanentemente");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["levantamentos"] });
+    },
+    onError: (err: any) => {
+      alert("Falha ao excluir permanentemente: " + err.message);
     }
   });
 
@@ -422,10 +440,11 @@ export default function LevantamentosView() {
     setFormPrevisao("");
     setFormStatusEnvio("Pendente");
     
-    // Default with one empty subestrutura row
+    // Default with empty materials
     setFormSubestruturas([
-      { materialId: currentActiveMaterials[0]?.id || "", qtdM2: "", valorUnitario: "" }
+      { materialId: "", material: "", qtdHD: "", valorUnitario: "" }
     ]);
+    setFormSubestruturasPC([]);
     
     setIsSurveyModalOpen(true);
   };
@@ -439,21 +458,31 @@ export default function LevantamentosView() {
     setFormAbc(survey.abc || "");
     setFormSolicitante(survey.solicitante || "");
     setFormResponsavel(survey.responsavel);
-    setFormStatus(survey.status);
+    setFormStatus(survey.status === "EXCLUIDO" ? "Pendente" : survey.status);
     setFormPrevisao(survey.previsao || "");
     setFormStatusEnvio(survey.statusEnvio);
     
     if (survey.subestruturas && survey.subestruturas.length > 0) {
       setFormSubestruturas(survey.subestruturas.map(s => ({
-        materialId: s.materialId,
-        qtdM2: String(s.qtdM2),
+        materialId: s.materialId || undefined,
+        material: typeof s.material === 'object' && s.material !== null ? (s.material as any).descricao : (s.material || ""),
+        qtdHD: String(s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || "")),
         valorUnitario: String(s.valorUnitario || "0")
       })));
     } else {
-      // Fallback
       setFormSubestruturas([
-        { materialId: survey.materialId || "", qtdM2: String(survey.qtdM2 || ""), valorUnitario: "0" }
+        { materialId: undefined, material: "", qtdHD: "", valorUnitario: "0" }
       ]);
+    }
+
+    if (survey.subestruturas_pc && survey.subestruturas_pc.length > 0) {
+      setFormSubestruturasPC(survey.subestruturas_pc.map(s => ({
+        material: s.material || "",
+        qtdPC: String(s.qtdPC || ""),
+        valorUnitario: String(s.valorUnitario || "0")
+      })));
+    } else {
+      setFormSubestruturasPC([]);
     }
     
     setIsSurveyModalOpen(true);
@@ -478,30 +507,81 @@ export default function LevantamentosView() {
       return;
     }
 
-    // Subestruturas check
+    // Material HD checks
     if (formSubestruturas.length === 0) {
-      alert("Adicione pelo menos uma subestrutura ao levantamento.");
+      alert("Adicione pelo menos um item ao Material HD.");
       return;
     }
 
-    // Validate entries
+    // Validate entries for HD
     for (let i = 0; i < formSubestruturas.length; i++) {
       const item = formSubestruturas[i];
-      if (!item.materialId) {
-        alert("Selecione a Subestrutura em todos os campos cadastrados.");
+      if (!item.material && !item.materialId) {
+        alert("Digite o nome ou selecione um item no catálogo para todos os campos do Material HD.");
+        return;
+      }
+      if (!item.qtdHD) {
+        alert("Insira a quantidade (Qtd HD) para todos os materiais HD.");
         return;
       }
     }
 
+    // Material PC checks
+    let isPcMissing = false;
+    if (formSubestruturasPC.length === 0) {
+      isPcMissing = true;
+    } else {
+      // Validate entries for PC
+      for (let i = 0; i < formSubestruturasPC.length; i++) {
+        const item = formSubestruturasPC[i];
+        if (!item.material) {
+          alert("Digite a descrição para todos os campos do Material PC.");
+          return;
+        }
+        if (!item.qtdPC) {
+          alert("Insira a quantidade (Qtd PC) para todos os materiais PC.");
+          return;
+        }
+      }
+    }
+
+    if (isPcMissing) {
+      setAlertPopupOpen(true);
+      return;
+    }
+
     // Format subestruturas payload
     const processedSubs = formSubestruturas.map(item => {
-      const rawQty = item.qtdM2 ? String(item.qtdM2).trim().replace(",", ".") : "";
+      const rawQty = item.qtdHD ? String(item.qtdHD).trim().replace(",", ".") : "";
+      const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(",", ".") : "";
+      const q = rawQty ? parseFloat(rawQty) : 0;
+      const v = rawVal ? parseFloat(rawVal) : 0;
+
+      // Find description from materials if catalog is used
+      let desc = item.material || "";
+      if (item.materialId && !desc) {
+        const found = materiais.find(m => m.id === item.materialId);
+        if (found) desc = found.descricao;
+      }
+
+      return {
+        materialId: item.materialId || null,
+        material: desc || "Produto HD",
+        qtdHD: isNaN(q) ? 0 : q,
+        qtdM2: isNaN(q) ? 0 : q, // backward compatibility fallback
+        valorUnitario: isNaN(v) ? 0 : v
+      };
+    });
+
+    // Format subestruturas PC payload
+    const processedSubsPC = formSubestruturasPC.map(item => {
+      const rawQty = item.qtdPC ? String(item.qtdPC).trim().replace(",", ".") : "";
       const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(",", ".") : "";
       const q = rawQty ? parseFloat(rawQty) : 0;
       const v = rawVal ? parseFloat(rawVal) : 0;
       return {
-        materialId: item.materialId,
-        qtdM2: isNaN(q) ? 0 : q,
+        material: item.material || "Produto PC",
+        qtdPC: isNaN(q) ? 0 : q,
         valorUnitario: isNaN(v) ? 0 : v
       };
     });
@@ -516,6 +596,7 @@ export default function LevantamentosView() {
       status: formStatus,
       previsao: formPrevisao,
       subestruturas: processedSubs,
+      subestruturas_pc: processedSubsPC,
       statusEnvio: formStatusEnvio
     };
 
@@ -542,11 +623,8 @@ export default function LevantamentosView() {
         <div>
           <h1 className="text-2xl font-black text-brand-text-primary tracking-tight flex items-center gap-2">
             <Coins className="w-6 h-6 text-[#D9A441]" />
-            Módulo de Levantamentos & Orçamentos
+            Levantamentos & Orçamentos
           </h1>
-          <p className="text-xs text-brand-text-secondary mt-1">
-            Planeje, cadastre estimativas físicas de obras e envie os dados para a carteira de orçamentos a fechar com um só clique.
-          </p>
         </div>
         <div className="flex flex-wrap gap-2.5">
           <button
@@ -568,24 +646,29 @@ export default function LevantamentosView() {
         </div>
       </div>
 
-      {/* MONTH BAR NAVIGATION */}
-      <div className="bg-white p-2 rounded-2xl border border-slate-100 flex items-center gap-1 overflow-x-auto shadow-sm min-h-[56px]">
-        <span className="text-[10px] font-black tracking-wider text-slate-400 uppercase ml-3 mr-2 font-sans hidden sm:inline">Mês:</span>
-        <div className="flex gap-1">
-          {monthGroupsToRender.map((month) => (
-            <button
-              key={month}
-              onClick={() => setSelectedMonth(month)}
-              className={`px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all duration-200 whitespace-nowrap cursor-pointer ${
-                activeMonthGroup === month
-                  ? "bg-brand-primary text-white shadow-sm border border-brand-primary"
-                  : "bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
-              }`}
-            >
-              {month}
-            </button>
-          ))}
-        </div>
+      {/* Sub-tabs for Active vs. Lixeira (Deleted) */}
+      <div className="flex border-b border-slate-100 gap-6 pb-0.5">
+        <button
+          onClick={() => setShowLixeira(false)}
+          className={`pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            !showLixeira 
+              ? "border-brand-primary text-brand-primary font-black" 
+              : "border-transparent text-slate-400 hover:text-slate-600 font-semibold"
+          }`}
+        >
+          Ativos
+        </button>
+        <button
+          onClick={() => setShowLixeira(true)}
+          className={`pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            showLixeira 
+              ? "border-red-500 text-red-600 font-black" 
+              : "border-transparent text-slate-400 hover:text-slate-600 font-semibold"
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+          Lixeira (Excluídos)
+        </button>
       </div>
 
       {/* UPPER KPI CARDS */}
@@ -637,7 +720,7 @@ export default function LevantamentosView() {
         <div className="flex items-center justify-between border-b border-slate-50 pb-2.5">
           <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-slate-400" />
-            Filtros Ativos ({activeMonthGroup})
+            Filtros Ativos
           </h3>
           {(filterCliente || filterResponsavel || filterStatus || filterMaterialId) && (
             <button
@@ -713,7 +796,7 @@ export default function LevantamentosView() {
             <Layers className="w-8 h-8 text-slate-300 mx-auto" />
             <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Nenhum registro encontrado</h4>
             <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
-              Não há levantamentos cadastrados para o mês de <strong className="text-slate-600 font-bold">{activeMonthGroup}</strong> com os filtros ativos. Clique em "Novo Levantamento" para começar.
+              Não há levantamentos cadastrados com os filtros ativos. Clique em "Novo Levantamento" para começar.
             </p>
           </div>
         ) : (
@@ -730,9 +813,11 @@ export default function LevantamentosView() {
                   <th className="py-3 px-4">RESPONSÁVEL</th>
                   <th className="py-3 px-4 text-center">STATUS</th>
                   <th className="py-3 px-4">PREVISÃO</th>
-                  <th className="py-3 px-4">MATERIAL</th>
-                  <th className="py-3 px-4 text-right">QTD m²</th>
-                  <th className="py-3 px-4 text-right">VALOR</th>
+                  <th className="py-3 px-4">MATERIAL HD</th>
+                  <th className="py-3 px-4 text-right">QTD HD</th>
+                  <th className="py-3 px-4">MATERIAL PC</th>
+                  <th className="py-3 px-4 text-right">QTD PC</th>
+                  <th className="py-3 px-4 text-right">VALOR TOTAL</th>
                   <th className="py-3 px-4 text-center">STATUS DE ENVIO</th>
                   <th className="py-3 px-4 text-right">AÇÕES</th>
                 </tr>
@@ -740,9 +825,13 @@ export default function LevantamentosView() {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {filteredLevantamentos.map((lev) => {
                   const totalVal = getLevantamentoTotalVal(lev);
-                  const subList = lev.subestruturas && lev.subestruturas.length > 0
-                    ? lev.subestruturas
-                    : [{ materialId: lev.materialId, material: lev.material, qtdM2: lev.qtdM2 || 0, valorUnitario: 0 }];
+                  const subsHD = lev.subestruturas || [];
+                  const subsPC = lev.subestruturas_pc || [];
+                  
+                  const totalQtdHD = subsHD.reduce((acc, sub) => acc + (sub.qtdHD || sub.qtdM2 || 0), 0);
+                  const totalValorHD = subsHD.reduce((acc, sub) => acc + (sub.qtdHD || sub.qtdM2 || 0) * (sub.valorUnitario || 0), 0);
+                  const totalQtdPC = subsPC.reduce((acc, sub) => acc + (sub.qtdPC || 0), 0);
+                  const totalValorPC = subsPC.reduce((acc, sub) => acc + (sub.qtdPC || 0) * (sub.valorUnitario || 0), 0);
 
                   return (
                     <tr key={lev.id} className="hover:bg-slate-50/50 transition-colors">
@@ -785,41 +874,162 @@ export default function LevantamentosView() {
                       <td className="py-3.5 px-4 text-slate-500 font-medium font-mono whitespace-nowrap">
                         {lev.previsao || <span className="text-slate-300 italic">-</span>}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-600 max-w-[200px]">
-                        <div className="space-y-1.5">
-                          {subList.map((sub, sIdx) => (
-                            <div key={sIdx} className="leading-tight flex items-center gap-1">
-                              <span className="font-bold text-slate-800 font-mono text-[9px] bg-slate-100 border border-slate-200 rounded px-1 py-0.2 shrink-0">
-                                {sub.material?.codigo || "MAT"}
-                              </span>
-                              <span className="text-[10px] text-slate-500 truncate" title={sub.material?.descricao}>
-                                {sub.material?.descricao || "Produto"}
-                              </span>
+
+                      <td className="py-3.5 px-4 text-slate-600 max-w-[200px] cursor-pointer"
+                        onMouseEnter={(e) => handleMouseEnter(e, (
+                          <div className="space-y-2">
+                            <div className="font-extrabold uppercase tracking-wider mb-2 border-b border-slate-100 pb-2 flex justify-between items-center">
+                              <span>Materiais HD inclusos</span>
+                              <span className="font-mono text-[10px] text-slate-500">{subsHD.length} un</span>
                             </div>
-                          ))}
+                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                              {subsHD.map((sub, sIdx) => {
+                                const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
+                                return (
+                                  <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
+                                    <span className="font-semibold text-slate-700 break-words">{sub.material || "Produto HD"}</span>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">{q} m²</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        onMouseLeave={handleMouseLeave}
+                      >
+                        <div className="font-extrabold text-slate-800 text-xs flex flex-wrap gap-1 items-center">
+                          {subsHD.length > 0 ? (
+                            <>
+                              <span className="truncate">{subsHD.length} Mat. HD</span>
+                              <div className="text-[9px] text-slate-400 font-mono">
+                                R$ {totalValorHD.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-slate-300 italic">Nenhum</span>
+                          )}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-800 font-mono">
-                        <div className="space-y-1.5">
-                          {subList.map((sub, sIdx) => (
-                            <div key={sIdx} className="text-[11px]">
-                              {(Number(sub.qtdM2) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²
+
+                      <td className="py-3.5 px-4 text-slate-600 font-mono font-bold text-right cursor-pointer">
+                        {subsHD.length > 0 ? (
+                          <span>{totalQtdHD.toFixed(2)} m²</span>
+                        ) : (
+                          <span className="text-slate-300 font-normal">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-slate-600 max-w-[200px] cursor-pointer"
+                        onMouseEnter={(e) => handleMouseEnter(e, (
+                          <div className="space-y-2">
+                            <div className="font-extrabold uppercase tracking-wider mb-2 border-b border-slate-100 pb-2 flex justify-between items-center">
+                              <span>Materiais PC inclusos</span>
+                              <span className="font-mono text-[10px] text-slate-500">{subsPC.length} itens</span>
                             </div>
-                          ))}
+                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                              {subsPC.map((sub, sIdx) => {
+                                return (
+                                  <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
+                                    <span className="font-semibold text-slate-700 break-words">{sub.material}</span>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">{sub.qtdPC} m²</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        onMouseLeave={handleMouseLeave}
+                      >
+                        <div className="font-extrabold text-slate-800 text-xs flex flex-wrap gap-1 items-center">
+                          {subsPC.length > 0 ? (
+                            <>
+                              <span className="truncate text-[#b38025]">{subsPC.length} Mat. PC</span>
+                              <div className="text-[9px] text-slate-400 font-mono">
+                                R$ {totalValorPC.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-slate-300 italic">Nenhum</span>
+                          )}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-900 font-mono">
+
+                      <td className="py-3.5 px-4 text-slate-600 font-mono font-bold text-right cursor-pointer">
+                        {subsPC.length > 0 ? (
+                          <span className="text-[#b38025]">{totalQtdPC.toFixed(2)} m²</span>
+                        ) : (
+                          <span className="text-slate-300 font-normal">-</span>
+                        )}
+                      </td>
+
+                      {/* VALOR TOTAL COLUMN WITH HOVER VALUES BREAKDOWN */}
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900 font-mono cursor-pointer"
+                        onMouseEnter={(e) => handleMouseEnter(e, (
+                          <div className="space-y-3">
+                            <div className="font-extrabold text-slate-800 uppercase tracking-wider mb-2 border-b border-slate-200 pb-2 flex justify-between items-center">
+                              <span>Valores Detalhados</span>
+                            </div>
+                            <div className="space-y-3 max-h-60 overflow-y-auto">
+                              {/* HD Section */}
+                              {subsHD.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Material HD</div>
+                                  {subsHD.map((sub, sIdx) => {
+                                    const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
+                                    const total = q * (sub.valorUnitario || 0);
+                                    return (
+                                      <div key={sIdx} className="flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
+                                        <span className="font-semibold text-slate-700 truncate max-w-[150px]">{sub.material || "Produto HD"}</span>
+                                        <span className="font-mono text-slate-900 shrink-0">
+                                          {q} m² x R$ {sub.valorUnitario?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* PC Section */}
+                              {subsPC.length > 0 && (
+                                <div className="space-y-1 pt-1 border-t border-slate-100">
+                                  <div className="text-[10px] font-bold text-[#D9A441] uppercase tracking-wider">Material PC</div>
+                                  {subsPC.map((sub, sIdx) => {
+                                    const qtdPC = parseFloat(sub.qtdPC as any) || 0;
+                                    const valorUnitario = parseFloat(sub.valorUnitario as any) || 0;
+                                    const total = qtdPC * valorUnitario;
+                                    return (
+                                      <div key={sIdx} className="flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
+                                        <span className="font-semibold text-[#D9A441] break-words">{sub.material}</span>
+                                        <span className="font-mono text-slate-900 shrink-0">
+                                          {qtdPC} m² x R$ {valorUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-bold text-[#D9A441] text-xs">
+                              <span>VALOR TOTAL PC</span>
+                              <span className="font-mono">R$ {(totalValorPC || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                        ))}
+                        onMouseLeave={handleMouseLeave}
+                      >
                         <div className="text-[11px] font-mono leading-tight">
                           R$ {totalVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        {subList.length > 1 && (
+                        {(subsHD.length + subsPC.length) > 1 && (
                           <span className="text-[9px] font-medium text-slate-400 block pt-0.5 leading-none">
-                            ({subList.length} itens)
+                            ({subsHD.length + subsPC.length} itens)
                           </span>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        {lev.contratoAFecharId ? (
+                        {showLixeira ? (
+                          <span className="text-slate-400 font-semibold text-[10px]">—</span>
+                        ) : lev.contratoAFecharId ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 border border-green-250 text-[10px] font-bold uppercase rounded-lg">
                             Enviado
                           </span>
@@ -837,31 +1047,54 @@ export default function LevantamentosView() {
                       </td>
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
-                          {lev.contratoAFecharId && (
-                            <button
-                              onClick={() => {
-                                if (lev.contratoAFecharId) navigateToProject(lev.contratoAFecharId);
-                              }}
-                              className="p-1 px-1.5 bg-brand-primary/5 hover:bg-brand-primary/10 text-brand-primary border border-brand-primary/10 rounded-xl font-bold cursor-pointer transition-colors"
-                              title="Ver Orçamento Gerado"
-                            >
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
+                          {showLixeira ? (
+                            <>
+                              <button
+                                onClick={() => restoreSurveyMutation.mutate(lev.id)}
+                                className="p-1 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all"
+                                title="Restaurar Levantamento"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Restaurar</span>
+                              </button>
+                              <button
+                                onClick={() => setPermanentDeleteConfirmationId(lev.id)}
+                                className="p-1 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl border border-red-100 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all"
+                                title="Excluir Permanentemente"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                <span>Excluir Permanente</span>
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {lev.contratoAFecharId && (
+                                <button
+                                  onClick={() => {
+                                    if (lev.contratoAFecharId) navigateToProject(lev.contratoAFecharId);
+                                  }}
+                                  className="p-1 px-1.5 bg-brand-primary/5 hover:bg-brand-primary/10 text-brand-primary border border-brand-primary/10 rounded-xl font-bold cursor-pointer transition-colors"
+                                  title="Ver Orçamento Gerado"
+                                >
+                                  <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleOpenEditSurveyModal(lev)}
+                                className="p-1 px-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-slate-600 cursor-pointer transition-all"
+                                title="Editar"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmationId(lev.id)}
+                                className="p-1 px-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border border-red-100 cursor-pointer transition-all"
+                                title="Apagar"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
-                          <button
-                            onClick={() => handleOpenEditSurveyModal(lev)}
-                            className="p-1 px-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-slate-600 cursor-pointer transition-all"
-                            title="Editar"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmationId(lev.id)}
-                            className="p-1 px-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border border-red-100 cursor-pointer transition-all"
-                            title="Apagar"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -949,83 +1182,175 @@ export default function LevantamentosView() {
                     />
                   </div>
 
-                  {/* Dynamic Subestruturas Editor */}
+                  {/* Dynamic Material HD Editor */}
                   <div className="col-span-2 border-t border-slate-100 pt-3">
                     <div className="flex justify-between items-center pb-2 flex-wrap gap-1">
-                      <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider">Subestruturas *</label>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material HD *</label>
+                        <span className="text-[9px] text-slate-400 block">Preencha o material digitando ou use o catálogo opcional</span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setFormSubestruturas([...formSubestruturas, { materialId: currentActiveMaterials[0]?.id || "", qtdM2: "", valorUnitario: "" }])}
-                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[9px] font-extrabold uppercase rounded-lg border border-slate-200 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                        onClick={() => setFormSubestruturas([...formSubestruturas, { materialId: undefined, material: "", qtdHD: "", valorUnitario: "" }])}
+                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[9px] font-extrabold uppercase rounded-lg border border-emerald-200 inline-flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3 h-3 text-[#D9A441]" /> Adicionar Subestrutura
+                        <Plus className="w-3 h-3 text-emerald-600" /> Adicionar Material HD
                       </button>
                     </div>
 
-                    <div className="space-y-2 pr-0.5">
+                    <div className="space-y-3 pr-0.5">
                       {formSubestruturas.map((item, idx) => (
-                        <div key={idx} className="flex gap-2 items-center bg-slate-50/50 p-2 border border-slate-200/60 rounded-xl relative">
-                          <div className="flex-1 min-w-[120px]">
-                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Subestrutura</label>
-                            <select
+                        <div key={idx} className="bg-blue-50/50 p-3 border border-blue-200 rounded-xl space-y-2 relative">
+                          <div className="col-span-12">
+                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material HD (PREENCHER) *</label>
+                            <input
+                              type="text"
+                              required
                               className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:ring-1 focus:ring-brand-primary"
-                              value={item.materialId}
+                              value={item.material}
+                              placeholder="Digite a descrição..."
                               onChange={(e) => {
                                 const copy = [...formSubestruturas];
-                                copy[idx].materialId = e.target.value;
-                                setFormSubestruturas(copy);
-                              }}
-                            >
-                              <option value="">Selecione...</option>
-                              {currentActiveMaterials.map(mat => (
-                                <option key={mat.id} value={mat.id}>
-                                  [{mat.codigo}] - {mat.descricao}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="w-20">
-                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd (m²)</label>
-                            <input
-                              type="text"
-                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
-                              value={item.qtdM2}
-                              placeholder="0,00"
-                              onChange={(e) => {
-                                const copy = [...formSubestruturas];
-                                copy[idx].qtdM2 = e.target.value;
+                                copy[idx].material = e.target.value;
                                 setFormSubestruturas(copy);
                               }}
                             />
                           </div>
 
-                          <div className="w-24">
-                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Valor Unit. (R$)</label>
-                            <input
-                              type="text"
-                              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
-                              value={item.valorUnitario}
-                              placeholder="0,00"
-                              onChange={(e) => {
-                                const copy = [...formSubestruturas];
-                                copy[idx].valorUnitario = e.target.value;
-                                setFormSubestruturas(copy);
-                              }}
-                            />
-                          </div>
+                          <div className="flex gap-2 items-center">
+                            <div className="flex-1">
+                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd HD</label>
+                              <input
+                                type="text"
+                                required
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
+                                value={item.qtdHD}
+                                placeholder="0,00"
+                                onChange={(e) => {
+                                  const copy = [...formSubestruturas];
+                                  copy[idx].qtdHD = e.target.value;
+                                  setFormSubestruturas(copy);
+                                }}
+                              />
+                            </div>
 
-                          {formSubestruturas.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setFormSubestruturas(formSubestruturas.filter((_, i) => i !== idx))}
-                              className="p-1 px-1.5 bg-white hover:bg-red-50 text-red-500 rounded-lg border border-slate-200 text-xs font-bold transition-colors cursor-pointer self-end mb-0.5"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                            <div className="flex-1">
+                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Valor Unit. (R$)</label>
+                              <input
+                                type="text"
+                                required
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
+                                value={item.valorUnitario}
+                                placeholder="0,00"
+                                onChange={(e) => {
+                                  const copy = [...formSubestruturas];
+                                  copy[idx].valorUnitario = e.target.value;
+                                  setFormSubestruturas(copy);
+                                }}
+                              />
+                            </div>
+
+                            {formSubestruturas.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setFormSubestruturas(formSubestruturas.filter((_, i) => i !== idx))}
+                                className="p-1.5 bg-white hover:bg-red-50 text-red-500 rounded-lg border border-slate-200 text-xs font-bold transition-colors cursor-pointer self-end mb-0.5"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Dynamic Material PC Editor */}
+                  <div className="col-span-2 border-t border-slate-100 pt-3">
+                    <div className="flex justify-between items-center pb-2 flex-wrap gap-1">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material PC *</label>
+                        <span className="text-[9px] text-slate-400 block">Obrigatório para enviar para Orçamentos a Fechar</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormSubestruturasPC([...formSubestruturasPC, { material: "", qtdPC: "", valorUnitario: "" }])}
+                        className="px-2 py-1 bg-[#D9A441]/10 hover:bg-[#D9A441]/20 text-[#b38025] text-[9px] font-extrabold uppercase rounded-lg border border-[#D9A441]/20 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-[#D9A441]" /> Adicionar Material PC
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 pr-0.5">
+                      {formSubestruturasPC.length === 0 ? (
+                        <div className="text-center p-4 bg-orange-50/50 border border-orange-200/50 rounded-xl">
+                          <p className="text-[10px] font-semibold text-orange-700 uppercase">Falta Item em Material PC</p>
+                          <span className="text-[9px] text-orange-500 font-medium">Nenhum Material PC adicionado. Clique no botão acima para adicionar.</span>
+                        </div>
+                      ) : (
+                        formSubestruturasPC.map((item, idx) => (
+                          <div key={idx} className="bg-orange-50/50 p-3 border border-orange-200 rounded-xl space-y-2 relative">
+                            
+                            <div className="col-span-12">
+                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material PC (PREENCHER) *</label>
+                              <input
+                                type="text"
+                                required
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:ring-1 focus:ring-brand-primary"
+                                value={item.material}
+                                placeholder="Digite a descrição..."
+                                onChange={(e) => {
+                                  const copy = [...formSubestruturasPC];
+                                  copy[idx].material = e.target.value;
+                                  setFormSubestruturasPC(copy);
+                                }}
+                              />
+                            </div>
+
+                            <div className="flex gap-2 items-center">
+                              <div className="flex-1">
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd PC</label>
+                                <input
+                                  type="text"
+                                  required
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
+                                  value={item.qtdPC}
+                                  placeholder="0,00"
+                                  onChange={(e) => {
+                                    const copy = [...formSubestruturasPC];
+                                    copy[idx].qtdPC = e.target.value;
+                                    setFormSubestruturasPC(copy);
+                                  }}
+                                />
+                              </div>
+
+                              <div className="flex-1">
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Valor Unit. (R$)</label>
+                                <input
+                                  type="text"
+                                  required
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
+                                  value={item.valorUnitario}
+                                  placeholder="0,00"
+                                  onChange={(e) => {
+                                    const copy = [...formSubestruturasPC];
+                                    copy[idx].valorUnitario = e.target.value;
+                                    setFormSubestruturasPC(copy);
+                                  }}
+                                />
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setFormSubestruturasPC(formSubestruturasPC.filter((_, i) => i !== idx))}
+                                className="p-1.5 bg-white hover:bg-red-50 text-red-500 rounded-lg border border-slate-200 text-xs font-bold transition-colors cursor-pointer self-end mb-0.5"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -1353,6 +1678,88 @@ export default function LevantamentosView() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL: PERMANENT DELETE CONFIRMATION */}
+      <AnimatePresence>
+        {permanentDeleteConfirmationId && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-red-100 overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="text-sm font-black uppercase text-red-700 tracking-wider">
+                Excluir Permanentemente
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                Tem certeza que deseja excluir permanentemente este levantamento? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPermanentDeleteConfirmationId(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  onClick={() => {
+                    permanentDeleteSurveyMutation.mutate(permanentDeleteConfirmationId);
+                    setPermanentDeleteConfirmationId(null);
+                  }}
+                >
+                  Excluir Permanentemente
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* MODAL: ALERT MISSING PC MATERIAL */}
+      <AnimatePresence>
+        {alertPopupOpen && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-slate-100 overflow-hidden p-6 space-y-4 text-center"
+            >
+              <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mx-auto border border-amber-100">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider">
+                Atenção: Material Faltante
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                É obrigatório inserir pelo menos um material para a subestrutura em <strong>Material PC</strong> antes de salvar.
+              </p>
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAlertPopupOpen(false)}
+                  className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Entendido
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {tooltip.visible && createPortal(
+        <div
+          className="fixed z-[60] bg-white text-slate-800 text-xs rounded-xl p-4 shadow-xl border border-slate-200 w-96 animate-in fade-in zoom-in-95 duration-100 pointer-events-none"
+          style={{ top: tooltip.y, left: tooltip.x }}
+        >
+          {tooltip.content}
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 }

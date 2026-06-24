@@ -16,7 +16,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
   const [cliente, setCliente] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [valorContrato, setValorContrato] = useState("");
-  const [statusContrato, setStatusContrato] = useState<'CONSOLIDADO' | 'A_FECHAR'>('CONSOLIDADO');
+  const [statusContrato, setStatusContrato] = useState<'CONSOLIDADO' | 'A_FECHAR' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO'>('CONSOLIDADO');
   const [dataInicioContrato, setDataInicioContrato] = useState("");
   const [dataFimContrato, setDataFimContrato] = useState("");
   const [loading, setLoading] = useState(false);

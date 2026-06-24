@@ -16,7 +16,6 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from "recharts";
 import KPICard from "./KPICard";
 import ProgressBarKPI from "./ProgressBarKPI";
-import DateRangePicker from "./DateRangePicker";
 import { DashboardStats } from "../types";
 import { useUIStore } from "../store";
 
@@ -27,41 +26,6 @@ const formatDateBR = (dateStr?: string | null) => {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
   return dateStr;
-};
-
-const parseLocalDate = (dateVal: any, isEnd = false): Date | null => {
-  if (!dateVal) return null;
-  
-  let dateStr = "";
-  if (dateVal instanceof Date) {
-    const y = dateVal.getFullYear();
-    const m = String(dateVal.getMonth() + 1).padStart(2, "0");
-    const d = String(dateVal.getDate()).padStart(2, "0");
-    dateStr = `${y}-${m}-${d}`;
-  } else if (typeof dateVal === "string") {
-    dateStr = dateVal;
-  } else {
-    return null;
-  }
-
-  const cleanStr = dateStr.trim().substring(0, 10);
-  const parts = cleanStr.split("-");
-  if (parts.length === 3) {
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      const date = new Date(year, month, day);
-      if (isEnd) {
-        date.setHours(23, 59, 59, 999);
-      } else {
-        date.setHours(0, 0, 0, 0);
-      }
-      return date;
-    }
-  }
-
-  return null;
 };
 
 export default function DashboardView() {
@@ -96,8 +60,6 @@ export default function DashboardView() {
   };
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [showAdmDetails, setShowAdmDetails] = useState(false);
   const [admMeta, setAdmMeta] = useState<number>(() => {
     const saved = localStorage.getItem("dashboard_adm_meta");
@@ -159,32 +121,7 @@ export default function DashboardView() {
       const matchesSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.cliente && p.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      let matchesDate = true;
-      
-      // Determine contract start and end dates in a timezone-safe manner
-      const contractStart = parseLocalDate(p.dataInicioContrato || p.createdAt, false);
-      const contractEnd = parseLocalDate(p.dataFimContrato || p.dataInicioContrato || p.createdAt, true);
-
-      if (startDate && contractEnd) {
-        const filterStart = parseLocalDate(startDate, false);
-        if (filterStart && contractEnd < filterStart) {
-          matchesDate = false;
-        }
-      }
-
-      if (endDate && contractStart) {
-        const filterEnd = parseLocalDate(endDate, true);
-        if (filterEnd && contractStart > filterEnd) {
-          matchesDate = false;
-        }
-      }
-
-      // If a date filter is applied but the project has no valid tracking date, hide it
-      if ((startDate || endDate) && !contractStart) {
-        matchesDate = false;
-      }
-
-      return matchesSearch && matchesDate;
+      return matchesSearch;
     });
 
   // Setup data for charts - Compact & clean
@@ -382,145 +319,6 @@ export default function DashboardView() {
             </div>
           </div>
 
-          {/* Projects list preview table inside the dashboard */}
-          <div className="bg-white rounded-xl border border-slate-100 shadow-xs">
-            <div className="p-4 border-b border-slate-100 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-brand-success" />
-                  <h3 className="text-xs font-extrabold text-brand-text-primary uppercase tracking-wide">Contratos Projeto Certo</h3>
-                </div>
-                <div className="relative w-full sm:max-w-xs">
-                  <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-brand-text-secondary" />
-                  <input
-                    type="text"
-                    placeholder="Pesquisar contrato ou cliente..."
-                    className="w-full pl-8 pr-3 py-1.5 text-[10px] border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-brand-primary/25 hover:border-slate-300 transition-colors"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    id="project_search_dashboard"
-                  />
-                </div>
-              </div>
-
-              {/* Date Filters Row */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-50 text-[10px]">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-extrabold uppercase tracking-wide text-[9px]">Filtro de Período:</span>
-                  <DateRangePicker
-                    startDate={startDate}
-                    endDate={endDate}
-                    onChange={(start, end) => {
-                      setStartDate(start);
-                      setEndDate(end);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto rounded-b-xl overflow-hidden">
-              {filteredProjects.length > 0 ? (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/60 border-b border-slate-100">
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Cliente</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Custo do Contrato</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
-                      <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[11px] text-brand-text-primary">
-                    {filteredProjects.map((p) => {
-                      const marginIsPositive = p.margemLiquida >= 0;
-                      return (
-                        <tr
-                          key={p.id}
-                          onClick={() => navigateToProject(p.id)}
-                          className="hover:bg-brand-primary/5 cursor-pointer transition-colors group"
-                        >
-                          <td className="py-2.5 px-4 text-brand-text-primary group-hover:text-brand-primary transition-colors">
-                            <div className="font-bold">{p.nome}</div>
-                            {(p.dataInicioContrato || p.dataFimContrato) && (
-                              <div className="text-[10px] text-slate-400 font-semibold mt-0.5 flex flex-wrap items-center gap-1">
-                                <span>Período:</span>
-                                <span>{p.dataInicioContrato ? formatDateBR(p.dataInicioContrato) : "N/I"}</span>
-                                <span className="opacity-60">até</span>
-                                <span>{p.dataFimContrato ? formatDateBR(p.dataFimContrato) : "N/I"}</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono font-bold text-brand-text-primary">
-                            {formatBRL(p.valorContrato)}
-                          </td>
-                          <td className="py-2.5 px-4 text-brand-text-secondary font-semibold">
-                            {p.cliente || "Geral / Interno"}
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono font-medium text-brand-text-primary">
-                            {formatBRL(p.visaoGeral)}
-                          </td>
-                          <td
-                            className={`py-2.5 px-4 text-right font-mono font-bold ${
-                              marginIsPositive ? "text-brand-success" : "text-brand-error"
-                            }`}
-                          >
-                            {formatBRL(p.margemLiquida)}
-                          </td>
-                          <td className="py-2.5 px-4 text-center">
-                            <span
-                              className={`inline-block font-mono font-bold py-0.5 px-1.5 rounded-md ${
-                                marginIsPositive
-                                  ? "bg-brand-success/5 text-brand-success border border-brand-success/15"
-                                  : "bg-brand-error/5 text-brand-error border border-brand-error/15"
-                              }`}
-                            >
-                              {p.percentualMargem.toFixed(2)}%
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={(e) => handleEditCustoAdmClick(p, e)}
-                                className="p-1 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] font-bold cursor-pointer"
-                                title="Editar Custo ADM deste contrato"
-                              >
-                                <Percent className="w-2.5 h-2.5 text-brand-accent" />
-                                <span>Alterar Custo</span>
-                              </button>
-                              
-                              <button
-                                onClick={() => navigateToProject(p.id)}
-                                className="p-1 px-2 hover:bg-brand-primary hover:text-white text-brand-primary border border-brand-primary/10 hover:border-transparent rounded-md transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold cursor-pointer"
-                              >
-                                Abrir
-                                <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                              </button>
-                            </div>
-                            {p.custoAdm !== null && p.custoAdm !== undefined && (
-                              <div className="mt-1">
-                                <span className="text-[8px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200/50 px-1 py-0.5 rounded-sm">
-                                  Custo ADM: {p.custoAdm}%
-                                </span>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-10 text-brand-text-secondary/30">
-                  <FolderOpen className="w-8 h-8 opacity-40 mb-1.5" />
-                  <p className="font-semibold text-xs">Nenhum projeto localizado...</p>
-                </div>
-              )}
-            </div>
-          </div>
-
         </div>
 
         {/* Right Sidebar Column (spans 1/3 of space on desktop) */}
@@ -578,6 +376,130 @@ export default function DashboardView() {
             )}
           </div>
 
+        </div>
+      </div>
+
+      {/* Projects list preview table inside the dashboard - EXTENDED TO FULL WIDTH */}
+      <div className="bg-white rounded-xl border border-slate-100 shadow-xs mt-4">
+        <div className="p-4 border-b border-slate-100 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-brand-success" />
+              <h3 className="text-xs font-extrabold text-brand-text-primary uppercase tracking-wide">Contratos Projeto Certo</h3>
+            </div>
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-brand-text-secondary" />
+              <input
+                type="text"
+                placeholder="Pesquisar contrato ou cliente..."
+                className="w-full pl-8 pr-3 py-1.5 text-[10px] border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-brand-primary/25 hover:border-slate-300 transition-colors"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                id="project_search_dashboard"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-b-xl overflow-hidden">
+          {filteredProjects.length > 0 ? (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/60 border-b border-slate-100">
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Contrato</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Valor Contrato</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider">Cliente</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Custo do Contrato</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
+                  <th className="py-2 px-4 text-[9px] font-extrabold text-brand-text-secondary uppercase tracking-wider text-center">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-[11px] text-brand-text-primary">
+                {filteredProjects.map((p) => {
+                  const marginIsPositive = p.margemLiquida >= 0;
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => navigateToProject(p.id)}
+                      className="hover:bg-brand-primary/5 cursor-pointer transition-colors group"
+                    >
+                      <td className="py-2.5 px-4 text-brand-text-primary group-hover:text-brand-primary transition-colors">
+                        <div className="font-bold">{p.nome}</div>
+                        {(p.dataInicioContrato || p.dataFimContrato) && (
+                          <div className="text-[10px] text-slate-400 font-semibold mt-0.5 flex flex-wrap items-center gap-1">
+                            <span>Período:</span>
+                            <span>{p.dataInicioContrato ? formatDateBR(p.dataInicioContrato) : "N/I"}</span>
+                            <span className="opacity-60">até</span>
+                            <span>{p.dataFimContrato ? formatDateBR(p.dataFimContrato) : "N/I"}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-brand-text-primary">
+                        {formatBRL(p.valorContrato)}
+                      </td>
+                      <td className="py-2.5 px-4 text-brand-text-secondary font-semibold">
+                        {p.cliente || "Geral / Interno"}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono font-medium text-brand-text-primary">
+                        {formatBRL(p.visaoGeral)}
+                      </td>
+                      <td
+                        className={`py-2.5 px-4 text-right font-mono font-bold ${
+                          marginIsPositive ? "text-brand-success" : "text-brand-error"
+                        }`}
+                      >
+                        {formatBRL(p.margemLiquida)}
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <span
+                          className={`inline-block font-mono font-bold py-0.5 px-1.5 rounded-md ${
+                            marginIsPositive
+                              ? "bg-brand-success/5 text-brand-success border border-brand-success/15"
+                              : "bg-brand-error/5 text-brand-error border border-brand-error/15"
+                          }`}
+                        >
+                          {p.percentualMargem.toFixed(2)}%
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={(e) => handleEditCustoAdmClick(p, e)}
+                            className="p-1 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] font-bold cursor-pointer"
+                            title="Editar Custo ADM deste contrato"
+                          >
+                            <Percent className="w-2.5 h-2.5 text-brand-accent" />
+                            <span>Editar Custo ADM</span>
+                          </button>
+                          
+                          <button
+                            onClick={() => navigateToProject(p.id)}
+                            className="p-1 px-2 hover:bg-brand-primary hover:text-white text-brand-primary border border-brand-primary/10 hover:border-transparent rounded-md transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold cursor-pointer"
+                          >
+                            Abrir
+                            <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                          </button>
+                        </div>
+                        {p.custoAdm !== null && p.custoAdm !== undefined && (
+                          <div className="mt-1">
+                            <span className="text-[8px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200/50 px-1 py-0.5 rounded-sm">
+                              Custo ADM: {p.custoAdm}%
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="flex flex-col items-center justify-center p-10 text-brand-text-secondary/30">
+              <FolderOpen className="w-8 h-8 opacity-40 mb-1.5" />
+              <p className="font-semibold text-xs">Nenhum projeto localizado...</p>
+            </div>
+          )}
         </div>
       </div>
 

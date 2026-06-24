@@ -58,7 +58,7 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
         const currentSubs = item.subitens || [];
         const newSub = { id: `sub-${Date.now()}`, ...subItemPayload };
         const updatedSubs = [...currentSubs, newSub];
-        const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+        const newTotal = updatedSubs.reduce((acc, s) => acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0)), 0);
         updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
         return updatedItem;
       });
@@ -74,7 +74,7 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
         if (item.id !== itemId) return item;
         const currentSubs = item.subitens || [];
         const updatedSubs = currentSubs.map(s => s.id === subId ? { ...s, ...payload } : s);
-        const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+        const newTotal = updatedSubs.reduce((acc, s) => acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0)), 0);
         updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
         return updatedItem;
       });
@@ -90,7 +90,7 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
         if (item.id !== itemId) return item;
         const currentSubs = item.subitens || [];
         const updatedSubs = currentSubs.filter(s => s.id !== subId);
-        const newTotal = updatedSubs.reduce((acc, s) => acc + s.valor, 0);
+        const newTotal = updatedSubs.reduce((acc, s) => acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0)), 0);
         updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
         return updatedItem;
       });

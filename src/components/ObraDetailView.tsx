@@ -97,7 +97,7 @@ function ExcelViewer({ base64Url }: { base64Url: string }) {
   }
 
   return (
-    <div className="flex flex-col h-[600px] w-full relative overflow-hidden rounded-xl border border-slate-200">
+    <div className="flex flex-col h-full w-full relative overflow-hidden rounded-xl border border-slate-200">
       <Workbook data={sheetData} />
     </div>
   );
@@ -195,6 +195,7 @@ export default function ObraDetailView() {
 
   // Secondary document attachments and inline pdf preview states
   const [activePdfUrl, setActivePdfUrl] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   // Sub-items list expansion and inline management states
@@ -203,6 +204,7 @@ export default function ObraDetailView() {
   const [editingSubItemId, setEditingSubItemId] = useState<string | null>(null);
   const [tempSubItemDesc, setTempSubItemDesc] = useState("");
   const [tempSubItemValue, setTempSubItemValue] = useState("");
+  const [tempSubItemQtd, setTempSubItemQtd] = useState("1");
 
   const toggleExpandItem = (itemId: string) => {
     setExpandedItemIds(prev => ({
@@ -409,11 +411,13 @@ export default function ObraDetailView() {
       return;
     }
     const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
+    const qtd = parseFloat(tempSubItemQtd.replace(",", ".")) || 1;
     
     // Optimistic UI Update for memory/DB failure fallback using Zustand
     const updatedItem = addSubItem(item.id, {
       descricao: tempSubItemDesc.trim(),
-      valor: val
+      valor: val,
+      qtd: qtd
     });
 
     if (updatedItem) {
@@ -429,6 +433,7 @@ export default function ObraDetailView() {
     setAddingSubItemForId(null);
     setTempSubItemDesc("");
     setTempSubItemValue("");
+    setTempSubItemQtd("1");
   };
 
   const handleSaveEditSubItem = async (item: ItemOrcamento, subId: string) => {
@@ -437,11 +442,13 @@ export default function ObraDetailView() {
       return;
     }
     const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
+    const qtd = parseFloat(tempSubItemQtd.replace(",", ".")) || 1;
 
     // Optimistic UI Update for memory/DB failure fallback
     const updatedItem = updateSubItem(item.id, subId, {
       descricao: tempSubItemDesc.trim(),
-      valor: val
+      valor: val,
+      qtd: qtd
     });
 
     if (updatedItem) {
@@ -457,6 +464,7 @@ export default function ObraDetailView() {
     setEditingSubItemId(null);
     setTempSubItemDesc("");
     setTempSubItemValue("");
+    setTempSubItemQtd("1");
   };
 
   const handleDeleteSubItem = async (item: ItemOrcamento, subId: string) => {
@@ -1088,11 +1096,11 @@ export default function ObraDetailView() {
                                   {/* List of sub-items styled nicely */}
                                   {item.subitens && item.subitens.length > 0 ? (
                                     <div className="space-y-1.5 max-w-2xl bg-white border border-slate-200 p-3 rounded-xl shadow-inner">
-                                      {item.subitens.map((sub) => {
+                                      {item.subitens.map((sub, sIdx) => {
                                         const isEditingCurrent = editingSubItemId === sub.id;
                                         return (
                                           <div 
-                                            key={sub.id} 
+                                            key={sub.id || `sub-${sIdx}`} 
                                             className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-all duration-100 border border-slate-100 text-[10px]"
                                           >
                                             {isEditingCurrent ? (
@@ -1104,6 +1112,13 @@ export default function ObraDetailView() {
                                                   className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-slate-700 flex-1 focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
                                                   placeholder="Ex: Alvenaria ou Subestrutura Secundária"
                                                   autoFocus
+                                                />
+                                                <input
+                                                  type="text"
+                                                  value={tempSubItemQtd}
+                                                  onChange={(e) => setTempSubItemQtd(e.target.value)}
+                                                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-mono font-bold text-slate-700 w-16 text-center focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
+                                                  placeholder="Qtd"
                                                 />
                                                 <input
                                                   type="text"
@@ -1134,8 +1149,11 @@ export default function ObraDetailView() {
                                                   </span>
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0">
+                                                  <span className="text-[10px] text-slate-400 font-mono font-medium">
+                                                    {Number(sub.qtd || 1)} x {formatBRL(Number(sub.valor || 0))} =
+                                                  </span>
                                                   <span className="font-mono font-black text-brand-text-primary text-right w-24">
-                                                    {formatBRL(sub.valor)}
+                                                    {formatBRL(Number(sub.qtd || 1) * Number(sub.valor || 0))}
                                                   </span>
                                                   <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
                                                     <button
@@ -1143,7 +1161,8 @@ export default function ObraDetailView() {
                                                         setEditingSubItemId(sub.id);
                                                         setAddingSubItemForId(null);
                                                         setTempSubItemDesc(sub.descricao);
-                                                        setTempSubItemValue(sub.valor.toString());
+                                                        setTempSubItemValue(sub ? (sub.valor || 0).toString() : "0");
+                                                        setTempSubItemQtd(sub ? ((sub.qtd || 1) || 1).toString() : "1");
                                                       }}
                                                       className="p-1 hover:bg-slate-150 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
                                                       title="Editar subitem"
@@ -1182,6 +1201,13 @@ export default function ObraDetailView() {
                                         className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 flex-1 font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-brand-accent"
                                         autoFocus
                                       />
+                                      <input
+                                        type="text"
+                                        placeholder="Qtd"
+                                        value={tempSubItemQtd}
+                                        onChange={(e) => setTempSubItemQtd(e.target.value)}
+                                        className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 w-16 font-mono font-extrabold text-slate-750 focus:outline-hidden focus:ring-1 focus:ring-brand-accent text-center"
+                                      />
                                       <div className="relative">
                                         <input
                                           type="text"
@@ -1214,6 +1240,7 @@ export default function ObraDetailView() {
                                             setEditingSubItemId(null);
                                             setTempSubItemDesc("");
                                             setTempSubItemValue("");
+                                            setTempSubItemQtd("1");
                                           }}
                                           className="inline-flex items-center gap-1.5 text-[10px] text-emerald-600 hover:text-emerald-700 transition-colors font-extrabold px-3 py-1.5 border border-dashed border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-50/10 rounded-lg cursor-pointer uppercase tracking-wider"
                                         >
@@ -1540,13 +1567,13 @@ export default function ObraDetailView() {
         else if (isImage) typeLabel = "Imagem";
 
         return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className={`fixed inset-0 z-[100] flex items-center justify-center ${isFullscreen ? "p-0" : "p-4"}`}>
             <div 
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs" 
               onClick={() => setActivePdfUrl(null)} 
             />
 
-            <div className="relative bg-white w-full max-w-4xl h-[85vh] rounded-2xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className={`relative bg-white w-full ${isFullscreen ? "max-w-none h-screen rounded-none" : "max-w-6xl h-[90vh] rounded-2xl"} border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200`}>
               {/* Modal header details and full-size actions */}
               <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-150 flex items-center justify-between gap-3 shrink-0 text-left">
                 <div className="flex items-center gap-2 truncate text-left">
@@ -1562,16 +1589,32 @@ export default function ObraDetailView() {
                 </div>
                 
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider cursor-pointer"
+                    title="Alternar Tela Cheia"
+                  >
+                    <span className="hidden sm:inline">{isFullscreen ? "Restaurar" : "Tela Cheia"}</span>
+                  </button>
+                  <a
+                    href={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(activePdfUrl || "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider cursor-pointer"
+                    title="Abrir no Microsoft Office Online"
+                  >
+                    <span className="hidden sm:inline">Microsoft</span>
+                  </a>
                   <a
                     href={activePdfUrl}
                     download={activeDocName}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-brand-primary hover:border-brand-accent rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider cursor-pointer"
-                    title="Baixar ou abrir em nova aba"
+                    title="Download"
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
-                    <span className="hidden sm:inline">Nova Aba / Baixar</span>
+                    <span className="hidden sm:inline">Download</span>
                   </a>
                   <button
                     onClick={() => setActivePdfUrl(null)}
