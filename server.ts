@@ -505,18 +505,7 @@ async function checkDbConnection() {
           )
         `);
 
-        // Initialize materiais and levantamentos tables if not exist
-        await pool.query(`
-          CREATE TABLE IF NOT EXISTS materiais (
-            id VARCHAR(255) PRIMARY KEY,
-            codigo VARCHAR(255) UNIQUE NOT NULL,
-            descricao VARCHAR(255) NOT NULL,
-            ativo BOOLEAN NOT NULL DEFAULT TRUE,
-            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-
+        // Initialize levantamentos table if not exist
         await pool.query(`
           CREATE TABLE IF NOT EXISTS levantamentos (
             id VARCHAR(255) PRIMARY KEY,
@@ -529,8 +518,7 @@ async function checkDbConnection() {
             responsavel VARCHAR(255) NOT NULL,
             status VARCHAR(255) NOT NULL,
             previsao VARCHAR(255),
-            "materialId" VARCHAR(255) NOT NULL REFERENCES materiais(id),
-            "qtdM2" DOUBLE PRECISION NOT NULL,
+            "qtdM2" DOUBLE PRECISION,
             "statusEnvio" VARCHAR(255) NOT NULL,
             "contratoAFecharId" VARCHAR(255),
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -538,35 +526,12 @@ async function checkDbConnection() {
           )
         `);
 
-                // Check columns and add link to Obras
+        // Check columns and add link to Obras
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "levantamentoId" VARCHAR(255)');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS "contratoAFecharId" VARCHAR(255)');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas TEXT');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas_pc TEXT');
-        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "materialId" DROP NOT NULL');
-        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "qtdM2" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "cliente" DROP NOT NULL');
-
-        // Seed default materials if none exist
-        const materialsCountRes = await pool.query('SELECT COUNT(*)::int as count FROM materiais');
-        if (materialsCountRes.rows[0].count === 0) {
-          console.log("[pg Sync] Semeando materiais padrão...");
-          const defaultMaterials = [
-            { codigo: "C40", descricao: "Concreto C40 Autoadensável", ativo: true },
-            { codigo: "C30", descricao: "Concreto C30 Convencional", ativo: true },
-            { codigo: "Aço CA-50", descricao: "Barra de Aço CA-50 10mm", ativo: true },
-            { codigo: "Brise-01", descricao: "Brise-soleil Alumínio Amadeirado", ativo: true },
-            { codigo: "Areia Grossa", descricao: "Areia Grossa Lavada /m³", ativo: true },
-            { codigo: "Cimento CP-II", descricao: "Cimento Portland CP II-F-32 (Saco 50kg)", ativo: true }
-          ];
-          for (const mat of defaultMaterials) {
-            const matId = "mat-" + Math.random().toString(36).substring(2, 10);
-            await pool.query(
-              'INSERT INTO materiais (id, codigo, descricao, ativo) VALUES ($1, $2, $3, $4)',
-              [matId, mat.codigo, mat.descricao, mat.ativo]
-            );
-          }
-        }
 
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS descricao VARCHAR(255) NOT NULL DEFAULT \'\'');
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS valor DOUBLE PRECISION NOT NULL DEFAULT 0.0');
@@ -1952,100 +1917,6 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
   // --- NOVO MÓDULO: LEVANTAMENTOS / ORÇAMENTOS ---
 
-  // GET Materiais catalog
-  app.get("/api/materiais", async (req, res) => {
-    try {
-      if (dbConnected && pool) {
-        const materialsRes = await pool.query('SELECT * FROM materiais ORDER BY codigo ASC');
-        res.json(materialsRes.rows);
-      } else {
-        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
-      }
-    } catch (error: any) {
-      console.error("Erro no GET /api/materiais:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // POST Criar Material
-  app.post("/api/materiais", async (req, res) => {
-    const { codigo, descricao, ativo } = req.body;
-    if (!codigo || !descricao) {
-      return res.status(400).json({ error: "Código e descrição são obrigatórios." });
-    }
-    try {
-      if (dbConnected && pool) {
-        const id = "mat-" + generateId().substring(0, 8);
-        const checkRes = await pool.query('SELECT * FROM materiais WHERE codigo = $1 LIMIT 1', [codigo]);
-        if (checkRes.rows.length > 0) {
-          return res.status(400).json({ error: "Já existe um material cadastrado com este código." });
-        }
-        await pool.query(
-          'INSERT INTO materiais (id, codigo, descricao, ativo) VALUES ($1, $2, $3, $4)',
-          [id, codigo, descricao, ativo !== false]
-        );
-        const created = await pool.query('SELECT * FROM materiais WHERE id = $1', [id]);
-        res.json(created.rows[0]);
-      } else {
-        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
-      }
-    } catch (error: any) {
-      console.error("Erro no POST /api/materiais:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // PUT Atualizar Material
-  app.put("/api/materiais/:id", async (req, res) => {
-    const { id } = req.params;
-    const { codigo, descricao, ativo } = req.body;
-    try {
-      if (dbConnected && pool) {
-        const checkRes = await pool.query('SELECT * FROM materiais WHERE id = $1', [id]);
-         if (checkRes.rows.length === 0) {
-           return res.status(404).json({ error: "Material não encontrado." });
-         }
-         if (codigo) {
-           const dupRes = await pool.query('SELECT * FROM materiais WHERE codigo = $1 AND id <> $2 LIMIT 1', [codigo, id]);
-           if (dupRes.rows.length > 0) {
-             return res.status(400).json({ error: "Já existe um outro material com este código." });
-           }
-         }
-         await pool.query(
-           'UPDATE materiais SET codigo = COALESCE($1, codigo), descricao = COALESCE($2, descricao), ativo = COALESCE($3, ativo), "updatedAt" = CURRENT_TIMESTAMP WHERE id = $4',
-           [codigo || null, descricao || null, ativo === undefined ? null : ativo, id]
-         );
-         const updated = await pool.query('SELECT * FROM materiais WHERE id = $1', [id]);
-         res.json(updated.rows[0]);
-      } else {
-        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
-      }
-    } catch (error: any) {
-      console.error("Erro no PUT /api/materiais/:id:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // DELETE Excluir Material
-  app.delete("/api/materiais/:id", async (req, res) => {
-    const { id } = req.params;
-    try {
-      if (dbConnected && pool) {
-        const refCheck = await pool.query('SELECT * FROM levantamentos WHERE "materialId" = $1 LIMIT 1', [id]);
-        if (refCheck.rows.length > 0) {
-          return res.status(400).json({ error: "Não é possível excluir este material pois ele está vinculado a levantamentos ativos." });
-        }
-        await pool.query('DELETE FROM materiais WHERE id = $1', [id]);
-        res.json({ success: true, message: "Material excluído com sucesso." });
-      } else {
-        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
-      }
-    } catch (error: any) {
-      console.error("Erro no DELETE /api/materiais/:id:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // GET Levantamentos (all, joined with materials map)
   app.get("/api/levantamentos", async (req, res) => { // get levantamentos route
     try {
@@ -2056,8 +1927,6 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           ORDER BY l."dataSolicitacao" DESC, l."createdAt" DESC
         `;
         const result = await pool.query(query);
-        const matsRes = await pool.query('SELECT * FROM materiais');
-        const matsMap = new Map(matsRes.rows.map(m => [m.id, m]));
 
          const list = result.rows.map(row => {
            let subList: any[] = [];
@@ -2079,9 +1948,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
            }
 
            const enrichedHD = subList.map((item: any) => {
-             const mat = item.materialId ? matsMap.get(item.materialId) : null;
              return {
-               material: item.material || (mat ? mat.descricao : "Produto HD"),
+               material: item.material || "Produto HD",
                qtdHD: Number(item.qtdHD !== undefined ? item.qtdHD : (item.qtdM2 || 0)),
                valorUnitario: Number(item.valorUnitario || 0)
              };

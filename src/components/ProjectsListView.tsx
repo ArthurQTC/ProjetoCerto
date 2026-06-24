@@ -108,6 +108,7 @@ export default function ProjectsListView() {
       const res = await fetch(`/api/projetos/${id}?permanent=true`, { method: "DELETE" });
       if (!res.ok) throw new Error("Erro ao remover projeto permanentemente");
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+      queryClient.invalidateQueries({ queryKey: ["obras"] });
     } catch (err: any) {
       alert(err.message);
     }
