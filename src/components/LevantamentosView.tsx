@@ -182,35 +182,25 @@ export default function LevantamentosView() {
     });
   }, [levantamentos, filterCliente, filterResponsavel, filterStatus, showLixeira]);
 
-  // Total metros quadrados dynamic KPI summation
+  // Total metros quadrados dynamic KPI summation (only Material PC)
   const totalMetrosQuadrados = useMemo(() => {
     return filteredLevantamentos.reduce((acc, current) => {
-      const subs = current.subestruturas || [];
-      if (subs.length > 0) {
-        return acc + subs.reduce((itemSum, s) => {
-          const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
-          return itemSum + (Number(q) || 0);
-        }, 0);
-      }
-      return acc + (Number(current.qtdM2) || 0);
+      const subsPC = current.subestruturas_pc || [];
+      return acc + subsPC.reduce((itemSum, s) => {
+        return itemSum + (Number(s.qtdPC) || 0);
+      }, 0);
     }, 0);
   }, [filteredLevantamentos]);
 
-  // Safe helper to obtain sum value for a single row
+  // Safe helper to obtain sum value for a single row (only Material PC)
   const getLevantamentoTotalVal = (lev: Levantamento): number => {
-    const subsHD = lev.subestruturas || [];
     const subsPC = lev.subestruturas_pc || [];
     
-    const hdVal = subsHD.reduce((sum, s) => {
-      const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
-      return sum + (Number(q) * (Number(s.valorUnitario) || 0));
-    }, 0);
-
     const pcVal = subsPC.reduce((sum, s) => {
       return sum + ((Number(s.qtdPC) || 0) * (Number(s.valorUnitario) || 0));
     }, 0);
 
-    return hdVal + pcVal;
+    return pcVal;
   };
 
   // Total monetário valor calculated as summation of (qtd * unit price) for filtered subset
@@ -361,6 +351,13 @@ export default function LevantamentosView() {
   };
 
   // Setup modal for editing
+  const formatInputVal = (val: any) => {
+    if (val === undefined || val === null || val === "") return "";
+    const num = Number(val);
+    if (isNaN(num)) return String(val);
+    return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   const handleOpenEditSurveyModal = (survey: Levantamento) => {
     setEditingSurvey(survey);
     setFormObra(survey.obra);
@@ -376,20 +373,20 @@ export default function LevantamentosView() {
     if (survey.subestruturas && survey.subestruturas.length > 0) {
       setFormSubestruturas(survey.subestruturas.map(s => ({
         material: typeof s.material === 'object' && s.material !== null ? (s.material as any).descricao : (s.material || ""),
-        qtdHD: String(s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || "")),
-        valorUnitario: String(s.valorUnitario || "0")
+        qtdHD: formatInputVal(s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || "")),
+        valorUnitario: formatInputVal(s.valorUnitario || "0")
       })));
     } else {
       setFormSubestruturas([
-        { material: "", qtdHD: "", valorUnitario: "0" }
+        { material: "", qtdHD: "", valorUnitario: "" }
       ]);
     }
 
     if (survey.subestruturas_pc && survey.subestruturas_pc.length > 0) {
       setFormSubestruturasPC(survey.subestruturas_pc.map(s => ({
         material: s.material || "",
-        qtdPC: String(s.qtdPC || ""),
-        valorUnitario: String(s.valorUnitario || "0")
+        qtdPC: formatInputVal(s.qtdPC || ""),
+        valorUnitario: formatInputVal(s.valorUnitario || "0")
       })));
     } else {
       setFormSubestruturasPC([]);
@@ -460,8 +457,8 @@ export default function LevantamentosView() {
 
     // Format subestruturas payload
     const processedSubs = validSubestruturas.map(item => {
-      const rawQty = item.qtdHD ? String(item.qtdHD).trim().replace(",", ".") : "";
-      const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(",", ".") : "";
+      const rawQty = item.qtdHD ? String(item.qtdHD).trim().replace(/\./g, "").replace(",", ".") : "";
+      const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(/\./g, "").replace(",", ".") : "";
       const q = rawQty ? parseFloat(rawQty) : 0;
       const v = rawVal ? parseFloat(rawVal) : 0;
 
@@ -475,8 +472,8 @@ export default function LevantamentosView() {
 
     // Format subestruturas PC payload
     const processedSubsPC = formSubestruturasPC.map(item => {
-      const rawQty = item.qtdPC ? String(item.qtdPC).trim().replace(",", ".") : "";
-      const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(",", ".") : "";
+      const rawQty = item.qtdPC ? String(item.qtdPC).trim().replace(/\./g, "").replace(",", ".") : "";
+      const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(/\./g, "").replace(",", ".") : "";
       const q = rawQty ? parseFloat(rawQty) : 0;
       const v = rawVal ? parseFloat(rawVal) : 0;
       return {
@@ -753,7 +750,7 @@ export default function LevantamentosView() {
                                 return (
                                   <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
                                     <span className="font-semibold text-slate-700 break-words">{sub.material || "Produto HD"}</span>
-                                    <span className="font-mono font-bold text-slate-900 shrink-0">{q} m²</span>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">{Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
                                   </div>
                                 );
                               })}
@@ -778,7 +775,7 @@ export default function LevantamentosView() {
 
                       <td className="py-3.5 px-4 text-slate-600 font-mono font-bold text-right cursor-pointer">
                         {subsHD.length > 0 ? (
-                          <span>{totalQtdHD.toFixed(2)} m²</span>
+                          <span>{totalQtdHD.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
                         ) : (
                           <span className="text-slate-300 font-normal">-</span>
                         )}
@@ -796,7 +793,7 @@ export default function LevantamentosView() {
                                 return (
                                   <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
                                     <span className="font-semibold text-slate-700 break-words">{sub.material}</span>
-                                    <span className="font-mono font-bold text-slate-900 shrink-0">{sub.qtdPC} m²</span>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">{Number(sub.qtdPC).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
                                   </div>
                                 );
                               })}
@@ -821,7 +818,7 @@ export default function LevantamentosView() {
 
                       <td className="py-3.5 px-4 text-slate-600 font-mono font-bold text-right cursor-pointer">
                         {subsPC.length > 0 ? (
-                          <span className="text-[#b38025]">{totalQtdPC.toFixed(2)} m²</span>
+                          <span className="text-[#b38025]">{totalQtdPC.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
                         ) : (
                           <span className="text-slate-300 font-normal">-</span>
                         )}
@@ -846,7 +843,7 @@ export default function LevantamentosView() {
                                       <div key={sIdx} className="flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
                                         <span className="font-semibold text-slate-700 truncate max-w-[150px]">{sub.material || "Produto HD"}</span>
                                         <span className="font-mono text-slate-900 shrink-0">
-                                          {q} m² x R$ {sub.valorUnitario?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                          {Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m² x R$ {sub.valorUnitario?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                                         </span>
                                       </div>
                                     );
@@ -866,7 +863,7 @@ export default function LevantamentosView() {
                                       <div key={sIdx} className="flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
                                         <span className="font-semibold text-[#D9A441] break-words">{sub.material}</span>
                                         <span className="font-mono text-slate-900 shrink-0">
-                                          {qtdPC} m² x R$ {valorUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                          {Number(qtdPC).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m² x R$ {valorUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                                         </span>
                                       </div>
                                     );
