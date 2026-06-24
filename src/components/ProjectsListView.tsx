@@ -35,6 +35,10 @@ export default function ProjectsListView() {
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<Projeto | null>(null);
   const [showLixeira, setShowLixeira] = useState(false);
+  const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState<string>("");
+  const [permanentDeleteConfirmationId, setPermanentDeleteConfirmationId] = useState<string | null>(null);
+  const [permanentDeleteConfirmationName, setPermanentDeleteConfirmationName] = useState<string>("");
 
   // Auto-reset trash view on tab change
   useEffect(() => {
@@ -99,11 +103,7 @@ export default function ProjectsListView() {
     }
   };
 
-  const handleDeleteProjectPermanent = async (id: string, name: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm(`ATENÇÃO: Deseja realmente EXCLUIR PERMANENTEMENTE o projeto "${name}"?\nEsta ação excluirá todos os dados, subitens e orçamentos vinculados sem possibilidade de recuperação!`)) {
-      return;
-    }
+  const handleDeleteProjectPermanent = async (id: string) => {
     try {
       const res = await fetch(`/api/projetos/${id}?permanent=true`, { method: "DELETE" });
       if (!res.ok) throw new Error("Erro ao remover projeto permanentemente");
@@ -478,7 +478,11 @@ export default function ProjectsListView() {
                                 Restaurar
                               </button>
                               <button
-                                onClick={(e) => handleDeleteProjectPermanent(p.id, p.nome, e)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPermanentDeleteConfirmationId(p.id);
+                                  setPermanentDeleteConfirmationName(p.nome);
+                                }}
                                 className="p-1 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
                                 title="Excluir Permanentemente"
                               >
@@ -814,6 +818,50 @@ export default function ProjectsListView() {
                   className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   Salvar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: PERMANENT DELETE CONFIRMATION */}
+      <AnimatePresence>
+        {permanentDeleteConfirmationId && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-red-100 overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="text-sm font-black uppercase text-red-700 tracking-wider">
+                Excluir Permanentemente
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                Tem certeza que deseja excluir permanentemente o projeto "{permanentDeleteConfirmationName}"? Esta ação não pode ser desfeita e removerá todos os dados, subitens e orçamentos vinculados.
+              </p>
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPermanentDeleteConfirmationId(null);
+                    setPermanentDeleteConfirmationName("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  onClick={() => {
+                    handleDeleteProjectPermanent(permanentDeleteConfirmationId);
+                    setPermanentDeleteConfirmationId(null);
+                    setPermanentDeleteConfirmationName("");
+                  }}
+                >
+                  Excluir Permanentemente
                 </button>
               </div>
             </motion.div>

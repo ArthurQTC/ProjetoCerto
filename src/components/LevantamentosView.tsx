@@ -507,22 +507,20 @@ export default function LevantamentosView() {
       return;
     }
 
-    // Material HD checks
-    if (formSubestruturas.length === 0) {
-      alert("Adicione pelo menos um item ao Material HD.");
-      return;
-    }
-
-    // Validate entries for HD
+    // Material HD checks (optional)
+    const validSubestruturas = [];
     for (let i = 0; i < formSubestruturas.length; i++) {
       const item = formSubestruturas[i];
-      if (!item.material && !item.materialId) {
-        alert("Digite o nome ou selecione um item no catálogo para todos os campos do Material HD.");
-        return;
-      }
-      if (!item.qtdHD) {
-        alert("Insira a quantidade (Qtd HD) para todos os materiais HD.");
-        return;
+      if (item.material || item.qtdHD || item.materialId) {
+        if (!item.material && !item.materialId) {
+          alert("Digite o nome ou selecione um item no catálogo para os campos preenchidos do Material HD.");
+          return;
+        }
+        if (!item.qtdHD) {
+          alert("Insira a quantidade (Qtd HD) para os materiais HD preenchidos.");
+          return;
+        }
+        validSubestruturas.push(item);
       }
     }
 
@@ -551,7 +549,7 @@ export default function LevantamentosView() {
     }
 
     // Format subestruturas payload
-    const processedSubs = formSubestruturas.map(item => {
+    const processedSubs = validSubestruturas.map(item => {
       const rawQty = item.qtdHD ? String(item.qtdHD).trim().replace(",", ".") : "";
       const rawVal = item.valorUnitario ? String(item.valorUnitario).trim().replace(",", ".") : "";
       const q = rawQty ? parseFloat(rawQty) : 0;
@@ -1186,7 +1184,7 @@ export default function LevantamentosView() {
                   <div className="col-span-2 border-t border-slate-100 pt-3">
                     <div className="flex justify-between items-center pb-2 flex-wrap gap-1">
                       <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material HD *</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material HD</label>
                         <span className="text-[9px] text-slate-400 block">Preencha o material digitando ou use o catálogo opcional</span>
                       </div>
                       <button
@@ -1202,10 +1200,9 @@ export default function LevantamentosView() {
                       {formSubestruturas.map((item, idx) => (
                         <div key={idx} className="bg-blue-50/50 p-3 border border-blue-200 rounded-xl space-y-2 relative">
                           <div className="col-span-12">
-                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material HD (PREENCHER) *</label>
+                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material HD (PREENCHER)</label>
                             <input
                               type="text"
-                              required
                               className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:ring-1 focus:ring-brand-primary"
                               value={item.material}
                               placeholder="Digite a descrição..."
@@ -1222,7 +1219,6 @@ export default function LevantamentosView() {
                               <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd HD</label>
                               <input
                                 type="text"
-                                required
                                 className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
                                 value={item.qtdHD}
                                 placeholder="0,00"
@@ -1238,7 +1234,6 @@ export default function LevantamentosView() {
                               <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Valor Unit. (R$)</label>
                               <input
                                 type="text"
-                                required
                                 className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
                                 value={item.valorUnitario}
                                 placeholder="0,00"
