@@ -675,8 +675,6 @@ export default function LevantamentosView() {
                   <th className="py-3 px-4">RESPONSÁVEL</th>
                   <th className="py-3 px-4 text-center">STATUS</th>
                   <th className="py-3 px-4">PREVISÃO</th>
-                  <th className="py-3 px-4">MATERIAL HD</th>
-                  <th className="py-3 px-4 text-right">QTD HD</th>
                   <th className="py-3 px-4">MATERIAL PC</th>
                   <th className="py-3 px-4 text-right">QTD PC</th>
                   <th className="py-3 px-4 text-right">VALOR TOTAL</th>
@@ -735,50 +733,6 @@ export default function LevantamentosView() {
                       </td>
                       <td className="py-3.5 px-4 text-slate-500 font-medium font-mono whitespace-nowrap">
                         {lev.previsao || <span className="text-slate-300 italic">-</span>}
-                      </td>
-
-                      <td className="py-3.5 px-4 text-slate-600 max-w-[200px] cursor-pointer"
-                        onMouseEnter={(e) => handleMouseEnter(e, (
-                          <div className="space-y-2">
-                            <div className="font-extrabold uppercase tracking-wider mb-2 border-b border-slate-100 pb-2 flex justify-between items-center">
-                              <span>Materiais HD inclusos</span>
-                              <span className="font-mono text-[10px] text-slate-500">{subsHD.length} un</span>
-                            </div>
-                            <div className="space-y-2 max-h-60 overflow-y-auto">
-                              {subsHD.map((sub, sIdx) => {
-                                const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
-                                return (
-                                  <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
-                                    <span className="font-semibold text-slate-700 break-words">{sub.material || "Produto HD"}</span>
-                                    <span className="font-mono font-bold text-slate-900 shrink-0">{Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                        onMouseLeave={handleMouseLeave}
-                      >
-                        <div className="font-extrabold text-slate-800 text-xs flex flex-wrap gap-1 items-center">
-                          {subsHD.length > 0 ? (
-                            <>
-                              <span className="truncate">{subsHD.length} Mat. HD</span>
-                              <div className="text-[9px] text-slate-400 font-mono">
-                                R$ {totalValorHD.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                              </div>
-                            </>
-                          ) : (
-                            <span className="text-slate-300 italic">Nenhum</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-slate-600 font-mono font-bold text-right cursor-pointer">
-                        {subsHD.length > 0 ? (
-                          <span>{totalQtdHD.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
-                        ) : (
-                          <span className="text-slate-300 font-normal">-</span>
-                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-slate-600 max-w-[200px] cursor-pointer"
