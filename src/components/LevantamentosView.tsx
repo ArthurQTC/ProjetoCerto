@@ -235,7 +235,7 @@ export default function LevantamentosView() {
   const solicitanteOptions = useMemo(() => {
     const options = new Set<string>();
     levantamentos.forEach((l) => {
-      if (l.solicitante) options.add(l.solicitante);
+      if (l.solicitante) options.add(l.solicitante.trim());
     });
     return Array.from(options).sort();
   }, [levantamentos]);
@@ -252,7 +252,8 @@ export default function LevantamentosView() {
         return false;
       }
       // 3. Solicitante
-      if (filterSolicitante && lev.solicitante && lev.solicitante.toLowerCase() !== filterSolicitante.toLowerCase()) {
+      const sol = lev.solicitante || (lev as any).Solicitante;
+      if (filterSolicitante && sol && sol.trim().toLowerCase() !== filterSolicitante.toLowerCase()) {
         return false;
       }
       // 4. Responsavel
@@ -272,7 +273,7 @@ export default function LevantamentosView() {
       }
       return true;
     });
-  }, [levantamentos, filterCliente, filterResponsavel, filterStatus, showLixeira, selectedMonthGroup]);
+  }, [levantamentos, filterCliente, filterSolicitante, filterResponsavel, filterStatus, showLixeira, selectedMonthGroup]);
 
   // Total metros quadrados dynamic KPI summation (only Material PC)
   const totalMetrosQuadrados = useMemo(() => {
