@@ -861,8 +861,8 @@ export default function LevantamentosView() {
                       <td className="py-3.5 px-4 text-slate-700 font-bold whitespace-nowrap">
                         {lev.responsavel}
                       </td>
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                      <td className="py-3.5 px-4 text-center whitespace-normal min-w-[110px]">
+                        <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg text-center break-words leading-tight ${
                           lev.status === "Concluído" ? "bg-brand-success/10 text-brand-success border border-brand-success/20" :
                           lev.status === "Em Desenvolvimento" ? "bg-amber-50 text-amber-600 border border-amber-200" :
                           "bg-slate-100 text-slate-600 border border-slate-200"
