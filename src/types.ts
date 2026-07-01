@@ -108,7 +108,7 @@ export interface Levantamento {
   materialId?: string | null;
   material?: Material | null;
   qtdM2?: number | null;
-  statusEnvio: "Enviado" | "Pendente";
+  statusEnvio: "Enviado" | "Proposta a Enviar";
   contratoAFecharId?: string | null;
   createdAt?: string;
   updatedAt?: string;

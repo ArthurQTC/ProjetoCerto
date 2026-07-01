@@ -405,7 +405,14 @@ async function checkDbConnection() {
             nome VARCHAR(255) UNIQUE NOT NULL,
             "grupoCalculo" VARCHAR(255) NOT NULL
           );
-          
+        `);
+
+        // Ensure no duplicates exist in case the table was created without a unique constraint
+        await pool.query('DELETE FROM categorias a USING categorias b WHERE a.id < b.id AND LOWER(a.nome) = LOWER(b.nome)');
+        // Ensure the unique index exists for ON CONFLICT to work
+        await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_categorias_nome_unique ON categorias (nome)');
+
+        await pool.query(`
           DO $$ BEGIN
               CREATE TYPE categoria_documento AS ENUM (
                 'EDITAL', 'CONTRATO', 'MEDICAO', 'ART', 'CNO', 'ORCAMENTO', 
@@ -509,7 +516,7 @@ async function checkDbConnection() {
         await pool.query(`
           CREATE TABLE IF NOT EXISTS levantamentos (
             id VARCHAR(255) PRIMARY KEY,
-            ref VARCHAR(255) UNIQUE NOT NULL,
+            ref VARCHAR(255) NOT NULL,
             obra VARCHAR(255) NOT NULL,
             cliente VARCHAR(255) NOT NULL,
             "dataSolicitacao" VARCHAR(255) NOT NULL,
@@ -532,6 +539,44 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas TEXT');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas_pc TEXT');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "cliente" DROP NOT NULL');
+        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "statusEnvio" DROP NOT NULL');
+        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "responsavel" DROP NOT NULL');
+        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "status" DROP NOT NULL');
+        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "dataSolicitacao" DROP NOT NULL');
+        await pool.query('ALTER TABLE levantamentos ALTER COLUMN "obra" DROP NOT NULL');
+
+        // No longer enforcing a strict UNIQUE constraint on "ref" across all months, since refs reset monthly.
+
+        // Cria a tabela filha levantamento_materiais se não existir
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS levantamento_materiais (
+            id VARCHAR(255) PRIMARY KEY,
+            levantamento_id VARCHAR(255) NOT NULL REFERENCES levantamentos(id) ON DELETE CASCADE,
+            material TEXT NOT NULL,
+            qtd_m2 DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        // Migrar datas de solicitação existentes para o formato brasileiro DD/MM/AAAA de forma robusta
+        try {
+          console.log("[pg Sync] Normalizando formatos de datas de solicitação para brasileiro (DD/MM/AAAA)...");
+          const allLevsRes = await pool.query('SELECT id, "dataSolicitacao", previsao FROM levantamentos');
+          for (const row of allLevsRes.rows) {
+            const convertedDate = convertDateToBR(row.dataSolicitacao);
+            const convertedPrevisao = row.previsao ? convertDateToBR(row.previsao) : null;
+            if (convertedDate !== row.dataSolicitacao || (row.previsao && convertedPrevisao !== row.previsao)) {
+              await pool.query(
+                'UPDATE levantamentos SET "dataSolicitacao" = $1, previsao = $2 WHERE id = $3',
+                [convertedDate, convertedPrevisao, row.id]
+              );
+            }
+          }
+          console.log("[pg Sync] Todas as datas de solicitação normalizadas com sucesso!");
+        } catch (e: any) {
+          console.error("Erro ao normalizar datas de levantamentos:", e);
+        }
 
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS descricao VARCHAR(255) NOT NULL DEFAULT \'\'');
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS valor DOUBLE PRECISION NOT NULL DEFAULT 0.0');
@@ -575,6 +620,56 @@ async function checkDbConnection() {
 // Standard mock ID generator
 function generateId() {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+// Helper to convert any input date string to Brazilian format DD/MM/YYYY
+function convertDateToBR(dateStr: string): string {
+  if (!dateStr || typeof dateStr !== "string") return "";
+  
+  const clean = dateStr.trim();
+  
+  // Try matching standard ISO format YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = clean.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+  if (isoMatch) {
+    const [_, year, month, day] = isoMatch;
+    return `${day}/${month}/${year}`;
+  }
+  
+  // Match DD/MM/YYYY or MM/DD/YYYY formats
+  const slashesMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (slashesMatch) {
+    const [_, part1, part2, year] = slashesMatch;
+    const p1 = parseInt(part1, 10);
+    const p2 = parseInt(part2, 10);
+    
+    if (p1 > 12) {
+      // Must be DD/MM/YYYY
+      const day = String(p1).padStart(2, "0");
+      const month = String(p2).padStart(2, "0");
+      return `${day}/${month}/${year}`;
+    } else if (p2 > 12) {
+      // Must be MM/DD/YYYY (American) since month cannot be > 12
+      const day = String(p2).padStart(2, "0");
+      const month = String(p1).padStart(2, "0");
+      return `${day}/${month}/${year}`;
+    } else {
+      // Both are <= 12. Format neatly as DD/MM/YYYY
+      const day = String(p1).padStart(2, "0");
+      const month = String(p2).padStart(2, "0");
+      return `${day}/${month}/${year}`;
+    }
+  }
+  
+  // Try JavaScript Date parser
+  const parsed = new Date(clean);
+  if (!isNaN(parsed.getTime())) {
+    const day = String(parsed.getDate()).padStart(2, "0");
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const year = parsed.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  
+  return clean;
 }
 
 const seedCategories = async (pool: any) => {
@@ -972,7 +1067,14 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             nome VARCHAR(255) UNIQUE NOT NULL,
             "grupoCalculo" VARCHAR(255) NOT NULL
           );
+        `);
 
+        // Ensure no duplicates exist in case the table was created without a unique constraint
+        await client.query('DELETE FROM categorias a USING categorias b WHERE a.id < b.id AND LOWER(a.nome) = LOWER(b.nome)');
+        // Ensure the unique index exists for ON CONFLICT to work
+        await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_categorias_nome_unique ON categorias (nome)');
+
+        await client.query(`
           CREATE TABLE IF NOT EXISTS obras (
             id VARCHAR(255) PRIMARY KEY,
             nome VARCHAR(255) NOT NULL,
@@ -1980,11 +2082,14 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
              abc: row.abc,
              solicitante: row.solicitante || "",
              responsavel: row.responsavel,
-             status: row.status,
+             status: (row.status === "CONCLUIDO" || row.status === "Concluido") ? "Concluído" :
+                     (row.status === "EM_ANDAMENTO" || row.status === "Desenvolvendo") ? "Em Desenvolvimento" :
+                     (row.status === "PENDENTE" || row.status === "Pendente") ? "Pendente" :
+                     (row.status === "FINALIZADO" || row.status === "Finalizado") ? "Finalizado" : (row.status || "Pendente"),
              previsao: row.previsao || "",
              materialId: row.materialId,
              qtdM2: Number(row.qtdM2),
-             statusEnvio: row.statusEnvio,
+             statusEnvio: (row.statusEnvio === "Enviado") ? "Enviado" : "Proposta a Enviar",
              contratoAFecharId: row.contratoAFecharId,
              createdAt: row.createdAt,
              updatedAt: row.updatedAt,
@@ -2011,17 +2116,74 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
     try {
       if (dbConnected && pool) {
         const id = "lv-" + generateId().substring(0, 8);
-        const lastRefRes = await pool.query("SELECT ref FROM levantamentos WHERE ref LIKE 'LV%' ORDER BY ref DESC LIMIT 1");
+        
+        // Helper to parse month and year from dataSolicitacao
+        const parseMonthYear = (dateStr: string) => {
+          if (!dateStr || typeof dateStr !== "string") {
+            const d = new Date();
+            return { month: d.getMonth() + 1, year: d.getFullYear() };
+          }
+          const clean = dateStr.trim();
+          if (clean.includes("/")) {
+            const parts = clean.split("/");
+            if (parts.length === 3) {
+              const m = parseInt(parts[1], 10);
+              const y = parseInt(parts[2], 10);
+              if (!isNaN(m) && !isNaN(y)) {
+                return { month: m, year: y };
+              }
+            }
+          }
+          if (clean.includes("-")) {
+            const parts = clean.split("-");
+            if (parts.length === 3) {
+              if (parts[0].length === 4) {
+                const m = parseInt(parts[1], 10);
+                const y = parseInt(parts[0], 10);
+                if (!isNaN(m) && !isNaN(y)) {
+                  return { month: m, year: y };
+                }
+              } else if (parts[2].length === 4) {
+                const m = parseInt(parts[1], 10);
+                const y = parseInt(parts[2], 10);
+                if (!isNaN(m) && !isNaN(y)) {
+                  return { month: m, year: y };
+                }
+              }
+            }
+          }
+          const parsedDate = new Date(clean);
+          if (!isNaN(parsedDate.getTime())) {
+            return { month: parsedDate.getMonth() + 1, year: parsedDate.getFullYear() };
+          }
+          const d = new Date();
+          return { month: d.getMonth() + 1, year: d.getFullYear() };
+        };
+
+        const { month: targetMonth, year: targetYear } = parseMonthYear(dataSolicitacao);
+
+        const allRefsRes = await pool.query("SELECT ref, \"dataSolicitacao\" FROM levantamentos WHERE ref LIKE 'LV%'");
         let nextNum = 1;
-        if (lastRefRes.rows.length > 0) {
-          const lastRef = lastRefRes.rows[0].ref;
-          const numPart = lastRef.replace('LV', '');
-          const parsed = parseInt(numPart, 10);
-          if (!isNaN(parsed)) {
-            nextNum = parsed + 1;
+        const matchingNums: number[] = [];
+
+        for (const row of allRefsRes.rows) {
+          const rowDateStr = row.dataSolicitacao;
+          const { month: rowMonth, year: rowYear } = parseMonthYear(rowDateStr);
+          if (rowMonth === targetMonth && rowYear === targetYear) {
+            const refStr = row.ref || "";
+            const numPart = refStr.replace(/^LV/i, "");
+            const parsed = parseInt(numPart, 10);
+            if (!isNaN(parsed)) {
+              matchingNums.push(parsed);
+            }
           }
         }
-        const ref = `LV${String(nextNum).padStart(3, '0')}`;
+
+        if (matchingNums.length > 0) {
+          nextNum = Math.max(...matchingNums) + 1;
+        }
+
+        const ref = `LV${String(nextNum).padStart(2, '0')}`;
 
         const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
         const subListPC = Array.isArray(subestruturas_pc) ? subestruturas_pc : [];
@@ -2037,12 +2199,12 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           ref,
           obra,
           cliente || "",
-          dataSolicitacao,
+          convertDateToBR(dataSolicitacao),
           abc || "",
           solicitante || "",
           responsavel,
           status,
-          previsao || "",
+          previsao ? convertDateToBR(previsao) : "",
           statusEnvio,
           subStrHD,
           subStrPC
@@ -2057,6 +2219,11 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         const row = createdRes.rows[0];
         res.json({
           ...row,
+          status: (row.status === "CONCLUIDO" || row.status === "Concluido") ? "Concluído" :
+                  (row.status === "EM_ANDAMENTO" || row.status === "Desenvolvendo") ? "Em Desenvolvimento" :
+                  (row.status === "PENDENTE" || row.status === "Pendente") ? "Pendente" :
+                  (row.status === "FINALIZADO" || row.status === "Finalizado") ? "Finalizado" : (row.status || "Pendente"),
+          statusEnvio: (row.statusEnvio === "Enviado") ? "Enviado" : "Proposta a Enviar",
           subestruturas: subListHD,
           subestruturas_pc: subListPC
         });
@@ -2103,12 +2270,12 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         `, [
           obra || null,
           cliente || "",
-          dataSolicitacao || null,
+          dataSolicitacao ? convertDateToBR(dataSolicitacao) : null,
           abc === undefined ? null : abc,
           solicitante || "",
           responsavel || null,
           status || null,
-          previsao === undefined ? null : previsao,
+          previsao ? convertDateToBR(previsao) : null,
           statusEnvio || null,
           subStrHD,
           subStrPC,
@@ -2124,6 +2291,11 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
          const row = updatedRes.rows[0];
          res.json({
            ...row,
+           status: (row.status === "CONCLUIDO" || row.status === "Concluido") ? "Concluído" :
+                   (row.status === "EM_ANDAMENTO" || row.status === "Desenvolvendo") ? "Em Desenvolvimento" :
+                   (row.status === "PENDENTE" || row.status === "Pendente") ? "Pendente" :
+                   (row.status === "FINALIZADO" || row.status === "Finalizado") ? "Finalizado" : (row.status || "Pendente"),
+           statusEnvio: (row.statusEnvio === "Enviado") ? "Enviado" : "Proposta a Enviar",
            subestruturas: subListHD,
            subestruturas_pc: subListPC
          });
@@ -2132,6 +2304,23 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
       }
     } catch (error: any) {
       console.error("Erro no PUT /api/levantamentos/:id:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH Atualizar apenas o status de envio de um levantamento
+  app.patch("/api/levantamentos/:id/status-envio", async (req, res) => {
+    const { id } = req.params;
+    const { statusEnvio } = req.body;
+    try {
+      if (dbConnected && pool) {
+        await pool.query('UPDATE levantamentos SET "statusEnvio" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $2', [statusEnvio, id]);
+        res.json({ success: true, statusEnvio });
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
+      }
+    } catch (error: any) {
+      console.error("Erro no PATCH /api/levantamentos/:id/status-envio:", error);
       res.status(500).json({ error: error.message });
     }
   });

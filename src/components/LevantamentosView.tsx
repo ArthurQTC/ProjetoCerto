@@ -28,24 +28,65 @@ const MONTH_NAMES = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
 
-function getMonthGroup(dateStr: string) {
-  if (!dateStr) return "Outros / Em aberto";
+// Helper to convert any input date string to Brazilian format DD/MM/YYYY
+function convertDateToBR(dateStr: string): string {
+  if (!dateStr || typeof dateStr !== "string") return "";
   
-  // Try DD/MM/AAAA
-  const parts = dateStr.split("/");
-  if (parts.length === 3) {
-    const mIdx = parseInt(parts[1], 10) - 1;
-    const year = parts[2];
-    if (mIdx >= 0 && mIdx < 12) {
-      return `${MONTH_NAMES[mIdx]} ${year}`;
+  const clean = dateStr.trim();
+  
+  // Try matching standard ISO format YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = clean.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+  if (isoMatch) {
+    const [_, year, month, day] = isoMatch;
+    return `${day}/${month}/${year}`;
+  }
+  
+  // Match DD/MM/YYYY or MM/DD/YYYY formats
+  const slashesMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (slashesMatch) {
+    const [_, part1, part2, year] = slashesMatch;
+    const p1 = parseInt(part1, 10);
+    const p2 = parseInt(part2, 10);
+    
+    if (p1 > 12) {
+      // Must be DD/MM/YYYY
+      const day = String(p1).padStart(2, "0");
+      const month = String(p2).padStart(2, "0");
+      return `${day}/${month}/${year}`;
+    } else if (p2 > 12) {
+      // Must be MM/DD/YYYY (American) since month cannot be > 12
+      const day = String(p2).padStart(2, "0");
+      const month = String(p1).padStart(2, "0");
+      return `${day}/${month}/${year}`;
+    } else {
+      // Both are <= 12. Format neatly as DD/MM/YYYY
+      const day = String(p1).padStart(2, "0");
+      const month = String(p2).padStart(2, "0");
+      return `${day}/${month}/${year}`;
     }
   }
   
-  // Try YYYY-MM-DD
-  const partsYMD = dateStr.split("-");
-  if (partsYMD.length === 3) {
-    const mIdx = parseInt(partsYMD[1], 10) - 1;
-    const year = partsYMD[0];
+  // Try JavaScript Date parser
+  const parsed = new Date(clean);
+  if (!isNaN(parsed.getTime())) {
+    const day = String(parsed.getDate()).padStart(2, "0");
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const year = parsed.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  
+  return clean;
+}
+
+function getMonthGroup(dateStr: string) {
+  if (!dateStr) return "Outros / Em aberto";
+  const brDate = convertDateToBR(dateStr);
+  
+  // Try DD/MM/AAAA
+  const parts = brDate.split("/");
+  if (parts.length === 3) {
+    const mIdx = parseInt(parts[1], 10) - 1;
+    const year = parts[2];
     if (mIdx >= 0 && mIdx < 12) {
       return `${MONTH_NAMES[mIdx]} ${year}`;
     }
@@ -100,6 +141,7 @@ export default function LevantamentosView() {
   const [filterResponsavel, setFilterResponsavel] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [showLixeira, setShowLixeira] = useState(false);
+  const [selectedMonthGroup, setSelectedMonthGroup] = useState<string>("Todos");
 
   // Modals States
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
@@ -116,7 +158,7 @@ export default function LevantamentosView() {
   const [formResponsavel, setFormResponsavel] = useState<"Andrew" | "Mayra">("Mayra");
   const [formStatus, setFormStatus] = useState<"Concluído" | "Em Desenvolvimento" | "Pendente">("Pendente");
   const [formPrevisao, setFormPrevisao] = useState("");
-  const [formStatusEnvio, setFormStatusEnvio] = useState<"Enviado" | "Pendente">("Pendente");
+  const [formStatusEnvio, setFormStatusEnvio] = useState<"Enviado" | "Proposta a Enviar">("Proposta a Enviar");
   
   // Dynamic list of multiple materials / subestruturas
   const [formSubestruturas, setFormSubestruturas] = useState<{ material: string; qtdHD: string; valorUnitario: string }[]>([]);
@@ -157,7 +199,39 @@ export default function LevantamentosView() {
       if (!res.ok) throw new Error("Erro de servidor ao buscar levantamentos");
       return res.json();
     }
-  });  // Filtered Surveys matching filters AND selected dynamic month group
+  });
+
+  const monthGroups = useMemo(() => {
+    const groups = new Set<string>();
+    levantamentos.forEach(lev => {
+      if (lev.status !== "EXCLUIDO") {
+        const brDate = convertDateToBR(lev.dataSolicitacao);
+        const group = getMonthGroup(brDate);
+        if (group && group !== "Outros / Em aberto") {
+          groups.add(group);
+        }
+      }
+    });
+
+    const sorted = Array.from(groups).sort((a, b) => {
+      const partsA = a.split(" ");
+      const partsB = b.split(" ");
+      if (partsA.length === 2 && partsB.length === 2) {
+        const yearA = parseInt(partsA[1], 10);
+        const yearB = parseInt(partsB[1], 10);
+        if (yearA !== yearB) return yearA - yearB; // ascending order of years (older first)
+        
+        const mIdxA = MONTH_NAMES.indexOf(partsA[0]);
+        const mIdxB = MONTH_NAMES.indexOf(partsB[0]);
+        return mIdxA - mIdxB; // ascending order of months (older first)
+      }
+      return a.localeCompare(b);
+    });
+
+    return ["Todos", ...sorted];
+  }, [levantamentos]);
+
+  // Filtered Surveys matching filters AND selected dynamic month group
   const filteredLevantamentos = useMemo(() => {
     return levantamentos.filter(lev => {
       // Trash filter
@@ -178,9 +252,16 @@ export default function LevantamentosView() {
       if (filterStatus && lev.status !== filterStatus) {
         return false;
       }
+      // 5. Month/Year tab filter
+      if (selectedMonthGroup !== "Todos") {
+        const brDate = convertDateToBR(lev.dataSolicitacao);
+        if (getMonthGroup(brDate) !== selectedMonthGroup) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [levantamentos, filterCliente, filterResponsavel, filterStatus, showLixeira]);
+  }, [levantamentos, filterCliente, filterResponsavel, filterStatus, showLixeira, selectedMonthGroup]);
 
   // Total metros quadrados dynamic KPI summation (only Material PC)
   const totalMetrosQuadrados = useMemo(() => {
@@ -216,6 +297,7 @@ export default function LevantamentosView() {
     setFilterResponsavel("");
     setFilterStatus("");
     setShowLixeira(false);
+    setSelectedMonthGroup("Todos");
   };
 
   // --- MUTATIONS ---
@@ -321,6 +403,28 @@ export default function LevantamentosView() {
     }
   });
 
+  // Update status de envio
+  const updateStatusEnvioMutation = useMutation({
+    mutationFn: async ({ id, statusEnvio }: { id: string; statusEnvio: "Enviado" | "Proposta a Enviar" }) => {
+      const res = await fetch(`/api/levantamentos/${id}/status-envio`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statusEnvio })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Erro de servidor ao atualizar status de envio");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["levantamentos"] });
+    },
+    onError: (err: any) => {
+      alert("Falha ao atualizar status de envio: " + err.message);
+    }
+  });
+
   // Setup modal for adding
   const handleOpenAddSurveyModal = () => {
     setEditingSurvey(null);
@@ -339,7 +443,7 @@ export default function LevantamentosView() {
     setFormResponsavel("Mayra");
     setFormStatus("Pendente");
     setFormPrevisao("");
-    setFormStatusEnvio("Pendente");
+    setFormStatusEnvio("Proposta a Enviar");
     
     // Default with empty materials
     setFormSubestruturas([
@@ -362,12 +466,12 @@ export default function LevantamentosView() {
     setEditingSurvey(survey);
     setFormObra(survey.obra);
     setFormCliente(survey.cliente || "");
-    setFormDataSolicitacao(survey.dataSolicitacao);
+    setFormDataSolicitacao(convertDateToBR(survey.dataSolicitacao));
     setFormAbc(survey.abc || "");
     setFormSolicitante(survey.solicitante || "");
     setFormResponsavel(survey.responsavel);
     setFormStatus(survey.status === "EXCLUIDO" ? "Pendente" : survey.status);
-    setFormPrevisao(survey.previsao || "");
+    setFormPrevisao(survey.previsao ? convertDateToBR(survey.previsao) : "");
     setFormStatusEnvio(survey.statusEnvio);
     
     if (survey.subestruturas && survey.subestruturas.length > 0) {
@@ -647,6 +751,40 @@ export default function LevantamentosView() {
         </div>
       </div>
 
+      {/* NAVEGAÇÃO DE ABAS POR MÊS/ANO */}
+      {!showLixeira && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+          {monthGroups.map((group) => {
+            const count = levantamentos.filter(lev => {
+              if (lev.status === "EXCLUIDO") return false;
+              if (group === "Todos") return true;
+              const brDate = convertDateToBR(lev.dataSolicitacao);
+              return getMonthGroup(brDate) === group;
+            }).length;
+
+            const isActive = selectedMonthGroup === group;
+            return (
+              <button
+                key={group}
+                onClick={() => setSelectedMonthGroup(group)}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 border ${
+                  isActive
+                    ? "bg-brand-primary text-white border-brand-primary shadow-sm"
+                    : "bg-white text-slate-600 border-slate-100 hover:bg-slate-50 hover:text-slate-950"
+                }`}
+              >
+                <span>{group}</span>
+                <span className={`text-[10px] px-1.5 py-0.25 rounded-md font-mono ${
+                  isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* SPREADSHEET TABLE GRID CONTAINER */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {isLevLoading ? (
@@ -679,6 +817,7 @@ export default function LevantamentosView() {
                   <th className="py-3 px-4 text-right">QTD PC</th>
                   <th className="py-3 px-4 text-right">VALOR TOTAL</th>
                   <th className="py-3 px-4 text-center">STATUS DE ENVIO</th>
+                  <th className="py-3 px-4 text-center">ENVIAR PARA ORÇAR</th>
                   <th className="py-3 px-4 text-right">AÇÕES</th>
                 </tr>
               </thead>
@@ -705,7 +844,7 @@ export default function LevantamentosView() {
                         {lev.cliente || <span className="text-slate-300 italic">-</span>}
                       </td>
                       <td className="py-3.5 px-4 text-slate-500 font-medium font-mono">
-                        {lev.dataSolicitacao}
+                        {convertDateToBR(lev.dataSolicitacao)}
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-extrabold ${
@@ -732,7 +871,7 @@ export default function LevantamentosView() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-500 font-medium font-mono whitespace-nowrap">
-                        {lev.previsao || <span className="text-slate-300 italic">-</span>}
+                        {lev.previsao ? convertDateToBR(lev.previsao) : <span className="text-slate-300 italic">-</span>}
                       </td>
 
                       <td className="py-3.5 px-4 text-slate-600 max-w-[200px] cursor-pointer"
@@ -840,6 +979,32 @@ export default function LevantamentosView() {
                           <span className="text-[9px] font-medium text-slate-400 block pt-0.5 leading-none">
                             ({subsHD.length + subsPC.length} itens)
                           </span>
+                        )}
+                      </td>
+                      {/* STATUS DE ENVIO (NOVA COLUNA INTERATIVA) */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        {showLixeira ? (
+                          <span className="text-slate-400 font-semibold text-[10px]">—</span>
+                        ) : (
+                          <div className="inline-flex items-center justify-center">
+                            <select
+                              value={lev.statusEnvio}
+                              onChange={(e) => {
+                                updateStatusEnvioMutation.mutate({
+                                  id: lev.id,
+                                  statusEnvio: e.target.value as "Enviado" | "Proposta a Enviar"
+                                });
+                              }}
+                              className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-1 ${
+                                lev.statusEnvio === "Enviado"
+                                  ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100/70"
+                                  : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/70"
+                              }`}
+                            >
+                              <option value="Proposta a Enviar">Proposta a Enviar</option>
+                              <option value="Enviado">Enviado</option>
+                            </select>
+                          </div>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
