@@ -234,11 +234,37 @@ export default function LevantamentosView() {
 
   const solicitanteOptions = useMemo(() => {
     const options = new Set<string>();
-    levantamentos.forEach((l) => {
-      if (l.solicitante) options.add(l.solicitante.trim());
+    levantamentos.forEach((lev) => {
+      // Trash filter
+      if (showLixeira) {
+        if (lev.status !== "EXCLUIDO") return;
+      } else {
+        if (lev.status === "EXCLUIDO") return;
+      }
+      // 2. Client search
+      if (filterCliente && !lev.cliente.toLowerCase().includes(filterCliente.toLowerCase()) && !lev.obra.toLowerCase().includes(filterCliente.toLowerCase())) {
+        return;
+      }
+      // 4. Responsavel
+      if (filterResponsavel && lev.responsavel !== filterResponsavel) {
+        return;
+      }
+      // 4. Status
+      if (filterStatus && lev.status !== filterStatus) {
+        return;
+      }
+      // 5. Month/Year tab filter
+      if (selectedMonthGroup !== "Todos") {
+        const brDate = convertDateToBR(lev.dataSolicitacao);
+        if (getMonthGroup(brDate) !== selectedMonthGroup) {
+          return;
+        }
+      }
+      
+      if (lev.solicitante) options.add(lev.solicitante.trim());
     });
     return Array.from(options).sort();
-  }, [levantamentos]);
+  }, [levantamentos, showLixeira, filterCliente, filterResponsavel, filterStatus, selectedMonthGroup]);
   const filteredLevantamentos = useMemo(() => {
     return levantamentos.filter(lev => {
       // Trash filter
