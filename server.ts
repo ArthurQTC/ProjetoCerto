@@ -342,7 +342,7 @@ const pool = {
 
 // Dynamic pool client recreation
 function recreateDbClient() {
-  let urlRds = process.env.DATABASE_URL_RDS || "";
+  let urlRds = process.env.DATABASE_URL || process.env.DATABASE_URL_RDS || "";
   urlRds = sanitizeDbUrl(urlRds);
 
   // Tentando RDS
@@ -362,7 +362,7 @@ function recreateDbClient() {
   } else {
     if (rdsPoolNative) rdsPoolNative.end().catch(() => {});
     rdsPoolNative = null;
-    console.error("[pg] Nenhuma DATABASE_URL_RDS válida configurada.");
+    console.error("[pg] Nenhuma DATABASE_URL ou DATABASE_URL_RDS válida configurada.");
   }
 }
 

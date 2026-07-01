@@ -138,6 +138,7 @@ export default function LevantamentosView() {
 
   // Filter States
   const [filterCliente, setFilterCliente] = useState("");
+  const [filterSolicitante, setFilterSolicitante] = useState("");
   const [filterResponsavel, setFilterResponsavel] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [showLixeira, setShowLixeira] = useState(false);
@@ -231,7 +232,13 @@ export default function LevantamentosView() {
     return ["Todos", ...sorted];
   }, [levantamentos]);
 
-  // Filtered Surveys matching filters AND selected dynamic month group
+  const solicitanteOptions = useMemo(() => {
+    const options = new Set<string>();
+    levantamentos.forEach((l) => {
+      if (l.solicitante) options.add(l.solicitante);
+    });
+    return Array.from(options).sort();
+  }, [levantamentos]);
   const filteredLevantamentos = useMemo(() => {
     return levantamentos.filter(lev => {
       // Trash filter
@@ -244,7 +251,11 @@ export default function LevantamentosView() {
       if (filterCliente && !lev.cliente.toLowerCase().includes(filterCliente.toLowerCase()) && !lev.obra.toLowerCase().includes(filterCliente.toLowerCase())) {
         return false;
       }
-      // 3. Responsavel
+      // 3. Solicitante
+      if (filterSolicitante && lev.solicitante && lev.solicitante !== filterSolicitante) {
+        return false;
+      }
+      // 4. Responsavel
       if (filterResponsavel && lev.responsavel !== filterResponsavel) {
         return false;
       }
@@ -294,6 +305,7 @@ export default function LevantamentosView() {
   // Reset filter criteria fields
   const clearFilters = () => {
     setFilterCliente("");
+    setFilterSolicitante("");
     setFilterResponsavel("");
     setFilterStatus("");
     setShowLixeira(false);
@@ -702,7 +714,7 @@ export default function LevantamentosView() {
             <SlidersHorizontal className="w-4 h-4 text-slate-400" />
             Filtros Ativos
           </h3>
-          {(filterCliente || filterResponsavel || filterStatus) && (
+          {(filterCliente || filterSolicitante || filterResponsavel || filterStatus) && (
             <button
               onClick={clearFilters}
               className="text-[10px] font-bold text-brand-danger hover:underline inline-flex items-center gap-1 cursor-pointer"
@@ -713,7 +725,7 @@ export default function LevantamentosView() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
           {/* Cliente search */}
           <div className="relative">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300 pointer-events-none" />
@@ -725,6 +737,20 @@ export default function LevantamentosView() {
               className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold rounded-xl text-brand-text-primary placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-primary"
             />
           </div>
+
+          {/* Solicitante select */}
+          <select
+            value={filterSolicitante}
+            onChange={(e) => setFilterSolicitante(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold rounded-xl text-brand-text-primary focus:outline-none focus:ring-1 focus:ring-brand-primary"
+          >
+            <option value="">Solicitante (Todos)</option>
+            {solicitanteOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
 
           {/* Responsavel select */}
           <select
