@@ -252,7 +252,7 @@ export default function LevantamentosView() {
         return false;
       }
       // 3. Solicitante
-      if (filterSolicitante && lev.solicitante && lev.solicitante !== filterSolicitante) {
+      if (filterSolicitante && lev.solicitante && lev.solicitante.toLowerCase() !== filterSolicitante.toLowerCase()) {
         return false;
       }
       // 4. Responsavel
