@@ -816,7 +816,7 @@ export default function LevantamentosView() {
                   <th className="py-3 px-4">MATERIAL PC</th>
                   <th className="py-3 px-4 text-right">QTD PC</th>
                   <th className="py-3 px-4 text-right">VALOR TOTAL</th>
-                  <th className="py-3 px-4 text-center">STATUS DE ENVIO</th>
+                  <th className="py-3 px-1.5 text-center w-[120px]">STATUS ENVIO</th>
                   <th className="py-3 px-4 text-center">ENVIAR PARA ORÇAR</th>
                   <th className="py-3 px-4 text-right">AÇÕES</th>
                 </tr>
@@ -982,11 +982,11 @@ export default function LevantamentosView() {
                         )}
                       </td>
                       {/* STATUS DE ENVIO (NOVA COLUNA INTERATIVA) */}
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                      <td className="py-2 px-1 text-center whitespace-nowrap w-[120px]">
                         {showLixeira ? (
-                          <span className="text-slate-400 font-semibold text-[10px]">—</span>
+                          <span className="text-slate-400 font-semibold text-[9px]">—</span>
                         ) : (
-                          <div className="inline-flex items-center justify-center">
+                          <div className="inline-flex items-center justify-center w-full">
                             <select
                               value={lev.statusEnvio}
                               onChange={(e) => {
@@ -995,13 +995,13 @@ export default function LevantamentosView() {
                                   statusEnvio: e.target.value as "Enviado" | "Proposta a Enviar"
                                 });
                               }}
-                              className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-1 ${
+                              className={`text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-lg border transition-all cursor-pointer focus:outline-none focus:ring-1 text-center w-[105px] ${
                                 lev.statusEnvio === "Enviado"
                                   ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100/70"
                                   : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/70"
                               }`}
                             >
-                              <option value="Proposta a Enviar">Proposta a Enviar</option>
+                              <option value="Proposta a Enviar">A Enviar</option>
                               <option value="Enviado">Enviado</option>
                             </select>
                           </div>
