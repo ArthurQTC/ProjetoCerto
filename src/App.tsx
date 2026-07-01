@@ -238,9 +238,9 @@ function AppContent() {
           </div>
         </div>
 
-        <div className="flex-1 p-5 md:p-8 overflow-y-auto">
+        <div className="flex-1 p-4 md:p-6 overflow-y-auto">
           {/* Main workspace switching routing layout */}
-          <div className={`${activeView === "levantamentos" ? "max-w-[100%] xl:max-w-[98%]" : "max-w-7xl"} mx-auto`}>
+          <div className="w-full max-w-full mx-auto">
             {activeView === "dashboard" ? (
               <DashboardView />
             ) : activeView === "projects" ? (
