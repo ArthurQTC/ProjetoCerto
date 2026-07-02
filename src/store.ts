@@ -140,6 +140,7 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
 export interface Usuario {
   id: string;
   nome: string;
+  nome_usuario: string;
   email: string;
   nivel: 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR';
   permissoes: {
@@ -163,6 +164,7 @@ export interface Usuario {
     };
     colunas: {
       valorContrato: boolean | 'visualizar' | 'editar' | 'nenhum';
+      margemLiquida: boolean | 'visualizar' | 'editar' | 'nenhum';
       custoAdm: boolean | 'visualizar' | 'editar' | 'nenhum';
       valorItens: boolean | 'visualizar' | 'editar' | 'nenhum';
       subestruturas: boolean | 'visualizar' | 'editar' | 'nenhum';

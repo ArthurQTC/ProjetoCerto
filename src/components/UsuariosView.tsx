@@ -46,6 +46,7 @@ const INDICATOR_OPTIONS = [
 
 const COLUMN_OPTIONS = [
   { key: "valorContrato", label: "Valor do Contrato (Obras)", tooltip: "Ver (visualizar) ou alterar (editar) os valores fechados do contrato." },
+  { key: "margemLiquida", label: "Margem Líquida", tooltip: "Ver (visualizar) a margem líquida da obra." },
   { key: "custoAdm", label: "Custo Adm Unitário (Obras)", tooltip: "Ver (visualizar) ou alterar (editar) o custo administrativo na edição de obra." },
   { key: "valorItens", label: "Valor Unitário de Itens/Subitens", tooltip: "Ver (visualizar) ou alterar (editar) o valor unitário das composições (R$). Se removido, mascara valores." },
   { key: "subestruturas", label: "Subestruturas & Valores", tooltip: "Controla a visualização e edição da expansão de subestruturas e cálculo de m² (HD e PC)." }
@@ -77,6 +78,7 @@ const DEFAULT_PERMISSIONS = {
   },
   colunas: {
     valorContrato: "visualizar",
+    margemLiquida: "visualizar",
     custoAdm: "nenhum",
     valorItens: "editar",
     subestruturas: "editar"
@@ -97,6 +99,7 @@ export default function UsuariosView() {
 
   // Form State
   const [nome, setNome] = useState("");
+  const [nomeUsuario, setNomeUsuario] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [nivel, setNivel] = useState<'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR'>("OPERADOR");
@@ -117,6 +120,7 @@ export default function UsuariosView() {
 
   const resetForm = () => {
     setNome("");
+    setNomeUsuario("");
     setEmail("");
     setSenha("");
     setNivel("OPERADOR");
@@ -133,6 +137,7 @@ export default function UsuariosView() {
   const openEditModal = (user: Usuario) => {
     setEditingUser(user);
     setNome(user.nome);
+    setNomeUsuario(user.nome_usuario || "");
     setEmail(user.email);
     setSenha("");
     setNivel(user.nivel);
@@ -219,13 +224,14 @@ export default function UsuariosView() {
     e.preventDefault();
     setErrorMsg("");
 
-    if (!nome.trim() || !email.trim() || (!editingUser && !senha)) {
-      setErrorMsg("Por favor, preencha todos os campos obrigatórios.");
+    if (!nome.trim() || !nomeUsuario.trim() || !email.trim() || (!editingUser && !senha)) {
+      setErrorMsg("Por favor, preencha todos os campos obrigatórios, incluindo nome de usuário.");
       return;
     }
 
     const payload = {
       nome: nome.trim(),
+      nome_usuario: nomeUsuario.trim().toLowerCase(),
       email: email.trim().toLowerCase(),
       senha: senha || undefined,
       nivel,
@@ -345,6 +351,7 @@ export default function UsuariosView() {
       updated.indicadores.graficoCustos = 'visualizar';
 
       updated.colunas.valorContrato = 'visualizar';
+      updated.colunas.margemLiquida = 'visualizar';
       updated.colunas.custoAdm = 'editar';
       updated.colunas.valorItens = 'editar';
       updated.colunas.subestruturas = 'editar';
@@ -369,6 +376,7 @@ export default function UsuariosView() {
       updated.indicadores.graficoCustos = 'nenhum';
 
       updated.colunas.valorContrato = 'nenhum';
+      updated.colunas.margemLiquida = 'nenhum';
       updated.colunas.custoAdm = 'nenhum';
       updated.colunas.valorItens = 'editar';
       updated.colunas.subestruturas = 'editar';
@@ -393,6 +401,7 @@ export default function UsuariosView() {
       updated.indicadores.graficoCustos = 'visualizar';
 
       updated.colunas.valorContrato = 'visualizar';
+      updated.colunas.margemLiquida = 'nenhum';
       updated.colunas.custoAdm = 'nenhum';
       updated.colunas.valorItens = 'nenhum';
       updated.colunas.subestruturas = 'nenhum';
@@ -485,7 +494,9 @@ export default function UsuariosView() {
                         <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded uppercase">Padrão</span>
                       )}
                     </h3>
-                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-brand-primary">@{u.nome_usuario || 'admin'}</span>
+                      <span className="text-slate-300">|</span>
                       <Mail className="w-3.5 h-3.5" />
                       {u.email}
                     </p>
@@ -611,7 +622,21 @@ export default function UsuariosView() {
                         required
                         value={nome}
                         onChange={(e) => setNome(e.target.value)}
-                        placeholder="Ex: Andrew Silva"
+                        className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-black uppercase text-slate-500">Nome de Usuário *</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        value={nomeUsuario}
+                        onChange={(e) => setNomeUsuario(e.target.value.replace(/\s+/g, '').toLowerCase())}
+                        placeholder="ex: andrews"
                         className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none"
                       />
                     </div>

@@ -806,7 +806,7 @@ export default function ObraDetailView() {
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Margem Líquida</span>
           <h3 className={`text-base font-extrabold font-mono tracking-tight mt-1 ${marginIsPositive ? "text-brand-success" : "text-brand-error"}`}>
-            {hasPermission("colunas", "valorContrato") ? formatBRL(project.margemLiquida) : "••••••"}
+            {hasPermission("colunas", "margemLiquida") ? formatBRL(project.margemLiquida) : "••••••"}
           </h3>
         </div>
 
@@ -814,7 +814,7 @@ export default function ObraDetailView() {
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Percentual Margem</span>
           <h3 className={`text-base font-extrabold font-mono tracking-tight mt-1 ${marginIsPositive ? "text-brand-success" : "text-brand-error"}`}>
-            {hasPermission("colunas", "valorContrato") ? `${project.percentualMargem.toFixed(2)}%` : "••••••"}
+            {hasPermission("colunas", "margemLiquida") ? `${project.percentualMargem.toFixed(2)}%` : "••••••"}
           </h3>
         </div>
       </div>

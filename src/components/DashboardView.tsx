@@ -263,8 +263,8 @@ export default function DashboardView() {
       {(() => {
         const showContratos = hasPermission("indicadores", "totalContratos");
         const showVisaoGeral = hasPermission("indicadores", "totalVisaoGeral");
-        const showMargem = hasPermission("indicadores", "totalMargem");
-        const showPercentual = hasPermission("indicadores", "percentualMedio");
+        const showMargem = hasPermission("indicadores", "totalMargem") && hasPermission("colunas", "margemLiquida");
+        const showPercentual = hasPermission("indicadores", "percentualMedio") && hasPermission("colunas", "margemLiquida");
         const visibleCount = [showContratos, showVisaoGeral, showMargem, showPercentual].filter(Boolean).length;
         
         if (visibleCount === 0) return null;
@@ -504,14 +504,16 @@ export default function DashboardView() {
                       </td>
                       <td className="py-2.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={(e) => handleEditCustoAdmClick(p, e)}
-                            className="p-1 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] font-bold cursor-pointer"
-                            title="Editar Custo ADM deste contrato"
-                          >
-                            <Percent className="w-2.5 h-2.5 text-brand-accent" />
-                            <span>Editar Custo ADM</span>
-                          </button>
+                          {hasPermission("colunas", "custoAdm", "editar") && (
+                            <button
+                              onClick={(e) => handleEditCustoAdmClick(p, e)}
+                              className="p-1 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] font-bold cursor-pointer"
+                              title="Editar Custo ADM deste contrato"
+                            >
+                              <Percent className="w-2.5 h-2.5 text-brand-accent" />
+                              <span>Editar Custo ADM</span>
+                            </button>
+                          )}
                           
                           <button
                             onClick={() => navigateToProject(p.id)}
@@ -636,14 +638,16 @@ export default function DashboardView() {
                                 </p>
                               )}
                               <div className="flex flex-wrap items-center gap-2 ml-8 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={(e) => handleEditCustoAdmClick(p, e)}
-                                  className="p-1 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] uppercase tracking-wider cursor-pointer font-sans"
-                                  title="Editar Custo ADM deste contrato"
-                                >
-                                  <Percent className="w-2.5 h-2.5 text-brand-accent animate-pulse" />
-                                  Alterar Custo ADM
-                                </button>
+                                {hasPermission("colunas", "custoAdm", "editar") && (
+                                  <button
+                                    onClick={(e) => handleEditCustoAdmClick(p, e)}
+                                    className="p-1 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[9px] uppercase tracking-wider cursor-pointer font-sans"
+                                    title="Editar Custo ADM deste contrato"
+                                  >
+                                    <Percent className="w-2.5 h-2.5 text-brand-accent animate-pulse" />
+                                    Alterar Custo ADM
+                                  </button>
+                                )}
                                 {p.custoAdm !== null && p.custoAdm !== undefined && (
                                   <span className="text-[9px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded-sm animate-pulse">
                                     Individual: {p.custoAdm}%

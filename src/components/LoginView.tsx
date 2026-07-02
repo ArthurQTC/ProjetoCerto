@@ -88,15 +88,14 @@ export default function LoginView() {
             )}
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">E-mail de Acesso</label>
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">E-mail ou Usuário</label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="user@email.com"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none transition-all placeholder:text-slate-300 font-semibold text-slate-700"
                 />
               </div>

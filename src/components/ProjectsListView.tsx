@@ -463,7 +463,7 @@ export default function ProjectsListView() {
                           marginIsPositive ? "text-brand-success" : "text-brand-error"
                         }`}
                       >
-                        {hasPermission("colunas", "valorContrato") ? formatBRL(p.margemLiquida) : "••••••"}
+                        {hasPermission("colunas", "margemLiquida") ? formatBRL(p.margemLiquida) : "••••••"}
                       </td>
                       <td className="py-3.5 px-5 text-center">
                         <span
@@ -473,7 +473,7 @@ export default function ProjectsListView() {
                               : "bg-brand-error/5 text-brand-error border border-brand-error/15"
                           }`}
                         >
-                          {hasPermission("colunas", "valorContrato") ? `${p.percentualMargem.toFixed(2)}%` : "••••••"}
+                          {hasPermission("colunas", "margemLiquida") ? `${p.percentualMargem.toFixed(2)}%` : "••••••"}
                         </span>
                       </td>
                       <td className="py-3.5 px-5 text-center" onClick={(e) => e.stopPropagation()}>

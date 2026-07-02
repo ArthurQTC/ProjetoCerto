@@ -2,6 +2,8 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env.production" });
 dotenv.config(); // fall back to standard .env if needed
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 // ================= BOOT DIAGNOSTICS & SYSTEM AUDIT =================
 import path from "path";
 import fs from "fs";
@@ -522,6 +524,7 @@ async function checkDbConnection() {
           CREATE TABLE IF NOT EXISTS usuarios (
             id VARCHAR(255) PRIMARY KEY,
             nome VARCHAR(255) NOT NULL,
+            nome_usuario VARCHAR(255) UNIQUE,
             email VARCHAR(255) UNIQUE NOT NULL,
             senha VARCHAR(255) NOT NULL,
             nivel VARCHAR(50) NOT NULL DEFAULT 'OPERADOR',
@@ -530,6 +533,9 @@ async function checkDbConnection() {
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
         `);
+        
+        await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome_usuario VARCHAR(255) UNIQUE');
+        await pool.query("UPDATE usuarios SET nome_usuario = LOWER(SPLIT_PART(email, '@', 1)) WHERE nome_usuario IS NULL");
 
         // Create table sessoes
         await pool.query(`
@@ -578,8 +584,8 @@ async function checkDbConnection() {
           });
 
           await pool.query(
-            'INSERT INTO usuarios (id, nome, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6)',
-            [adminId, "Administrador", "admin@projetocerto.com", adminPwdHash, "ADMIN", adminPerms]
+            'INSERT INTO usuarios (id, nome, nome_usuario, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [adminId, "Administrador", "admin", "admin@projetocerto.com", adminPwdHash, "ADMIN", adminPerms]
           );
           console.log("[pg Sync] Seeding default admin user (admin@projetocerto.com / admin123)");
         }
@@ -1037,7 +1043,7 @@ async function bootstrap() {
 
       const token = authHeader.split(" ")[1];
       const sessionRes = await pool.query(`
-        SELECT s.id as session_id, s.expiracao, u.id, u.nome, u.email, u.nivel, u.permissoes 
+        SELECT s.id as session_id, s.expiracao, u.id, u.nome, u.nome_usuario, u.email, u.nivel, u.permissoes 
         FROM sessoes s 
         JOIN usuarios u ON s."usuarioId" = u.id 
         WHERE s.id = $1
@@ -1064,6 +1070,7 @@ async function bootstrap() {
       (req as any).user = {
         id: session.id,
         nome: session.nome,
+        nome_usuario: session.nome_usuario,
         email: session.email,
         nivel: session.nivel,
         permissoes: permissoesObj
@@ -1081,10 +1088,11 @@ async function bootstrap() {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
-        return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+        return res.status(400).json({ error: "E-mail/Usuário e senha são obrigatórios." });
       }
 
-      const userRes = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
+      const loginInput = email.trim().toLowerCase();
+      const userRes = await pool.query('SELECT * FROM usuarios WHERE email = $1 OR LOWER(nome_usuario) = $1', [loginInput]);
       if (userRes.rowCount === 0) {
         return res.status(401).json({ error: "Credenciais inválidas." });
       }
@@ -1167,26 +1175,31 @@ async function bootstrap() {
         return res.status(403).json({ error: "Acesso negado." });
       }
 
-      const usersRes = await pool.query('SELECT id, nome, email, nivel, permissoes, "createdAt", "updatedAt" FROM usuarios ORDER BY nome ASC');
-      const users = usersRes.rows.map(u => {
-        let permissoesObj = {};
-        try {
-          permissoesObj = typeof u.permissoes === 'string' ? JSON.parse(u.permissoes) : u.permissoes;
-        } catch (e) {
-          permissoesObj = {};
-        }
-        return {
-          id: u.id,
-          nome: u.nome,
-          email: u.email,
-          nivel: u.nivel,
-          permissoes: permissoesObj,
-          createdAt: u.createdAt,
-          updatedAt: u.updatedAt
-        };
-      });
+      if (dbConnected && pool) {
+        const usersRes = await pool.query('SELECT id, nome, nome_usuario, email, nivel, permissoes, "createdAt", "updatedAt" FROM usuarios ORDER BY nome ASC');
+        const users = usersRes.rows.map(u => {
+          let permissoesObj = {};
+          try {
+            permissoesObj = typeof u.permissoes === 'string' ? JSON.parse(u.permissoes) : u.permissoes;
+          } catch (e) {
+            permissoesObj = {};
+          }
+          return {
+            id: u.id,
+            nome: u.nome,
+            nome_usuario: u.nome_usuario,
+            email: u.email,
+            nivel: u.nivel,
+            permissoes: permissoesObj,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt
+          };
+        });
 
-      res.json(users);
+        res.json(users);
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
+      }
     } catch (err: any) {
       console.error("Erro ao listar usuários:", err);
       res.status(500).json({ error: "Erro interno ao listar usuários." });
@@ -1201,26 +1214,30 @@ async function bootstrap() {
         return res.status(403).json({ error: "Acesso negado." });
       }
 
-      const { nome, email, senha, nivel, permissoes } = req.body;
-      if (!nome || !email || !senha || !nivel) {
-        return res.status(400).json({ error: "Nome, e-mail, senha e nível são obrigatórios." });
+      const { nome, nome_usuario, email, senha, nivel, permissoes } = req.body;
+      if (!nome || !nome_usuario || !email || !senha || !nivel) {
+        return res.status(400).json({ error: "Nome, nome de usuário, e-mail, senha e nível são obrigatórios." });
       }
 
-      const checkRes = await pool.query('SELECT id FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
-      if (checkRes.rowCount > 0) {
-        return res.status(400).json({ error: "Este e-mail já está cadastrado." });
+      if (dbConnected && pool) {
+        const checkRes = await pool.query('SELECT id FROM usuarios WHERE email = $1 OR nome_usuario = $2', [email.trim().toLowerCase(), nome_usuario.trim().toLowerCase()]);
+        if (checkRes.rowCount > 0) {
+          return res.status(400).json({ error: "E-mail ou nome de usuário já cadastrado." });
+        }
+
+        const userId = `usr-${crypto.randomUUID()}`;
+        const hashed = hashPassword(senha);
+        const permsStr = typeof permissoes === 'string' ? permissoes : JSON.stringify(permissoes || {});
+
+        await pool.query(
+          'INSERT INTO usuarios (id, nome, nome_usuario, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [userId, nome.trim(), nome_usuario.trim().toLowerCase(), email.trim().toLowerCase(), hashed, nivel, permsStr]
+        );
+
+        res.json({ success: true, id: userId });
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
       }
-
-      const userId = `usr-${crypto.randomUUID()}`;
-      const hashed = hashPassword(senha);
-      const permsStr = typeof permissoes === 'string' ? permissoes : JSON.stringify(permissoes || {});
-
-      await pool.query(
-        'INSERT INTO usuarios (id, nome, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6)',
-        [userId, nome.trim(), email.trim().toLowerCase(), hashed, nivel, permsStr]
-      );
-
-      res.json({ success: true, id: userId });
     } catch (err: any) {
       console.error("Erro ao criar usuário:", err);
       res.status(500).json({ error: "Erro interno ao criar usuário." });
@@ -1236,26 +1253,35 @@ async function bootstrap() {
       }
 
       const { id } = req.params;
-      const { nome, email, senha, nivel, permissoes } = req.body;
+      const { nome, nome_usuario, email, senha, nivel, permissoes } = req.body;
 
-      const checkRes = await pool.query('SELECT id, senha FROM usuarios WHERE id = $1', [id]);
-      if (checkRes.rowCount === 0) {
-        return res.status(404).json({ error: "Usuário não encontrado." });
+      if (dbConnected && pool) {
+        const checkRes = await pool.query('SELECT id, senha FROM usuarios WHERE id = $1', [id]);
+        if (checkRes.rowCount === 0) {
+          return res.status(404).json({ error: "Usuário não encontrado." });
+        }
+
+        const checkUniq = await pool.query('SELECT id FROM usuarios WHERE (email = $1 OR nome_usuario = $2) AND id != $3', [email.trim().toLowerCase(), nome_usuario.trim().toLowerCase(), id]);
+        if (checkUniq.rowCount > 0) {
+          return res.status(400).json({ error: "E-mail ou nome de usuário já cadastrado." });
+        }
+
+        let updatedSenha = checkRes.rows[0].senha;
+        if (senha && senha.trim() !== "") {
+          updatedSenha = hashPassword(senha);
+        }
+
+        const permsStr = typeof permissoes === 'string' ? permissoes : JSON.stringify(permissoes || {});
+
+        await pool.query(
+          'UPDATE usuarios SET nome = $1, nome_usuario = $2, email = $3, senha = $4, nivel = $5, permissoes = $6, "updatedAt" = NOW() WHERE id = $7',
+          [nome.trim(), nome_usuario.trim().toLowerCase(), email.trim().toLowerCase(), updatedSenha, nivel, permsStr, id]
+        );
+
+        res.json({ success: true });
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
       }
-
-      let updatedSenha = checkRes.rows[0].senha;
-      if (senha && senha.trim() !== "") {
-        updatedSenha = hashPassword(senha);
-      }
-
-      const permsStr = typeof permissoes === 'string' ? permissoes : JSON.stringify(permissoes || {});
-
-      await pool.query(
-        'UPDATE usuarios SET nome = $1, email = $2, senha = $3, nivel = $4, permissoes = $5, "updatedAt" = NOW() WHERE id = $6',
-        [nome.trim(), email.trim().toLowerCase(), updatedSenha, nivel, permsStr, id]
-      );
-
-      res.json({ success: true });
     } catch (err: any) {
       console.error("Erro ao atualizar usuário:", err);
       res.status(500).json({ error: "Erro interno ao atualizar usuário." });
@@ -1275,12 +1301,16 @@ async function bootstrap() {
         return res.status(400).json({ error: "O administrador padrão não pode ser excluído." });
       }
 
-      const delRes = await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
-      if (delRes.rowCount === 0) {
-        return res.status(404).json({ error: "Usuário não encontrado." });
-      }
+      if (dbConnected && pool) {
+        const delRes = await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
+        if (delRes.rowCount === 0) {
+          return res.status(404).json({ error: "Usuário não encontrado." });
+        }
 
-      res.json({ success: true });
+        res.json({ success: true });
+      } else {
+        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
+      }
     } catch (err: any) {
       console.error("Erro ao excluir usuário:", err);
       res.status(500).json({ error: "Erro interno ao excluir usuário." });
