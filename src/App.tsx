@@ -181,9 +181,9 @@ function AppContent() {
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-brand-primary text-white border-r border-brand-primary/10 transform md:translate-x-0 transition-transform duration-300 ease-in-out md:static ${
         mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
-        <div className="flex flex-col h-full justify-between">
-          <div>
-            {/* Logo Brand Profile - Unframed, transparent & large as requested */}
+        <div className="flex flex-col h-full">
+          <div className="flex-1 overflow-y-auto">
+            {/* Logo Brand Profile */}
             <div className="px-6 py-6 border-b border-white/5 flex items-center gap-3">
               {!logoFailed ? (
                 <img
@@ -321,25 +321,6 @@ function AppContent() {
               )}
             </nav>
           </div>
-
-          <div className="p-4 border-t border-white/5 space-y-3">
-            <div className="flex items-center gap-2.5 bg-white/5 p-2.5 rounded-xl border border-white/5">
-              <div className="w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center font-bold text-xs text-white uppercase shrink-0">
-                {user?.nome ? user.nome.substring(0, 2).toUpperCase() : "PC"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold text-white truncate leading-none">{user?.nome}</p>
-                <p className="text-[9px] font-bold text-[#D9A441] uppercase tracking-wider mt-1 leading-none">{user?.nivel}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => logout()}
-              className="w-full py-2 px-3 bg-white/5 hover:bg-red-500/10 text-white hover:text-red-300 text-xs font-bold uppercase rounded-lg border border-white/5 hover:border-red-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sair</span>
-            </button>
-          </div>
         </div>
       </aside>
 
@@ -383,13 +364,25 @@ function AppContent() {
           <div className="flex items-center gap-2.5 text-xs text-brand-text-secondary font-semibold font-mono">
             <span>PROJETO CERTO ERP</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             {!logoFailed && logoUrl !== DEFAULT_LOGO_URL && (
               <img src={logoUrl} alt="Auxiliary Logo" className="h-6 object-contain grayscale opacity-60 hover:opacity-100 transition-opacity" />
             )}
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-brand-success bg-brand-success/5 py-1 px-2.5 rounded-full border border-brand-success/10 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-success"></span>
-              <span>SISTEMA ATIVO</span>
+            <div className="flex items-center gap-2.5 bg-slate-50 p-2 rounded-xl border border-slate-100">
+              <div className="w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center font-bold text-xs text-white uppercase shrink-0">
+                {user?.nome ? user.nome.substring(0, 2).toUpperCase() : "PC"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold text-brand-text-primary truncate leading-none">{user?.nome}</p>
+                <p className="text-[9px] font-bold text-[#D9A441] uppercase tracking-wider mt-1 leading-none">{user?.nivel}</p>
+              </div>
+              <button
+                onClick={() => logout()}
+                className="p-1.5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg border border-slate-200 hover:border-red-200 transition-all cursor-pointer"
+                title="Sair"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

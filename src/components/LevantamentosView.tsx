@@ -145,6 +145,7 @@ export default function LevantamentosView() {
   const [filterResponsavel, setFilterResponsavel] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [showLixeira, setShowLixeira] = useState(false);
+  const [stickyColumns, setStickyColumns] = useState(false);
   const [selectedMonthGroup, setSelectedMonthGroup] = useState<string>("Todos");
 
   // Modals States
@@ -746,15 +747,26 @@ export default function LevantamentosView() {
             <SlidersHorizontal className="w-4 h-4 text-slate-400" />
             Filtros Ativos
           </h3>
-          {(filterCliente || filterSolicitante || filterResponsavel || filterStatus) && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={clearFilters}
-              className="text-[10px] font-bold text-brand-danger hover:underline inline-flex items-center gap-1 cursor-pointer"
+              onClick={() => setStickyColumns(!stickyColumns)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                stickyColumns ? "bg-brand-primary text-white" : "bg-slate-100 text-brand-text-secondary hover:bg-slate-200"
+              }`}
             >
-              <X className="w-3 h-3" />
-              Limpar Filtros
+              <span className="w-2 h-2 rounded-full bg-current"></span>
+              {stickyColumns ? "Colunas Fixas" : "Fixar Colunas"}
             </button>
-          )}
+            {(filterCliente || filterSolicitante || filterResponsavel || filterStatus) && (
+              <button
+                onClick={clearFilters}
+                className="text-[10px] font-bold text-brand-danger hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+                Limpar Filtros
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
@@ -860,7 +872,7 @@ export default function LevantamentosView() {
         ) : (
           <div className="overflow-x-auto animate-show">
             <table className="w-full text-left border-collapse">
-              <thead>
+              <thead className={`${stickyColumns ? "sticky top-0 z-20" : ""}`}>
                 <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 tracking-wider border-b border-slate-100">
                   <th className="py-3 px-4 w-16">REF</th>
                   <th className="py-3 px-4">OBRA</th>

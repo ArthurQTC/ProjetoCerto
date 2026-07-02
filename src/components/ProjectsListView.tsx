@@ -36,6 +36,7 @@ export default function ProjectsListView() {
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<Projeto | null>(null);
   const [showLixeira, setShowLixeira] = useState(false);
+  const [stickyColumns, setStickyColumns] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState<string>("");
   const [permanentDeleteConfirmationId, setPermanentDeleteConfirmationId] = useState<string | null>(null);
@@ -390,6 +391,15 @@ export default function ProjectsListView() {
                 ? (projectFilter === "A_FECHAR" ? "1 orçamento localizado" : "1 contrato localizado") 
                 : `${filteredProjects.length} ${projectFilter === "A_FECHAR" ? "orçamentos localizados" : "contratos localizados"}`}
             </p>
+            <button
+              onClick={() => setStickyColumns(!stickyColumns)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                stickyColumns ? "bg-brand-primary text-white" : "bg-slate-100 text-brand-text-secondary hover:bg-slate-200"
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-current"></span>
+              {stickyColumns ? "Colunas Fixas" : "Fixar Colunas"}
+            </button>
           </div>
 
         </div>
@@ -398,7 +408,7 @@ export default function ProjectsListView() {
           {filteredProjects.length > 0 ? (
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
+                <tr className={`bg-slate-50 border-b border-slate-100 ${stickyColumns ? "sticky top-0 z-20" : ""}`}>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
                     {projectFilter === "A_FECHAR" ? "Orçamento" : "Contrato"}
                   </th>

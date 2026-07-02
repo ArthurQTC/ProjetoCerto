@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.production" });
-dotenv.config(); // fall back to standard .env if needed
+dotenv.config({ path: ".env.production", override: true });
+dotenv.config({ override: true }); // fall back to standard .env if needed
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -587,6 +587,65 @@ async function checkDbConnection() {
             [adminId, "Administrador", "admin", "admin@projetocerto.com", adminPwdHash, "ADMIN", adminPerms]
           );
           console.log("[pg Sync] Seeding default admin user (admin@projetocerto.com / admin123)");
+        } else {
+          // Force update username, password and level of the existing admin to ensure it can login
+          const adminPwdHash = hashPassword("admin123");
+          await pool.query(
+            "UPDATE usuarios SET nome_usuario = 'admin', senha = $1, nivel = 'ADMIN' WHERE email = 'admin@projetocerto.com'",
+            [adminPwdHash]
+          );
+          console.log("[pg Sync] Force updated existing admin user to have nome_usuario='admin' and password='admin123'");
+        }
+
+        // Seed Arthur Quântica admin
+        const checkArthur = await pool.query("SELECT id FROM usuarios WHERE email = $1", ["arthur@quantica.eng.br"]);
+        if (checkArthur.rowCount === 0) {
+          const arthurId = "usr-arthur-seed";
+          const arthurPwdHash = hashPassword("admin123");
+          const arthurPerms = JSON.stringify({
+            modulos: {
+              dashboard: true,
+              contratosConsolidados: true,
+              orcamentosAFechar: true,
+              etapasContrato: true,
+              levantamentosOrcamentos: true,
+              usuarios: true
+            },
+            indicadores: {
+              totalContratos: true,
+              totalVisaoGeral: true,
+              totalMargem: true,
+              percentualMedio: true,
+              totalAdm: true,
+              kpiProjecao: true,
+              kpiAdm: true,
+              graficoCustos: true
+            },
+            colunas: {
+              valorContrato: true,
+              custoAdm: true,
+              valorItens: true,
+              subestruturas: true
+            },
+            acoes: {
+              visualizar: true,
+              editar: true
+            }
+          });
+
+          await pool.query(
+            'INSERT INTO usuarios (id, nome, nome_usuario, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [arthurId, "Arthur Quântica", "arthur", "arthur@quantica.eng.br", arthurPwdHash, "ADMIN", arthurPerms]
+          );
+          console.log("[pg Sync] Seeding Arthur Quântica as admin user (arthur@quantica.eng.br / admin123)");
+        } else {
+          // Force update username, password and level of the existing Arthur user
+          const arthurPwdHash = hashPassword("admin123");
+          await pool.query(
+            "UPDATE usuarios SET nome_usuario = 'arthur', senha = $1, nivel = 'ADMIN' WHERE email = 'arthur@quantica.eng.br'",
+            [arthurPwdHash]
+          );
+          console.log("[pg Sync] Force updated existing Arthur user to have nome_usuario='arthur' and password='admin123'");
         }
 
         // Initialize levantamentos table if not exist
@@ -1098,8 +1157,26 @@ async function bootstrap() {
 
       const user = userRes.rows[0];
       const inputHash = hashPassword(password);
+      let isPlainTextLogin = false;
+
       if (inputHash !== user.senha) {
-        return res.status(401).json({ error: "Credenciais inválidas." });
+        // Fallback checks if the password in DB is plain-text (i.e., matches the inputted password exactly)
+        if (password === user.senha) {
+          isPlainTextLogin = true;
+        } else {
+          return res.status(401).json({ error: "Credenciais inválidas." });
+        }
+      }
+
+      // Self-healing: Upgrade plain text passwords to secure hashes in the database
+      if (isPlainTextLogin && dbConnected && pool) {
+        try {
+          const secureHash = hashPassword(password);
+          await pool.query('UPDATE usuarios SET senha = $1 WHERE id = $2', [secureHash, user.id]);
+          console.log(`[Self-Healing] Password for user ${user.email} successfully upgraded to a secure SHA256 hash.`);
+        } catch (updateErr) {
+          console.error("Failed to self-heal/upgrade plain text password:", updateErr);
+        }
       }
 
       // Create a session
@@ -1551,6 +1628,87 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           );
 
           ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS subitens TEXT NOT NULL DEFAULT '[]';
+
+          CREATE TABLE IF NOT EXISTS usuarios (
+            id VARCHAR(255) PRIMARY KEY,
+            nome VARCHAR(255) NOT NULL,
+            nome_usuario VARCHAR(255) UNIQUE,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            senha VARCHAR(255) NOT NULL,
+            nivel VARCHAR(50) NOT NULL DEFAULT 'OPERADOR',
+            permissoes TEXT NOT NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome_usuario VARCHAR(255) UNIQUE;
+
+          CREATE TABLE IF NOT EXISTS sessoes (
+            id VARCHAR(255) PRIMARY KEY,
+            "usuarioId" VARCHAR(255) NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            expiracao TIMESTAMP WITH TIME ZONE NOT NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS levantamentos (
+            id VARCHAR(255) PRIMARY KEY,
+            ref VARCHAR(255) NOT NULL,
+            obra VARCHAR(255),
+            cliente VARCHAR(255),
+            "dataSolicitacao" VARCHAR(255),
+            abc VARCHAR(255),
+            solicitante VARCHAR(255),
+            responsavel VARCHAR(255),
+            status VARCHAR(255),
+            previsao VARCHAR(255),
+            "qtdM2" DOUBLE PRECISION,
+            "statusEnvio" VARCHAR(255),
+            "contratoAFecharId" VARCHAR(255),
+            subestruturas TEXT,
+            subestruturas_pc TEXT,
+            "origemLeads" VARCHAR(255) DEFAULT 'Projeto Certo',
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS levantamento_materiais (
+            id VARCHAR(255) PRIMARY KEY,
+            levantamento_id VARCHAR(255) NOT NULL REFERENCES levantamentos(id) ON DELETE CASCADE,
+            material TEXT NOT NULL,
+            qtd_m2 DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          DO $$ BEGIN
+              CREATE TYPE categoria_documento AS ENUM (
+                'EDITAL', 'CONTRATO', 'MEDICAO', 'ART', 'CNO', 'ORCAMENTO', 
+                'LEVANTAMENTO', 'NF', 'COMPROVANTE', 'OUTROS'
+              );
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END $$;
+
+          CREATE TABLE IF NOT EXISTS documentos (
+            id VARCHAR(255) PRIMARY KEY,
+            obra_id VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            nome_arquivo VARCHAR(255) NOT NULL,
+            nome_original VARCHAR(255) NOT NULL,
+            extensao VARCHAR(50) NOT NULL,
+            mime_type VARCHAR(100) NOT NULL,
+            tamanho_bytes BIGINT NOT NULL,
+            categoria categoria_documento NOT NULL,
+            s3_key VARCHAR(512),
+            s3_url VARCHAR(1024),
+            caminho_local VARCHAR(512),
+            hash_arquivo VARCHAR(255),
+            observacao TEXT,
+            uploaded_by VARCHAR(255),
+            versao INTEGER DEFAULT 1,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            deleted_at TIMESTAMP WITH TIME ZONE
+          );
         `);
 
         console.log("Populando dados padrão...");
