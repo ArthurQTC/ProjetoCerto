@@ -21,7 +21,8 @@ const ROLES = [
   { value: "ADMIN", label: "Administrador", desc: "Acesso total irrestrito ao sistema." },
   { value: "GESTOR", label: "Gestor", desc: "Gerencia contratos, levantamentos e visualiza todos os indicadores." },
   { value: "OPERADOR", label: "Operador", desc: "Acesso operacional para criar e editar levantamentos e orçamentos." },
-  { value: "LEITOR", label: "Leitor", desc: "Acesso exclusivo de leitura aos módulos selecionados." }
+  { value: "LEITOR", label: "Leitor", desc: "Acesso exclusivo de leitura aos módulos selecionados." },
+  { value: "ARQUITETO", label: "Arquiteto", desc: "Acesso focado em visualização e edição de Levantamentos/Orçamentos." }
 ];
 
 const MODULE_OPTIONS = [
@@ -102,7 +103,7 @@ export default function UsuariosView() {
   const [nomeUsuario, setNomeUsuario] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [nivel, setNivel] = useState<'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR'>("OPERADOR");
+  const [nivel, setNivel] = useState<Usuario['nivel']>("OPERADOR");
   const [permissoes, setPermissoes] = useState<Usuario["permissoes"]>(JSON.parse(JSON.stringify(DEFAULT_PERMISSIONS)));
 
   // Fetch users query
@@ -408,6 +409,31 @@ export default function UsuariosView() {
 
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'nenhum';
+    } else if (role === "ARQUITETO") {
+      updated.modulos.dashboard = 'visualizar';
+      updated.modulos.contratosConsolidados = 'nenhum';
+      updated.modulos.orcamentosAFechar = 'nenhum';
+      updated.modulos.etapasContrato = 'nenhum';
+      updated.modulos.levantamentosOrcamentos = 'editar';
+      updated.modulos.usuarios = 'nenhum';
+
+      updated.indicadores.totalContratos = 'nenhum';
+      updated.indicadores.totalVisaoGeral = 'nenhum';
+      updated.indicadores.totalMargem = 'nenhum';
+      updated.indicadores.percentualMedio = 'nenhum';
+      updated.indicadores.totalAdm = 'nenhum';
+      updated.indicadores.kpiProjecao = 'nenhum';
+      updated.indicadores.kpiAdm = 'nenhum';
+      updated.indicadores.graficoCustos = 'nenhum';
+
+      updated.colunas.valorContrato = 'nenhum';
+      updated.colunas.margemLiquida = 'nenhum';
+      updated.colunas.custoAdm = 'nenhum';
+      updated.colunas.valorItens = 'editar';
+      updated.colunas.subestruturas = 'editar';
+
+      updated.acoes.visualizar = 'visualizar';
+      updated.acoes.editar = 'editar';
     }
     
     setPermissoes(updated);

@@ -142,7 +142,7 @@ export interface Usuario {
   nome: string;
   nome_usuario: string;
   email: string;
-  nivel: 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR';
+  nivel: 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR' | 'ARQUITETO';
   permissoes: {
     modulos: {
       dashboard: boolean | 'visualizar' | 'editar' | 'nenhum';
