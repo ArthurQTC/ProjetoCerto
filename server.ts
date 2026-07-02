@@ -420,43 +420,6 @@ async function checkDbConnection() {
         await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_categorias_nome_unique ON categorias (nome)');
 
         await pool.query(`
-          DO $$ BEGIN
-              CREATE TYPE categoria_documento AS ENUM (
-                'EDITAL', 'CONTRATO', 'MEDICAO', 'ART', 'CNO', 'ORCAMENTO', 
-                'LEVANTAMENTO', 'NF', 'COMPROVANTE', 'OUTROS'
-              );
-          EXCEPTION
-              WHEN duplicate_object THEN null;
-          END $$;
-          
-          CREATE TABLE IF NOT EXISTS documentos (
-            id VARCHAR(255) PRIMARY KEY,
-            obra_id VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
-            nome_arquivo VARCHAR(255) NOT NULL,
-            nome_original VARCHAR(255) NOT NULL,
-            extensao VARCHAR(50) NOT NULL,
-            mime_type VARCHAR(100) NOT NULL,
-            tamanho_bytes BIGINT NOT NULL,
-            categoria categoria_documento NOT NULL,
-            s3_key VARCHAR(512),
-            s3_url VARCHAR(1024),
-            caminho_local VARCHAR(512),
-            hash_arquivo VARCHAR(255),
-            observacao TEXT,
-            uploaded_by VARCHAR(255),
-            versao INTEGER DEFAULT 1,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            deleted_at TIMESTAMP WITH TIME ZONE
-          );
-          
-          ALTER TABLE documentos ALTER COLUMN s3_key DROP NOT NULL;
-          ALTER TABLE documentos ALTER COLUMN s3_url DROP NOT NULL;
-          ALTER TABLE documentos ADD COLUMN IF NOT EXISTS caminho_local VARCHAR(512);
-        `);
-
-
-        await pool.query(`
           CREATE TABLE IF NOT EXISTS obras (
             id VARCHAR(255) PRIMARY KEY,
             nome VARCHAR(255) NOT NULL,
@@ -493,6 +456,42 @@ async function checkDbConnection() {
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
+        `);
+
+        await pool.query(`
+          DO $$ BEGIN
+              CREATE TYPE categoria_documento AS ENUM (
+                'EDITAL', 'CONTRATO', 'MEDICAO', 'ART', 'CNO', 'ORCAMENTO', 
+                'LEVANTAMENTO', 'NF', 'COMPROVANTE', 'OUTROS'
+              );
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END $$;
+          
+          CREATE TABLE IF NOT EXISTS documentos (
+            id VARCHAR(255) PRIMARY KEY,
+            obra_id VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            nome_arquivo VARCHAR(255) NOT NULL,
+            nome_original VARCHAR(255) NOT NULL,
+            extensao VARCHAR(50) NOT NULL,
+            mime_type VARCHAR(100) NOT NULL,
+            tamanho_bytes BIGINT NOT NULL,
+            categoria categoria_documento NOT NULL,
+            s3_key VARCHAR(512),
+            s3_url VARCHAR(1024),
+            caminho_local VARCHAR(512),
+            hash_arquivo VARCHAR(255),
+            observacao TEXT,
+            uploaded_by VARCHAR(255),
+            versao INTEGER DEFAULT 1,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            deleted_at TIMESTAMP WITH TIME ZONE
+          );
+          
+          ALTER TABLE documentos ALTER COLUMN s3_key DROP NOT NULL;
+          ALTER TABLE documentos ALTER COLUMN s3_url DROP NOT NULL;
+          ALTER TABLE documentos ADD COLUMN IF NOT EXISTS caminho_local VARCHAR(512);
         `);
 
         // Apply any missing columns (Postgres ADD COLUMN IF NOT EXISTS guarantees safety)

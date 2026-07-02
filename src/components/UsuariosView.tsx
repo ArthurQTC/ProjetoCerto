@@ -636,7 +636,6 @@ export default function UsuariosView() {
                         required
                         value={nomeUsuario}
                         onChange={(e) => setNomeUsuario(e.target.value.replace(/\s+/g, '').toLowerCase())}
-                        placeholder="ex: andrews"
                         className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none"
                       />
                     </div>
