@@ -15,7 +15,7 @@ import {
   FileSpreadsheet,
   RotateCcw
 } from "lucide-react";
-import { useUIStore } from "../store";
+import { useUIStore, useAuthStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
 import CreateProjectModal from "./CreateObraModal";
 
@@ -31,6 +31,7 @@ const formatDateBR = (dateStr?: string | null) => {
 export default function ProjectsListView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
   const projectFilter = useUIStore((state) => state.projectFilter);
+  const { hasPermission } = useAuthStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<Projeto | null>(null);
@@ -254,27 +255,29 @@ export default function ProjectsListView() {
         </div>
         <div className="flex items-center gap-2">
           {/* Alterar Custo ADM Global */}
-          <button
-            onClick={async () => {
-              try {
-                const res = await fetch("/api/configuracoes/custo-adm-global");
-                if (res.ok) {
-                  const data = await res.json();
-                  setGlobalCostValue(String(data.valor));
-                } else {
+          {hasPermission("acoes", "editar") && hasPermission("colunas", "custoAdm", "editar") && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/configuracoes/custo-adm-global");
+                  if (res.ok) {
+                    const data = await res.json();
+                    setGlobalCostValue(String(data.valor));
+                  } else {
+                    setGlobalCostValue("5");
+                  }
+                } catch (err) {
                   setGlobalCostValue("5");
                 }
-              } catch (err) {
-                setGlobalCostValue("5");
-              }
-              setIsGlobalCostModalOpen(true);
-            }}
-            className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-            id="global_update_cost_adm_btn"
-          >
-            <Percent className="w-4 h-4 text-brand-accent" />
-            <span>Alterar Custo ADM</span>
-          </button>
+                setIsGlobalCostModalOpen(true);
+              }}
+              className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              id="global_update_cost_adm_btn"
+            >
+              <Percent className="w-4 h-4 text-brand-accent" />
+              <span>Alterar Custo ADM</span>
+            </button>
+          )}
 
           {/* Exportar Excel */}
           <button
@@ -285,17 +288,20 @@ export default function ProjectsListView() {
             <FileSpreadsheet className="w-4 h-4" />
             <span className="hidden sm:inline">Exportar Excel</span>
           </button>
-          <button
-            onClick={() => {
-              setProjectToEdit(null);
-              setIsNewProjectModalOpen(true);
-            }}
-            className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
-            id="projects_list_new_project_btn"
-          >
-            <Plus className="w-4 h-4 text-white" />
-            {projectFilter === "A_FECHAR" ? "Novo Orçamento" : "Novo Contrato"}
-          </button>
+          
+          {hasPermission("acoes", "editar") && (
+            <button
+              onClick={() => {
+                setProjectToEdit(null);
+                setIsNewProjectModalOpen(true);
+              }}
+              className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+              id="projects_list_new_project_btn"
+            >
+              <Plus className="w-4 h-4 text-white" />
+              {projectFilter === "A_FECHAR" ? "Novo Orçamento" : "Novo Contrato"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -397,12 +403,16 @@ export default function ProjectsListView() {
                     {projectFilter === "A_FECHAR" ? "Orçamento" : "Contrato"}
                   </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">
-                    {projectFilter === "A_FECHAR" ? "Valor Orçamento" : "Valor Contrato"}
+                    {hasPermission("colunas", "valorContrato") 
+                      ? (projectFilter === "A_FECHAR" ? "Valor Orçamento" : "Valor Contrato") 
+                      : "Valor (Restrito)"}
                   </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">
                     {projectFilter === "A_FECHAR" ? "Custo dos Orçamentos" : "Custo dos Contratos"}
                   </th>
-                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">Margem Líquida</th>
+                  <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-right">
+                    {hasPermission("colunas", "valorContrato") ? "Margem Líquida" : "Margem (Restrita)"}
+                  </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Ações</th>
                 </tr>
@@ -443,7 +453,7 @@ export default function ProjectsListView() {
                         )}
                       </td>
                       <td className="py-3.5 px-5 text-right font-mono font-bold text-brand-text-primary">
-                        {formatBRL(p.valorContrato)}
+                        {hasPermission("colunas", "valorContrato") ? formatBRL(p.valorContrato) : "••••••"}
                       </td>
                       <td className="py-3.5 px-5 text-right font-mono font-bold text-brand-text-primary">
                         {formatBRL(p.visaoGeral)}
@@ -453,7 +463,7 @@ export default function ProjectsListView() {
                           marginIsPositive ? "text-brand-success" : "text-brand-error"
                         }`}
                       >
-                        {formatBRL(p.margemLiquida)}
+                        {hasPermission("colunas", "valorContrato") ? formatBRL(p.margemLiquida) : "••••••"}
                       </td>
                       <td className="py-3.5 px-5 text-center">
                         <span
@@ -463,7 +473,7 @@ export default function ProjectsListView() {
                               : "bg-brand-error/5 text-brand-error border border-brand-error/15"
                           }`}
                         >
-                          {p.percentualMargem.toFixed(2)}%
+                          {hasPermission("colunas", "valorContrato") ? `${p.percentualMargem.toFixed(2)}%` : "••••••"}
                         </span>
                       </td>
                       <td className="py-3.5 px-5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -493,21 +503,25 @@ export default function ProjectsListView() {
                             </>
                           ) : (
                             <>
-                              <button
-                                onClick={(e) => handleEditProjectClick(p, e)}
-                                className="p-1 px-2 hover:bg-slate-100 text-brand-text-secondary hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                                Editar
-                              </button>
-                              <button
-                                onClick={(e) => handleEditCustoAdmClick(p, e)}
-                                className="p-1 px-2 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
-                                title="Editar Custo ADM deste contrato"
-                              >
-                                <Percent className="w-3 h-3 text-brand-accent animate-pulse" />
-                                Editar Custo ADM
-                              </button>
+                              {hasPermission("acoes", "editar") && (
+                                <button
+                                  onClick={(e) => handleEditProjectClick(p, e)}
+                                  className="p-1 px-2 hover:bg-slate-100 text-brand-text-secondary hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                  Editar
+                                </button>
+                              )}
+                              {hasPermission("acoes", "editar") && hasPermission("colunas", "custoAdm", "editar") && (
+                                <button
+                                  onClick={(e) => handleEditCustoAdmClick(p, e)}
+                                  className="p-1 px-2 hover:bg-slate-100 text-slate-700 hover:text-brand-text-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                  title="Editar Custo ADM deste contrato"
+                                >
+                                  <Percent className="w-3 h-3 text-brand-accent animate-pulse" />
+                                  Editar Custo ADM
+                                </button>
+                              )}
                               <button
                                 onClick={() => navigateToProject(p.id)}
                                 className="p-1 px-2.5 bg-brand-primary/5 hover:bg-brand-primary text-brand-primary hover:text-white font-bold rounded-md transition-colors inline-flex items-center gap-0.5 text-[10px]"
@@ -515,14 +529,16 @@ export default function ProjectsListView() {
                                 Abrir
                                 <ChevronRight className="w-3 h-3" />
                               </button>
-                              <button
-                                onClick={(e) => handleDeleteProject(p.id, p.nome, e)}
-                                className="p-1 px-2 hover:bg-red-50 text-slate-400 hover:text-red-600 font-bold border border-slate-200/65 hover:border-red-200 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
-                                title="Enviar para a lixeira"
-                              >
-                                <Trash2 className="w-3 h-3 text-slate-400 group-hover:text-red-500" />
-                                Excluir
-                              </button>
+                              {hasPermission("acoes", "editar") && (
+                                <button
+                                  onClick={(e) => handleDeleteProject(p.id, p.nome, e)}
+                                  className="p-1 px-2 hover:bg-red-50 text-slate-400 hover:text-red-600 font-bold border border-slate-200/65 hover:border-red-200 rounded-md transition-colors inline-flex items-center gap-1 text-[10px]"
+                                  title="Enviar para a lixeira"
+                                >
+                                  <Trash2 className="w-3 h-3 text-slate-400 group-hover:text-red-500" />
+                                  Excluir
+                                </button>
+                              )}
                             </>
                           )}
                         </div>

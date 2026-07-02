@@ -6,6 +6,7 @@ dotenv.config(); // fall back to standard .env if needed
 import path from "path";
 import fs from "fs";
 import pg from "pg";
+import crypto from "crypto";
 
 async function runBootDiagnostics() {
   console.log("\n===============================================================================");
@@ -243,6 +244,10 @@ function sanitizeDbUrl(rawUrl: string): string {
     console.error("Erro ao higienizar a DATABASE_URL:", e);
     return url;
   }
+}
+
+function hashPassword(password: string): string {
+  return crypto.createHash("sha256").update(password).digest("hex");
 }
 
 // Sanitize and sync DATABASE_URL from process.env to .env file to ensure Prisma CLI and client both use the exact same variable
@@ -512,6 +517,73 @@ async function checkDbConnection() {
           )
         `);
 
+        // Create table usuarios
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS usuarios (
+            id VARCHAR(255) PRIMARY KEY,
+            nome VARCHAR(255) NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            senha VARCHAR(255) NOT NULL,
+            nivel VARCHAR(50) NOT NULL DEFAULT 'OPERADOR',
+            permissoes TEXT NOT NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        // Create table sessoes
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS sessoes (
+            id VARCHAR(255) PRIMARY KEY,
+            "usuarioId" VARCHAR(255) NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            expiracao TIMESTAMP WITH TIME ZONE NOT NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        // Seed default admin
+        const checkAdmin = await pool.query("SELECT id FROM usuarios WHERE email = $1", ["admin@projetocerto.com"]);
+        if (checkAdmin.rowCount === 0) {
+          const adminId = "usr-admin-seed";
+          const adminPwdHash = hashPassword("admin123");
+          const adminPerms = JSON.stringify({
+            modulos: {
+              dashboard: true,
+              contratosConsolidados: true,
+              orcamentosAFechar: true,
+              etapasContrato: true,
+              levantamentosOrcamentos: true,
+              usuarios: true
+            },
+            indicadores: {
+              totalContratos: true,
+              totalVisaoGeral: true,
+              totalMargem: true,
+              percentualMedio: true,
+              totalAdm: true,
+              kpiProjecao: true,
+              kpiAdm: true,
+              graficoCustos: true
+            },
+            colunas: {
+              valorContrato: true,
+              custoAdm: true,
+              valorItens: true,
+              subestruturas: true
+            },
+            acoes: {
+              visualizar: true,
+              editar: true
+            }
+          });
+
+          await pool.query(
+            'INSERT INTO usuarios (id, nome, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6)',
+            [adminId, "Administrador", "admin@projetocerto.com", adminPwdHash, "ADMIN", adminPerms]
+          );
+          console.log("[pg Sync] Seeding default admin user (admin@projetocerto.com / admin123)");
+        }
+
         // Initialize levantamentos table if not exist
         await pool.query(`
           CREATE TABLE IF NOT EXISTS levantamentos (
@@ -538,6 +610,8 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS "contratoAFecharId" VARCHAR(255)');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas TEXT');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas_pc TEXT');
+        await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS "origemLeads" VARCHAR(255) DEFAULT \'Projeto Certo\'');
+        await pool.query('UPDATE levantamentos SET "origemLeads" = \'Projeto Certo\'');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "cliente" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "statusEnvio" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "responsavel" DROP NOT NULL');
@@ -576,6 +650,71 @@ async function checkDbConnection() {
           console.log("[pg Sync] Todas as datas de solicitação normalizadas com sucesso!");
         } catch (e: any) {
           console.error("Erro ao normalizar datas de levantamentos:", e);
+        }
+
+        // Migrar dados de Material PC para Material HD de forma definitiva se houver
+        try {
+          console.log("[pg Sync] Migrando dados de Material PC para Material HD...");
+          const allLevsRes = await pool.query('SELECT id, subestruturas, subestruturas_pc FROM levantamentos');
+          for (const row of allLevsRes.rows) {
+            let subListHD: any[] = [];
+            let subListPC: any[] = [];
+            
+            if (row.subestruturas) {
+              try {
+                subListHD = typeof row.subestruturas === "string" ? JSON.parse(row.subestruturas) : row.subestruturas;
+              } catch (e) {
+                subListHD = [];
+              }
+            }
+            if (!Array.isArray(subListHD)) subListHD = [];
+
+            if (row.subestruturas_pc) {
+              try {
+                subListPC = typeof row.subestruturas_pc === "string" ? JSON.parse(row.subestruturas_pc) : row.subestruturas_pc;
+              } catch (e) {
+                subListPC = [];
+              }
+            }
+            if (!Array.isArray(subListPC)) subListPC = [];
+
+            if (subListPC.length > 0) {
+              console.log(`[pg Sync] Migrando ${subListPC.length} itens PC para HD no levantamento ${row.id}...`);
+              // Convert PC items to HD format
+              const convertedPCtoHD = subListPC.map((item: any) => {
+                let rawQty = item.qtdPC !== undefined ? item.qtdPC : (item.qtdM2 || 0);
+                if (typeof rawQty === "string") {
+                  rawQty = rawQty.trim().replace(/\./g, "").replace(",", ".");
+                }
+                const parsedQty = parseFloat(rawQty) || 0;
+
+                let rawVal = item.valorUnitario;
+                if (typeof rawVal === "string") {
+                  rawVal = rawVal.trim().replace(/\./g, "").replace(",", ".");
+                }
+                const parsedVal = parseFloat(rawVal) || 0;
+
+                return {
+                  material: item.material || "Material PC Migrado",
+                  qtdHD: parsedQty,
+                  qtdM2: parsedQty,
+                  valorUnitario: parsedVal
+                };
+              });
+              
+              // Append to HD items
+              const mergedHD = [...subListHD, ...convertedPCtoHD];
+              
+              // Update database
+              await pool.query(
+                'UPDATE levantamentos SET subestruturas = $1, subestruturas_pc = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $3',
+                [JSON.stringify(mergedHD), '[]', row.id]
+              );
+            }
+          }
+          console.log("[pg Sync] Migração de Material PC para Material HD concluída com sucesso!");
+        } catch (e: any) {
+          console.error("Erro na migração de Material PC para Material HD:", e);
         }
 
         await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS descricao VARCHAR(255) NOT NULL DEFAULT \'\'');
@@ -882,6 +1021,270 @@ async function bootstrap() {
   // API Status / Health Check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date() });
+  });
+
+  // Authentication middleware
+  const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if ((req as any).user) {
+      return next(); // Already authenticated by previous middleware
+    }
+    
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Sessão não informada ou inválida." });
+      }
+
+      const token = authHeader.split(" ")[1];
+      const sessionRes = await pool.query(`
+        SELECT s.id as session_id, s.expiracao, u.id, u.nome, u.email, u.nivel, u.permissoes 
+        FROM sessoes s 
+        JOIN usuarios u ON s."usuarioId" = u.id 
+        WHERE s.id = $1
+      `, [token]);
+
+      if (sessionRes.rowCount === 0) {
+        return res.status(401).json({ error: "Sessão expirada ou inválida." });
+      }
+
+      const session = sessionRes.rows[0];
+      if (new Date(session.expiracao) < new Date()) {
+        await pool.query('DELETE FROM sessoes WHERE id = $1', [token]);
+        return res.status(401).json({ error: "Sessão expirada." });
+      }
+
+      // Parse permissions
+      let permissoesObj = {};
+      try {
+        permissoesObj = typeof session.permissoes === 'string' ? JSON.parse(session.permissoes) : session.permissoes;
+      } catch (e) {
+        permissoesObj = {};
+      }
+
+      (req as any).user = {
+        id: session.id,
+        nome: session.nome,
+        email: session.email,
+        nivel: session.nivel,
+        permissoes: permissoesObj
+      };
+
+      next();
+    } catch (err: any) {
+      console.error("Erro no middleware de autenticação:", err);
+      res.status(500).json({ error: "Erro interno de autenticação." });
+    }
+  };
+
+  // POST /api/login
+  app.post("/api/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+      }
+
+      const userRes = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
+      if (userRes.rowCount === 0) {
+        return res.status(401).json({ error: "Credenciais inválidas." });
+      }
+
+      const user = userRes.rows[0];
+      const inputHash = hashPassword(password);
+      if (inputHash !== user.senha) {
+        return res.status(401).json({ error: "Credenciais inválidas." });
+      }
+
+      // Create a session
+      const sessionId = crypto.randomUUID();
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + 30); // 30 days session validity
+
+      await pool.query(
+        'INSERT INTO sessoes (id, "usuarioId", expiracao) VALUES ($1, $2, $3)',
+        [sessionId, user.id, expirationDate]
+      );
+
+      let permissoesObj = {};
+      try {
+        permissoesObj = typeof user.permissoes === 'string' ? JSON.parse(user.permissoes) : user.permissoes;
+      } catch (e) {
+        permissoesObj = {};
+      }
+
+      res.json({
+        token: sessionId,
+        user: {
+          id: user.id,
+          nome: user.nome,
+          email: user.email,
+          nivel: user.nivel,
+          permissoes: permissoesObj
+        }
+      });
+    } catch (err: any) {
+      console.error("Erro no login:", err);
+      res.status(500).json({ error: "Erro interno ao realizar login." });
+    }
+  });
+
+  // Global API Authentication Guard
+  app.use("/api", (req, res, next) => {
+    // /health and /login are defined before this middleware, so they won't even hit it, 
+    // but we add them here for safety.
+    const publicRoutes = ["/health", "/login", "/db/status", "/db/sync"];
+    if (publicRoutes.includes(req.path)) {
+      return next();
+    }
+    return requireAuth(req, res, next);
+  });
+
+  // GET /api/me
+  app.get("/api/me", requireAuth, (req, res) => {
+    res.json({ user: (req as any).user });
+  });
+
+  // POST /api/logout
+  app.post("/api/logout", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        await pool.query('DELETE FROM sessoes WHERE id = $1', [token]);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Erro no logout:", err);
+      res.status(500).json({ error: "Erro ao realizar logout." });
+    }
+  });
+
+  // GET /api/usuarios
+  app.get("/api/usuarios", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      if (currentUser.nivel !== 'ADMIN') {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
+
+      const usersRes = await pool.query('SELECT id, nome, email, nivel, permissoes, "createdAt", "updatedAt" FROM usuarios ORDER BY nome ASC');
+      const users = usersRes.rows.map(u => {
+        let permissoesObj = {};
+        try {
+          permissoesObj = typeof u.permissoes === 'string' ? JSON.parse(u.permissoes) : u.permissoes;
+        } catch (e) {
+          permissoesObj = {};
+        }
+        return {
+          id: u.id,
+          nome: u.nome,
+          email: u.email,
+          nivel: u.nivel,
+          permissoes: permissoesObj,
+          createdAt: u.createdAt,
+          updatedAt: u.updatedAt
+        };
+      });
+
+      res.json(users);
+    } catch (err: any) {
+      console.error("Erro ao listar usuários:", err);
+      res.status(500).json({ error: "Erro interno ao listar usuários." });
+    }
+  });
+
+  // POST /api/usuarios
+  app.post("/api/usuarios", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      if (currentUser.nivel !== 'ADMIN') {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
+
+      const { nome, email, senha, nivel, permissoes } = req.body;
+      if (!nome || !email || !senha || !nivel) {
+        return res.status(400).json({ error: "Nome, e-mail, senha e nível são obrigatórios." });
+      }
+
+      const checkRes = await pool.query('SELECT id FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
+      if (checkRes.rowCount > 0) {
+        return res.status(400).json({ error: "Este e-mail já está cadastrado." });
+      }
+
+      const userId = `usr-${crypto.randomUUID()}`;
+      const hashed = hashPassword(senha);
+      const permsStr = typeof permissoes === 'string' ? permissoes : JSON.stringify(permissoes || {});
+
+      await pool.query(
+        'INSERT INTO usuarios (id, nome, email, senha, nivel, permissoes) VALUES ($1, $2, $3, $4, $5, $6)',
+        [userId, nome.trim(), email.trim().toLowerCase(), hashed, nivel, permsStr]
+      );
+
+      res.json({ success: true, id: userId });
+    } catch (err: any) {
+      console.error("Erro ao criar usuário:", err);
+      res.status(500).json({ error: "Erro interno ao criar usuário." });
+    }
+  });
+
+  // PUT /api/usuarios/:id
+  app.put("/api/usuarios/:id", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      if (currentUser.nivel !== 'ADMIN') {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
+
+      const { id } = req.params;
+      const { nome, email, senha, nivel, permissoes } = req.body;
+
+      const checkRes = await pool.query('SELECT id, senha FROM usuarios WHERE id = $1', [id]);
+      if (checkRes.rowCount === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado." });
+      }
+
+      let updatedSenha = checkRes.rows[0].senha;
+      if (senha && senha.trim() !== "") {
+        updatedSenha = hashPassword(senha);
+      }
+
+      const permsStr = typeof permissoes === 'string' ? permissoes : JSON.stringify(permissoes || {});
+
+      await pool.query(
+        'UPDATE usuarios SET nome = $1, email = $2, senha = $3, nivel = $4, permissoes = $5, "updatedAt" = NOW() WHERE id = $6',
+        [nome.trim(), email.trim().toLowerCase(), updatedSenha, nivel, permsStr, id]
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Erro ao atualizar usuário:", err);
+      res.status(500).json({ error: "Erro interno ao atualizar usuário." });
+    }
+  });
+
+  // DELETE /api/usuarios/:id
+  app.delete("/api/usuarios/:id", requireAuth, async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      if (currentUser.nivel !== 'ADMIN') {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
+
+      const { id } = req.params;
+      if (id === 'usr-admin-seed') {
+        return res.status(400).json({ error: "O administrador padrão não pode ser excluído." });
+      }
+
+      const delRes = await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
+      if (delRes.rowCount === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado." });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Erro ao excluir usuário:", err);
+      res.status(500).json({ error: "Erro interno ao excluir usuário." });
+    }
   });
 
   // GET Supabase Database Status
@@ -2094,7 +2497,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
              createdAt: row.createdAt,
              updatedAt: row.updatedAt,
              subestruturas: enrichedHD,
-             subestruturas_pc: enrichedPC
+             subestruturas_pc: [],
+             origemLeads: row.origemLeads || "Projeto Certo"
            };
          });
          res.json(list);
@@ -2109,7 +2513,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
   // POST Criar Levantamento
   app.post("/api/levantamentos", async (req, res) => {
-    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio } = req.body;
+    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio, origemLeads } = req.body;
     if (!obra || !dataSolicitacao || !responsavel || !status || !statusEnvio) {
       return res.status(400).json({ error: "Faltam campos obrigatórios." });
     }
@@ -2186,14 +2590,12 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         const ref = `LV${String(nextNum).padStart(2, '0')}`;
 
         const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
-        const subListPC = Array.isArray(subestruturas_pc) ? subestruturas_pc : [];
         const subStrHD = JSON.stringify(subListHD);
-        const subStrPC = JSON.stringify(subListPC);
 
         await pool.query(`
           INSERT INTO levantamentos (
-            id, ref, obra, cliente, "dataSolicitacao", abc, solicitante, responsavel, status, previsao, "statusEnvio", subestruturas, subestruturas_pc
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            id, ref, obra, cliente, "dataSolicitacao", abc, solicitante, responsavel, status, previsao, "statusEnvio", subestruturas, subestruturas_pc, "origemLeads"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         `, [
           id,
           ref,
@@ -2207,7 +2609,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           previsao ? convertDateToBR(previsao) : "",
           statusEnvio,
           subStrHD,
-          subStrPC
+          '[]',
+          origemLeads || "Projeto Certo"
         ]);
 
         const query = `
@@ -2225,7 +2628,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
                   (row.status === "FINALIZADO" || row.status === "Finalizado") ? "Finalizado" : (row.status || "Pendente"),
           statusEnvio: (row.statusEnvio === "Enviado") ? "Enviado" : "Proposta a Enviar",
           subestruturas: subListHD,
-          subestruturas_pc: subListPC
+          subestruturas_pc: [],
+          origemLeads: row.origemLeads || "Projeto Certo"
         });
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
@@ -2239,7 +2643,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   // PUT Atualizar Levantamento
   app.put("/api/levantamentos/:id", async (req, res) => {
     const { id } = req.params;
-    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio } = req.body;
+    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio, origemLeads } = req.body;
     try {
       if (dbConnected && pool) {
         const checkRes = await pool.query('SELECT * FROM levantamentos WHERE id = $1', [id]);
@@ -2248,9 +2652,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         }
 
         const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
-        const subListPC = Array.isArray(subestruturas_pc) ? subestruturas_pc : [];
         const subStrHD = JSON.stringify(subListHD);
-        const subStrPC = JSON.stringify(subListPC);
 
         await pool.query(`
           UPDATE levantamentos SET
@@ -2265,8 +2667,9 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             "statusEnvio" = COALESCE($9, "statusEnvio"),
             subestruturas = $10,
             subestruturas_pc = $11,
+            "origemLeads" = COALESCE($12, "origemLeads"),
             "updatedAt" = CURRENT_TIMESTAMP
-          WHERE id = $12
+          WHERE id = $13
         `, [
           obra || null,
           cliente || "",
@@ -2278,7 +2681,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           previsao ? convertDateToBR(previsao) : null,
           statusEnvio || null,
           subStrHD,
-          subStrPC,
+          '[]',
+          origemLeads || null,
           id
          ]);
 
@@ -2297,7 +2701,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
                    (row.status === "FINALIZADO" || row.status === "Finalizado") ? "Finalizado" : (row.status || "Pendente"),
            statusEnvio: (row.statusEnvio === "Enviado") ? "Enviado" : "Proposta a Enviar",
            subestruturas: subListHD,
-           subestruturas_pc: subListPC
+           subestruturas_pc: [],
+           origemLeads: row.origemLeads || "Projeto Certo"
          });
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
@@ -2391,27 +2796,28 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           return res.status(400).json({ error: "Este levantamento já foi enviado para Orçamentos a Fechar." });
         }
 
-        // Parse subestruturas_pc
-        let subListPC: any[] = [];
-        if (lev.subestruturas_pc) {
+        // Parse subestruturas HD
+        let subListHD: any[] = [];
+        if (lev.subestruturas) {
           try {
-            subListPC = typeof lev.subestruturas_pc === 'string' ? JSON.parse(lev.subestruturas_pc) : lev.subestruturas_pc;
+            subListHD = typeof lev.subestruturas === 'string' ? JSON.parse(lev.subestruturas) : lev.subestruturas;
           } catch (e) {
-            subListPC = [];
+            subListHD = [];
           }
         }
-        if (!subListPC || subListPC.length === 0) {
-          return res.status(400).json({ error: "Faltando item em Material PC" });
+        if (!subListHD || subListHD.length === 0) {
+          return res.status(400).json({ error: "Faltando item em Material HD" });
         }
 
         // Calculate total value
         let totalValor = 0;
-        const processedItems = subListPC.map((item: any) => {
-          const itemVal = (Number(item.qtdPC) || 0) * (Number(item.valorUnitario) || 0);
+        const processedItems = subListHD.map((item: any) => {
+          const q = item.qtdHD !== undefined ? item.qtdHD : (item.qtdM2 || 0);
+          const itemVal = (Number(q) || 0) * (Number(item.valorUnitario) || 0);
           totalValor += itemVal;
           return {
-            material: item.material || "Produto PC",
-            qtdPC: Number(item.qtdPC) || 0,
+            material: item.material || "Produto HD",
+            qtdHD: Number(q) || 0,
             valorUnitario: Number(item.valorUnitario) || 0,
             itemVal
           };
@@ -2441,7 +2847,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             await pool.query('INSERT INTO categorias (id, nome, "grupoCalculo") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [catId, "SUBESTRUTURA", "MATERIAL"]);
           }
 
-          // Insert ONE itens_orcamento for all subestrutura PC
+          // Insert ONE itens_orcamento for all subestrutura
           const itemId = "item-" + generateId().substring(0, 10);
           const itemDescStr = `MATERIAL SUB ESTRUTURA`;
           const itemObsStr = `Enviado a partir do Levantamento ${lev.ref}.`;
@@ -2450,7 +2856,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           const subitens = processedItems.map(item => ({
             id: generateId(),
             descricao: item.material,
-            qtd: parseFloat(item.qtdPC as any) || 0,
+            qtd: parseFloat(item.qtdHD as any) || 0,
             valor: parseFloat(item.valorUnitario as any) || 0
           }));
           

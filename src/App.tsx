@@ -12,14 +12,57 @@ import {
   Lock,
   Wrench,
   Hammer,
+  Users,
+  LogOut,
+  UserCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useUIStore } from "./store";
+import { useUIStore, useAuthStore } from "./store";
 import DashboardView from "./components/DashboardView";
 import ProjectsListView from "./components/ProjectsListView";
 import ObraDetailView from "./components/ObraDetailView";
 import ContractStepsView from "./components/ContractStepsView";
 import LevantamentosView from "./components/LevantamentosView";
+import UsuariosView from "./components/UsuariosView";
+import LoginView from "./components/LoginView";
+
+// Global Fetch Interceptor to automatically attach authorization tokens
+const originalFetch = window.fetch;
+const customFetch = async function (input: RequestInfo | URL, init?: RequestInit) {
+  const token = localStorage.getItem("auth_token");
+  if (token) {
+    init = init || {};
+    init.headers = init.headers || {};
+    if (init.headers instanceof Headers) {
+      init.headers.set("Authorization", `Bearer ${token}`);
+    } else if (Array.isArray(init.headers)) {
+      init.headers.push(["Authorization", `Bearer ${token}`]);
+    } else {
+      init.headers = {
+        ...init.headers,
+        "Authorization": `Bearer ${token}`,
+      };
+    }
+  }
+  return originalFetch(input, init);
+};
+
+try {
+  Object.defineProperty(window, "fetch", {
+    value: customFetch,
+    configurable: true,
+    writable: true,
+    enumerable: true,
+  });
+} catch (e) {
+  console.warn("Could not redefine window.fetch using Object.defineProperty. Falling back to direct assignment.", e);
+  try {
+    (window as any).fetch = customFetch;
+  } catch (err) {
+    console.error("Failed to intercept window.fetch globally:", err);
+  }
+}
 
 // Initialize React Query Client for server state management
 const queryClient = new QueryClient({
@@ -40,11 +83,64 @@ function AppContent() {
   const navigateToProjects = useUIStore((state) => state.navigateToProjects);
   const navigateToSteps = useUIStore((state) => state.navigateToSteps);
   const navigateToLevantamentos = useUIStore((state) => state.navigateToLevantamentos);
+  const navigateToUsuarios = useUIStore((state) => state.navigateToUsuarios);
+
+  const { user, isAuthenticated, isChecking, logout, hasPermission } = useAuthStore();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
   const [logoFailed, setLogoFailed] = useState(false);
   const [maintenanceModule, setMaintenanceModule] = useState<string | null>(null);
+
+  // Check auth status on boot
+  useEffect(() => {
+    const tokenInStorage = localStorage.getItem("auth_token");
+    if (!tokenInStorage) {
+      useAuthStore.setState({ isChecking: false, isAuthenticated: false, user: null });
+      return;
+    }
+
+    fetch("/api/me")
+      .then(res => {
+        if (!res.ok) throw new Error("Sessão inválida");
+        return res.json();
+      })
+      .then(data => {
+        useAuthStore.setState({ user: data.user, isAuthenticated: true, isChecking: false });
+      })
+      .catch(() => {
+        localStorage.removeItem("auth_token");
+        useAuthStore.setState({ user: null, isAuthenticated: false, isChecking: false });
+      });
+  }, []);
+
+  // Redirect to first available view if they don't have access to current one
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      let hasAccess = false;
+      if (activeView === "dashboard" && hasPermission("modulos", "dashboard")) hasAccess = true;
+      else if (activeView === "projects" && projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) hasAccess = true;
+      else if (activeView === "projects" && projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar")) hasAccess = true;
+      else if (activeView === "steps" && hasPermission("modulos", "etapasContrato")) hasAccess = true;
+      else if (activeView === "levantamentos" && hasPermission("modulos", "levantamentosOrcamentos")) hasAccess = true;
+      else if (activeView === "usuarios" && user.nivel === 'ADMIN') hasAccess = true;
+      else if (activeView === "project-detail") hasAccess = true; // handled inside ObraDetailView
+
+      if (!hasAccess && activeView !== "project-detail") {
+        if (hasPermission("modulos", "dashboard")) {
+          navigateToDashboard();
+        } else if (hasPermission("modulos", "contratosConsolidados")) {
+          navigateToProjects("CONSOLIDADO");
+        } else if (hasPermission("modulos", "orcamentosAFechar")) {
+          navigateToProjects("A_FECHAR");
+        } else if (hasPermission("modulos", "levantamentosOrcamentos")) {
+          navigateToLevantamentos();
+        } else if (user.nivel === 'ADMIN') {
+          navigateToUsuarios();
+        }
+      }
+    }
+  }, [isAuthenticated, user, activeView, projectFilter, hasPermission, navigateToDashboard, navigateToProjects, navigateToLevantamentos, navigateToUsuarios]);
 
   // Sync maintenance view if navigation is triggered programmatically to "steps"
   useEffect(() => {
@@ -63,6 +159,21 @@ function AppContent() {
       setLogoUrl(customUrl);
     }
   }, []);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-brand-primary border-b-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest font-mono">Carregando ERP...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
 
   return (
     <div className="min-h-screen bg-brand-bg flex flex-col md:flex-row text-brand-text-primary">
@@ -95,94 +206,139 @@ function AppContent() {
 
             {/* Primary Navigation links */}
             <nav className="px-3 py-6 space-y-2">
-              <button
-                onClick={() => {
-                  navigateToDashboard();
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
-                  activeView === "dashboard"
-                    ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
-                    : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
-                }`}
-                id="sidebar_nav_dashboard"
-              >
-                <LayoutDashboard className="w-4 h-4 text-white/80" />
-                Dashboard
-              </button>
+              {hasPermission("modulos", "dashboard") && (
+                <button
+                  onClick={() => {
+                    navigateToDashboard();
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    activeView === "dashboard"
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_dashboard"
+                >
+                  <LayoutDashboard className="w-4 h-4 text-white/80" />
+                  Dashboard
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  navigateToProjects("CONSOLIDADO");
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
-                  (activeView === "projects" && projectFilter === "CONSOLIDADO") || (activeView === "project-detail" && projectFilter === "CONSOLIDADO")
-                    ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
-                    : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
-                }`}
-                id="sidebar_nav_projects_consolidado"
-              >
-                <Folders className="w-4 h-4 text-brand-accent" />
-                Contratos Consolidados
-              </button>
+              {hasPermission("modulos", "contratosConsolidados") && (
+                <button
+                  onClick={() => {
+                    navigateToProjects("CONSOLIDADO");
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    (activeView === "projects" && projectFilter === "CONSOLIDADO") || (activeView === "project-detail" && projectFilter === "CONSOLIDADO")
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_projects_consolidado"
+                >
+                  <Folders className="w-4 h-4 text-brand-accent" />
+                  Contratos Consolidados
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  navigateToProjects("A_FECHAR");
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
-                  (activeView === "projects" && projectFilter === "A_FECHAR") || (activeView === "project-detail" && projectFilter === "A_FECHAR")
-                    ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
-                    : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
-                }`}
-                id="sidebar_nav_projects_a_fechar"
-              >
-                <FolderLock className="w-4 h-4 text-brand-accent" />
-                Orçamentos a Fechar
-              </button>
+              {hasPermission("modulos", "orcamentosAFechar") && (
+                <button
+                  onClick={() => {
+                    navigateToProjects("A_FECHAR");
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    (activeView === "projects" && projectFilter === "A_FECHAR") || (activeView === "project-detail" && projectFilter === "A_FECHAR")
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_projects_a_fechar"
+                >
+                  <FolderLock className="w-4 h-4 text-brand-accent" />
+                  Orçamentos a Fechar
+                </button>
+              )}
 
               {/* Etapas do Contrato - Ghost / Locked Module with maintenance control */}
-              <button
-                onClick={() => {
-                  setMaintenanceModule("Etapas do Contrato");
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center justify-between transition-all duration-200 ${
-                  maintenanceModule === "Etapas do Contrato" || activeView === "steps"
-                    ? "bg-white/10 text-white font-extrabold border-l-2 border-brand-accent/60 pl-2.5"
-                    : "text-white/40 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
-                }`}
-                id="sidebar_nav_steps"
-              >
-                <div className="flex items-center gap-2.5">
-                  <ListChecks className="w-4 h-4 text-brand-accent/50" />
-                  <span>Etapas do Contrato</span>
-                </div>
-                <Lock className="w-3.5 h-3.5 text-[#D9A441] opacity-70 animate-pulse" />
-              </button>
+              {hasPermission("modulos", "etapasContrato") && (
+                <button
+                  onClick={() => {
+                    setMaintenanceModule("Etapas do Contrato");
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center justify-between transition-all duration-200 ${
+                    maintenanceModule === "Etapas do Contrato" || activeView === "steps"
+                      ? "bg-white/10 text-white font-extrabold border-l-2 border-brand-accent/60 pl-2.5"
+                      : "text-white/40 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_steps"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <ListChecks className="w-4 h-4 text-brand-accent/50" />
+                    <span>Etapas do Contrato</span>
+                  </div>
+                  <Lock className="w-3.5 h-3.5 text-[#D9A441] opacity-70 animate-pulse" />
+                </button>
+              )}
 
               {/* Levantamentos/Orçamentos - Fully Functional Module */}
-              <button
-                onClick={() => {
-                  navigateToLevantamentos();
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
-                  activeView === "levantamentos"
-                    ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
-                    : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
-                }`}
-                id="sidebar_nav_levantamentos"
-              >
-                <Coins className="w-4 h-4 text-brand-accent" />
-                <span>Levantamentos/Orçamentos</span>
-              </button>
+              {hasPermission("modulos", "levantamentosOrcamentos") && (
+                <button
+                  onClick={() => {
+                    navigateToLevantamentos();
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    activeView === "levantamentos"
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_levantamentos"
+                >
+                  <Coins className="w-4 h-4 text-brand-accent" />
+                  <span>Levantamentos/Orçamentos</span>
+                </button>
+              )}
+
+              {/* Controle de Acessos */}
+              {user?.nivel === 'ADMIN' && (
+                <button
+                  onClick={() => {
+                    navigateToUsuarios();
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    activeView === "usuarios"
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_usuarios"
+                >
+                  <Users className="w-4 h-4 text-brand-accent" />
+                  <span>Controle de Acessos</span>
+                </button>
+              )}
             </nav>
           </div>
 
-          <div>
+          <div className="p-4 border-t border-white/5 space-y-3">
+            <div className="flex items-center gap-2.5 bg-white/5 p-2.5 rounded-xl border border-white/5">
+              <div className="w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center font-bold text-xs text-white uppercase shrink-0">
+                {user?.nome ? user.nome.substring(0, 2).toUpperCase() : "PC"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold text-white truncate leading-none">{user?.nome}</p>
+                <p className="text-[9px] font-bold text-[#D9A441] uppercase tracking-wider mt-1 leading-none">{user?.nivel}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => logout()}
+              className="w-full py-2 px-3 bg-white/5 hover:bg-red-500/10 text-white hover:text-red-300 text-xs font-bold uppercase rounded-lg border border-white/5 hover:border-red-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sair</span>
+            </button>
           </div>
         </div>
       </aside>
@@ -241,16 +397,23 @@ function AppContent() {
         <div className="flex-1 p-4 md:p-6 overflow-y-auto">
           {/* Main workspace switching routing layout */}
           <div className="w-full max-w-full mx-auto">
-            {activeView === "dashboard" ? (
+            {activeView === "dashboard" && hasPermission("modulos", "dashboard") ? (
               <DashboardView />
-            ) : activeView === "projects" ? (
+            ) : activeView === "projects" && ((projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) || (projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar"))) ? (
               <ProjectsListView />
-            ) : activeView === "steps" ? (
+            ) : activeView === "steps" && hasPermission("modulos", "etapasContrato") ? (
               <ContractStepsView />
-            ) : activeView === "levantamentos" ? (
+            ) : activeView === "levantamentos" && hasPermission("modulos", "levantamentosOrcamentos") ? (
               <LevantamentosView />
-            ) : (
+            ) : activeView === "usuarios" && user?.nivel === 'ADMIN' ? (
+              <UsuariosView />
+            ) : activeView === "project-detail" ? (
               <ObraDetailView />
+            ) : (
+              <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">Acesso Restrito</h2>
+                <p className="text-slate-500 mb-6">Você não possui permissão para acessar este módulo.</p>
+              </div>
             )}
           </div>
         </div>

@@ -114,6 +114,7 @@ export interface Levantamento {
   updatedAt?: string;
   subestruturas?: LevantamentoSubestrutura[];
   subestruturas_pc?: LevantamentoSubestruturaPC[];
+  origemLeads?: "Hunter Douglas" | "Projeto Certo";
 }
 
 export interface ObraSummary {

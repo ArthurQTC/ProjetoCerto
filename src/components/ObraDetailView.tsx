@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 import { Projeto, ItemOrcamento } from "../types";
-import { useUIStore, useItemsStore } from "../store";
+import { useUIStore, useItemsStore, useAuthStore } from "../store";
 import ItemFormModal from "./ItemFormModal";
 import CreateProjectModal from "./CreateObraModal";
 import CreateCategoryModal from "./CreateCategoryModal";
@@ -173,6 +173,7 @@ export default function ObraDetailView() {
   const navigateToSteps = useUIStore((state) => state.navigateToSteps);
   const selectedProjectId = useUIStore((state) => state.selectedProjectId || state.selectedObraId);
   const projectFilter = useUIStore((state) => state.projectFilter);
+  const { hasPermission } = useAuthStore();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -207,6 +208,7 @@ export default function ObraDetailView() {
   const [tempSubItemQtd, setTempSubItemQtd] = useState("1");
 
   const toggleExpandItem = (itemId: string) => {
+    if (!hasPermission("colunas", "subestruturas")) return;
     setExpandedItemIds(prev => ({
       ...prev,
       [itemId]: !prev[itemId]
@@ -229,8 +231,8 @@ export default function ObraDetailView() {
       const itemRows = localItems.map((item) => ({
         "Descrição": item.descricao,
         "Categoria": item.categoria?.nome || "-",
-        "Valor Original (R$)": item.valor,
-        "Subitens": item.subitens?.map(s => s.descricao + ": " + formatBRL(s.valor)).join(" | ") || "-",
+        "Valor Original (R$)": hasPermission("colunas", "valorItens") ? item.valor : "••••••",
+        "Subitens": item.subitens?.map(s => s.descricao + ": " + (hasPermission("colunas", "valorItens") ? formatBRL(s.valor) : "••••••")).join(" | ") || "-",
         "Status": item.status,
         "Observação": item.observacao || "-",
       }));
@@ -341,6 +343,10 @@ export default function ObraDetailView() {
     },
     enabled: !!selectedProjectId,
   });
+
+  const isBudget = project?.statusContrato === 'A_FECHAR';
+  const moduleKey = isBudget ? 'orcamentosAFechar' : 'contratosConsolidados';
+  const canEdit = hasPermission("modulos", moduleKey, "editar") && hasPermission("acoes", "editar");
 
   useEffect(() => {
     if (project?.itens) {
@@ -755,22 +761,26 @@ export default function ObraDetailView() {
             <CheckCircle className="w-3.5 h-3.5 text-brand-accent" />
             Ir para Etapas do Contrato
           </button>
-          <button
-            onClick={() => setIsEditProjectOpen(true)}
-            className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-brand-text-primary rounded-lg font-bold text-xs transition-colors flex items-center gap-1"
-            id="edit_project_details_btn"
-          >
-            <Edit className="w-3.5 h-3.5 text-slate-400" />
-            Editar Cadastro
-          </button>
-          <button
-            onClick={() => setIsDeleteProjectModalOpen(true)}
-            className="p-1.5 border border-brand-error/15 bg-brand-error/5 hover:bg-brand-error hover:text-white text-brand-error rounded-lg transition-all"
-            title="Deseja excluir o projeto?"
-            id="delete_project_details_btn"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {canEdit && (
+            <>
+              <button
+                onClick={() => setIsEditProjectOpen(true)}
+                className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-brand-text-primary rounded-lg font-bold text-xs transition-colors flex items-center gap-1"
+                id="edit_project_details_btn"
+              >
+                <Edit className="w-3.5 h-3.5 text-slate-400" />
+                Editar Cadastro
+              </button>
+              <button
+                onClick={() => setIsDeleteProjectModalOpen(true)}
+                className="p-1.5 border border-brand-error/15 bg-brand-error/5 hover:bg-brand-error hover:text-white text-brand-error rounded-lg transition-all"
+                title="Deseja excluir o projeto?"
+                id="delete_project_details_btn"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -780,7 +790,7 @@ export default function ObraDetailView() {
         <div className="bg-brand-primary p-4 rounded-xl border border-brand-secondary shadow-md text-white transition-all duration-300 hover:shadow-lg">
           <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest block">Valor Do Contrato PC</span>
           <h3 className="text-base font-extrabold font-mono text-brand-accent tracking-tight mt-1">
-            {formatBRL(project.valorContrato)}
+            {hasPermission("colunas", "valorContrato") ? formatBRL(project.valorContrato) : "••••••"}
           </h3>
         </div>
 
@@ -788,7 +798,7 @@ export default function ObraDetailView() {
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Visão Custo Geral</span>
           <h3 className="text-base font-extrabold font-mono text-brand-text-primary tracking-tight mt-1">
-            {formatBRL(project.visaoGeral)}
+            {hasPermission("colunas", "valorContrato") ? formatBRL(project.visaoGeral) : "••••••"}
           </h3>
         </div>
 
@@ -796,7 +806,7 @@ export default function ObraDetailView() {
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Margem Líquida</span>
           <h3 className={`text-base font-extrabold font-mono tracking-tight mt-1 ${marginIsPositive ? "text-brand-success" : "text-brand-error"}`}>
-            {formatBRL(project.margemLiquida)}
+            {hasPermission("colunas", "valorContrato") ? formatBRL(project.margemLiquida) : "••••••"}
           </h3>
         </div>
 
@@ -804,7 +814,7 @@ export default function ObraDetailView() {
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Percentual Margem</span>
           <h3 className={`text-base font-extrabold font-mono tracking-tight mt-1 ${marginIsPositive ? "text-brand-success" : "text-brand-error"}`}>
-            {project.percentualMargem.toFixed(2)}%
+            {hasPermission("colunas", "valorContrato") ? `${project.percentualMargem.toFixed(2)}%` : "••••••"}
           </h3>
         </div>
       </div>
@@ -848,7 +858,7 @@ export default function ObraDetailView() {
                   Lixeira ({project.itens?.filter(i => i.status === "LIXEIRA").length || 0})
                 </button>
                 {/* Esvaziar Lixeira Button */}
-                {showLixeira && project.itens?.some(i => i.status === "LIXEIRA") && (
+                {showLixeira && project.itens?.some(i => i.status === "LIXEIRA") && canEdit && (
                   confirmingEmptyTrash ? (
                     <button
                       onClick={() => {
@@ -874,26 +884,30 @@ export default function ObraDetailView() {
                   )
                 )}
                 {/* Nova Categoria Inside the Project Screen */}
-                <button
-                  onClick={() => setIsCategoryModalOpen(true)}
-                  className="px-2.5 py-1 text-brand-primary border border-brand-primary bg-brand-primary/5 hover:bg-brand-primary/10 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
-                  id="add_category_btn"
-                >
-                  <FolderPlus className="w-3 h-3" />
-                  Nova Categoria
-                </button>
-                {/* Novo Item */}
-                <button
-                  onClick={() => {
-                    setSelectedItem(null);
-                    setIsItemModalOpen(true);
-                  }}
-                  className="px-2.5 py-1 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
-                  id="add_item_btn"
-                >
-                  <Plus className="w-3 h-3" />
-                  Novo Item
-                </button>
+                {canEdit && (
+                  <>
+                    <button
+                      onClick={() => setIsCategoryModalOpen(true)}
+                      className="px-2.5 py-1 text-brand-primary border border-brand-primary bg-brand-primary/5 hover:bg-brand-primary/10 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      id="add_category_btn"
+                    >
+                      <FolderPlus className="w-3 h-3" />
+                      Nova Categoria
+                    </button>
+                    {/* Novo Item */}
+                    <button
+                      onClick={() => {
+                        setSelectedItem(null);
+                        setIsItemModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      id="add_item_btn"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Novo Item
+                    </button>
+                  </>
+                )}
                 {/* Visualizar Orçamento Materiais */}
                 <button
                   onClick={() => setIsBudgetPreviewOpen(true)}
@@ -953,14 +967,16 @@ export default function ObraDetailView() {
                               title="Clique para expandir composição de subitens"
                             >
                               <div className="flex items-center gap-2">
-                                {expandedItemIds[item.id] ? (
-                                  <ChevronDown className="w-3.5 h-3.5 text-brand-accent shrink-0 animate-pulse" />
-                                ) : (
-                                  <ChevronRight className="w-3.5 h-3.5 text-slate-450 shrink-0" />
+                                {hasPermission("colunas", "subestruturas") && (
+                                  expandedItemIds[item.id] ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-brand-accent shrink-0 animate-pulse" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5 text-slate-450 shrink-0" />
+                                  )
                                 )}
                                 <div className="text-left">
                                   <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
-                                  {item.subitens && item.subitens.length > 0 && (
+                                  {hasPermission("colunas", "subestruturas") && item.subitens && item.subitens.length > 0 && (
                                     <span className="inline-flex items-center gap-1 mt-1 bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider font-mono">
                                       {item.subitens.length} subitens compostos
                                     </span>
@@ -979,105 +995,107 @@ export default function ObraDetailView() {
                               </span>
                             </td>
                             <td className={`py-2.5 px-3 text-right font-mono font-bold ${isOutOfBudget ? "text-brand-text-secondary" : "text-brand-text-primary"}`}>
-                              {formatBRL(item.valor)}
+                              {hasPermission("colunas", "valorItens") ? formatBRL(item.valor) : "••••••"}
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               {getStatusBadge(item.status)}
                             </td>
                             <td className="py-2.5 px-3" draggable="false" onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
                               <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                {isLixeira ? (
-                                  <>
-                                    <button
-                                      onClick={() => handleToggleStatus(item, "ATIVO")}
-                                      className="p-1 hover:bg-green-50 text-brand-success hover:text-green-700 rounded transition-colors inline-flex items-center gap-0.5 pointer"
-                                      title="Restaurar Lançamento"
-                                    >
-                                      <RotateCcw className="w-3 h-3" />
-                                      <span className="text-[9px] font-extrabold uppercase">Restaurar</span>
-                                    </button>
-                                    {confirmingItemId === item.id ? (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handlePermanentDeleteItem(item.id);
-                                          setConfirmingItemId(null);
-                                        }}
-                                        onMouseLeave={() => setConfirmingItemId(null)}
-                                        className="p-1 px-2.5 bg-red-650 hover:bg-red-700 text-white rounded font-extrabold text-[9px] uppercase tracking-wider inline-flex items-center gap-1 transition-all duration-150 animate-pulse cursor-pointer"
-                                        title="Clique para confirmar a exclusão permanente"
-                                      >
-                                        Confirmar?
-                                      </button>
-                                    ) : (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setConfirmingItemId(item.id);
-                                        }}
-                                        className="p-1 hover:bg-red-50 text-brand-error rounded transition-colors inline-flex items-center gap-0.5 pointer"
-                                        title="Excluir Permanentemente"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                        <span className="text-[9px] font-extrabold uppercase">Definitivo</span>
-                                      </button>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    {/* Action to Add Sub-item */}
-                                    <button
-                                      onClick={() => {
-                                        setAddingSubItemForId(item.id);
-                                        setEditingSubItemId(null);
-                                        setTempSubItemDesc("");
-                                        setTempSubItemValue("");
-                                        setExpandedItemIds(prev => ({ ...prev, [item.id]: true }));
-                                      }}
-                                      className="p-1 hover:bg-emerald-50 text-emerald-500 hover:text-emerald-700 rounded transition-colors cursor-pointer"
-                                      title="Adicionar subitem"
-                                      id={`add_subitem_btn_${item.id}`}
-                                    >
-                                      <PlusCircle className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        setSelectedItem(item);
-                                        setIsItemModalOpen(true);
-                                      }}
-                                      className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
-                                      title="Editar item"
-                                    >
-                                      <Edit className="w-3 h-3" />
-                                    </button>
-
-                                    {/* Toggle active */}
-                                    {item.status !== "ATIVO" && (
+                                {canEdit && (
+                                  isLixeira ? (
+                                    <>
                                       <button
                                         onClick={() => handleToggleStatus(item, "ATIVO")}
-                                        className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-success rounded transition-colors cursor-pointer"
-                                        title="Ativar no Orçamento"
+                                        className="p-1 hover:bg-green-50 text-brand-success hover:text-green-700 rounded transition-colors inline-flex items-center gap-0.5 pointer"
+                                        title="Restaurar Lançamento"
                                       >
-                                        <CheckCircle className="w-3.5 h-3.5" />
+                                        <RotateCcw className="w-3 h-3" />
+                                        <span className="text-[9px] font-extrabold uppercase">Restaurar</span>
                                       </button>
-                                    )}
+                                      {confirmingItemId === item.id ? (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handlePermanentDeleteItem(item.id);
+                                            setConfirmingItemId(null);
+                                          }}
+                                          onMouseLeave={() => setConfirmingItemId(null)}
+                                          className="p-1 px-2.5 bg-red-650 hover:bg-red-700 text-white rounded font-extrabold text-[9px] uppercase tracking-wider inline-flex items-center gap-1 transition-all duration-150 animate-pulse cursor-pointer"
+                                          title="Clique para confirmar a exclusão permanente"
+                                        >
+                                          Confirmar?
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setConfirmingItemId(item.id);
+                                          }}
+                                          className="p-1 hover:bg-red-50 text-brand-error rounded transition-colors inline-flex items-center gap-0.5 pointer"
+                                          title="Excluir Permanentemente"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          <span className="text-[9px] font-extrabold uppercase">Definitivo</span>
+                                        </button>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {/* Action to Add Sub-item */}
+                                      <button
+                                        onClick={() => {
+                                          setAddingSubItemForId(item.id);
+                                          setEditingSubItemId(null);
+                                          setTempSubItemDesc("");
+                                          setTempSubItemValue("");
+                                          setExpandedItemIds(prev => ({ ...prev, [item.id]: true }));
+                                        }}
+                                        className="p-1 hover:bg-emerald-50 text-emerald-500 hover:text-emerald-700 rounded transition-colors cursor-pointer"
+                                        title="Adicionar subitem"
+                                        id={`add_subitem_btn_${item.id}`}
+                                      >
+                                        <PlusCircle className="w-3.5 h-3.5" />
+                                      </button>
 
-                                    <button
-                                      onClick={() => handleSoftDeleteItem(item)}
-                                      className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors cursor-pointer"
-                                      title="Mover para Lixeira"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedItem(item);
+                                          setIsItemModalOpen(true);
+                                        }}
+                                        className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
+                                        title="Editar item"
+                                      >
+                                        <Edit className="w-3 h-3" />
+                                      </button>
+
+                                      {/* Toggle active */}
+                                      {item.status !== "ATIVO" && (
+                                        <button
+                                          onClick={() => handleToggleStatus(item, "ATIVO")}
+                                          className="p-1 hover:bg-slate-100 text-slate-400 hover:text-brand-success rounded transition-colors cursor-pointer"
+                                          title="Ativar no Orçamento"
+                                        >
+                                          <CheckCircle className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+
+                                      <button
+                                        onClick={() => handleSoftDeleteItem(item)}
+                                        className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors cursor-pointer"
+                                        title="Mover para Lixeira"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  )
                                 )}
                               </div>
                             </td>
                           </tr>
 
                           {/* INLINE EXPANDED SUBITEM TABLE BODY SECTION */}
-                          {expandedItemIds[item.id] && (
+                          {hasPermission("colunas", "subestruturas") && expandedItemIds[item.id] && (
                             <tr className="bg-slate-50/50 hover:bg-slate-50/80 transition-colors border-l-4 border-l-[#D9A441]">
                               <td colSpan={6} className="py-3 px-6 text-left" draggable="false" onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
                                 <div className="space-y-3 pl-8">
@@ -1089,7 +1107,7 @@ export default function ObraDetailView() {
                                       </h5>
                                     </div>
                                     <span className="text-[9px] font-bold text-brand-text-secondary font-mono">
-                                      Soma Total Compositiva: <strong className="text-emerald-600 ml-1 font-extrabold">{formatBRL(item.valor)}</strong>
+                                      Soma Total Compositiva: <strong className="text-emerald-600 ml-1 font-extrabold">{hasPermission("colunas", "valorItens") ? formatBRL(item.valor) : "••••••"}</strong>
                                     </span>
                                   </div>
 
@@ -1150,32 +1168,36 @@ export default function ObraDetailView() {
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0">
                                                   <span className="text-[10px] text-slate-400 font-mono font-medium">
-                                                    {Number(sub.qtd || 1)} x {formatBRL(Number(sub.valor || 0))} =
+                                                    {Number(sub.qtd || 1)} x {hasPermission("colunas", "valorItens") ? formatBRL(Number(sub.valor || 0)) : "••••••"} =
                                                   </span>
                                                   <span className="font-mono font-black text-brand-text-primary text-right w-24">
-                                                    {formatBRL(Number(sub.qtd || 1) * Number(sub.valor || 0))}
+                                                    {hasPermission("colunas", "valorItens") ? formatBRL(Number(sub.qtd || 1) * Number(sub.valor || 0)) : "••••••"}
                                                   </span>
                                                   <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
-                                                    <button
-                                                      onClick={() => {
-                                                        setEditingSubItemId(sub.id);
-                                                        setAddingSubItemForId(null);
-                                                        setTempSubItemDesc(sub.descricao);
-                                                        setTempSubItemValue(sub ? (sub.valor || 0).toString() : "0");
-                                                        setTempSubItemQtd(sub ? ((sub.qtd || 1) || 1).toString() : "1");
-                                                      }}
-                                                      className="p-1 hover:bg-slate-150 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
-                                                      title="Editar subitem"
-                                                    >
-                                                      <Edit className="w-3 h-3" />
-                                                    </button>
-                                                    <button
-                                                      onClick={() => handleDeleteSubItem(item, sub.id)}
-                                                      className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors cursor-pointer"
-                                                      title="Excluir subitem"
-                                                    >
-                                                      <Trash2 className="w-3 h-3" />
-                                                    </button>
+                                                    {canEdit && (
+                                                      <>
+                                                        <button
+                                                          onClick={() => {
+                                                            setEditingSubItemId(sub.id);
+                                                            setAddingSubItemForId(null);
+                                                            setTempSubItemDesc(sub.descricao);
+                                                            setTempSubItemValue(sub ? (sub.valor || 0).toString() : "0");
+                                                            setTempSubItemQtd(sub ? ((sub.qtd || 1) || 1).toString() : "1");
+                                                          }}
+                                                          className="p-1 hover:bg-slate-150 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
+                                                          title="Editar subitem"
+                                                        >
+                                                          <Edit className="w-3 h-3" />
+                                                        </button>
+                                                        <button
+                                                          onClick={() => handleDeleteSubItem(item, sub.id)}
+                                                          className="p-1 hover:bg-red-50 text-slate-400 hover:text-brand-error rounded transition-colors cursor-pointer"
+                                                          title="Excluir subitem"
+                                                        >
+                                                          <Trash2 className="w-3 h-3" />
+                                                        </button>
+                                                      </>
+                                                    )}
                                                   </div>
                                                 </div>
                                               </>
@@ -1233,7 +1255,7 @@ export default function ObraDetailView() {
                                     </div>
                                   ) : (
                                     <div className="flex justify-start">
-                                      {!isLixeira && (
+                                      {!isLixeira && canEdit && (
                                         <button
                                           onClick={() => {
                                             setAddingSubItemForId(item.id);
@@ -1307,13 +1329,15 @@ export default function ObraDetailView() {
                       >
                         Ver
                       </button>
-                      <button
-                        onClick={() => handleDeleteDocument(doc.id)}
-                        className="p-1 hover:bg-red-50 text-brand-error rounded-md transition-colors"
-                        title="Excluir Documento"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          className="p-1 hover:bg-red-50 text-brand-error rounded-md transition-colors"
+                          title="Excluir Documento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1326,36 +1350,38 @@ export default function ObraDetailView() {
             )}
 
             {/* Upload Area */}
-            <div className="pt-2 border-t border-slate-100">
-              <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-3 transition-all ${
-                isUploading 
-                  ? "border-amber-300 bg-amber-50/20 cursor-not-allowed" 
-                  : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
-              }`}>
-                <div className="flex flex-col items-center justify-center text-center">
-                  {isUploading ? (
-                    <>
-                      <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin mb-1" />
-                      <p className="text-[10px] font-extrabold text-amber-700">Enviando arquivo...</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Salvando no banco de dados, aguarde...</p>
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="w-5 h-5 text-brand-accent mb-1 animate-bounce" />
-                      <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento (PDF, Imagem, DWG, Excel)</p>
-                      <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste o arquivo aqui</p>
-                    </>
-                  )}
-                </div>
-                <input 
-                  type="file" 
-                  accept="application/pdf,image/*,.dwg,.xlsx,.xls" 
-                  className="hidden" 
-                  onChange={handleLocalFileUpload} 
-                  disabled={isUploading}
-                />
-              </label>
-            </div>
+            {canEdit && (
+              <div className="pt-2 border-t border-slate-100">
+                <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-3 transition-all ${
+                  isUploading 
+                    ? "border-amber-300 bg-amber-50/20 cursor-not-allowed" 
+                    : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
+                }`}>
+                  <div className="flex flex-col items-center justify-center text-center">
+                    {isUploading ? (
+                      <>
+                        <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin mb-1" />
+                        <p className="text-[10px] font-extrabold text-amber-700">Enviando arquivo...</p>
+                        <p className="text-[8px] text-slate-400 mt-0.5">Salvando no banco de dados, aguarde...</p>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-5 h-5 text-brand-accent mb-1 animate-bounce" />
+                        <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento (PDF, Imagem, DWG, Excel)</p>
+                        <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste o arquivo aqui</p>
+                      </>
+                    )}
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="application/pdf,image/*,.dwg,.xlsx,.xls" 
+                    className="hidden" 
+                    onChange={handleLocalFileUpload} 
+                    disabled={isUploading}
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Cost distribution by categories */}
@@ -1388,7 +1414,7 @@ export default function ObraDetailView() {
                           <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value: any) => [formatBRLNoDecimals(Number(value)), ""]} />
+                      <Tooltip formatter={(value: any) => [hasPermission("colunas", "valorItens") ? formatBRLNoDecimals(Number(value)) : "••••••", ""]} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -1402,9 +1428,9 @@ export default function ObraDetailView() {
                         <div key={item.name} className="flex items-center justify-between text-[10px] font-bold text-brand-text-secondary py-1 border-b border-slate-50">
                           <div className="flex items-center gap-1.5 truncate max-w-[170px]">
                             <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
-                            <span className="truncate" title={item.name}>{item.name} <span className="text-[9px] text-slate-400 font-normal ml-0.5">({pct}%)</span></span>
+                            <span className="truncate" title={item.name}>{item.name} <span className="text-[9px] text-slate-400 font-normal ml-0.5">({hasPermission("colunas", "valorItens") ? pct : "••"}%)</span></span>
                           </div>
-                          <strong className="font-mono text-brand-text-primary ml-2 shrink-0">{formatBRLNoDecimals(item.value)}</strong>
+                          <strong className="font-mono text-brand-text-primary ml-2 shrink-0">{hasPermission("colunas", "valorItens") ? formatBRLNoDecimals(item.value) : "••••••"}</strong>
                         </div>
                       );
                     });
@@ -1864,7 +1890,7 @@ export default function ObraDetailView() {
                       <div className="flex-1 min-w-0">
                         <p className="truncate text-slate-800 font-bold" title={item.descricao}>{item.descricao}</p>
                         <span className="text-[9px] text-slate-400 font-mono block">
-                          {item.categoria?.nome || "Sem Categoria"} &bull; {formatBRLNoDecimals(item.valor)}
+                          {item.categoria?.nome || "Sem Categoria"} &bull; {hasPermission("colunas", "valorItens") ? formatBRLNoDecimals(item.valor) : "••••••"}
                         </span>
                       </div>
                     </label>
@@ -1996,10 +2022,10 @@ export default function ObraDetailView() {
                                     {item.observacao || "FORNECIMENTO DE ESTRUTURA/SUBESTRUTURA"}
                                   </td>
                                   <td className="py-3 px-3 text-right font-mono font-bold text-slate-850">
-                                    {formatBRLNoDecimals(item.valor)}
+                                    {hasPermission("colunas", "valorItens") ? formatBRLNoDecimals(item.valor) : "••••••"}
                                   </td>
                                   <td className="py-3 px-3 text-right font-mono font-bold text-slate-950">
-                                    {formatBRLNoDecimals(item.valor)}
+                                    {hasPermission("colunas", "valorItens") ? formatBRLNoDecimals(item.valor) : "••••••"}
                                   </td>
                                 </tr>
                               ));
@@ -2030,11 +2056,11 @@ export default function ObraDetailView() {
                             <div className="w-56 border-t border-slate-350 text-[10px] uppercase font-bold tracking-tight">
                               <div className="flex justify-between py-1.5 border-b border-dashed border-slate-205">
                                 <span className="text-slate-500">Total</span>
-                                <span className="font-mono font-black text-slate-900">{formatBRLNoDecimals(totBudget)}</span>
+                                <span className="font-mono font-black text-slate-900">{hasPermission("colunas", "valorContrato") ? formatBRLNoDecimals(totBudget) : "••••••"}</span>
                               </div>
                               <div className="flex justify-between py-1.5">
                                 <span className="text-slate-850">Valor líquido</span>
-                                <span className="font-mono font-black text-slate-950 text-xs">{formatBRLNoDecimals(totBudget)}</span>
+                                <span className="font-mono font-black text-slate-950 text-xs">{hasPermission("colunas", "valorContrato") ? formatBRLNoDecimals(totBudget) : "••••••"}</span>
                               </div>
                             </div>
                           </div>

@@ -20,7 +20,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useUIStore } from "../store";
+import { useUIStore, useAuthStore } from "../store";
 import { Levantamento, Material, LevantamentoSubestrutura } from "../types";
 
 const MONTH_NAMES = [
@@ -135,6 +135,9 @@ function isValidDateFull(dateStr: string): boolean {
 export default function LevantamentosView() {
   const queryClient = useQueryClient();
   const navigateToProject = useUIStore((state) => state.navigateToProject);
+  const { hasPermission } = useAuthStore();
+
+  const canEdit = hasPermission("modulos", "levantamentosOrcamentos", "editar") && hasPermission("acoes", "editar");
 
   // Filter States
   const [filterCliente, setFilterCliente] = useState("");
@@ -160,6 +163,7 @@ export default function LevantamentosView() {
   const [formStatus, setFormStatus] = useState<"Concluído" | "Em Desenvolvimento" | "Pendente">("Pendente");
   const [formPrevisao, setFormPrevisao] = useState("");
   const [formStatusEnvio, setFormStatusEnvio] = useState<"Enviado" | "Proposta a Enviar">("Proposta a Enviar");
+  const [formOrigemLeads, setFormOrigemLeads] = useState<"Hunter Douglas" | "Projeto Certo">("Projeto Certo");
   
   // Dynamic list of multiple materials / subestruturas
   const [formSubestruturas, setFormSubestruturas] = useState<{ material: string; qtdHD: string; valorUnitario: string }[]>([]);
@@ -183,10 +187,19 @@ export default function LevantamentosView() {
 
   const handleMouseEnter = (e: React.MouseEvent, content: React.ReactNode) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    const tooltipWidth = 384; // w-96
+    let x = rect.left + window.scrollX;
+    
+    // Prevent horizontal overflow
+    if (x + tooltipWidth > window.innerWidth + window.scrollX - 20) {
+      x = window.innerWidth + window.scrollX - tooltipWidth - 20;
+    }
+    if (x < 10) x = 10;
+
     setTooltip({
       visible: true,
       content,
-      x: rect.left + window.scrollX,
+      x,
       y: rect.bottom + window.scrollY + 8,
     });
   };
@@ -301,25 +314,27 @@ export default function LevantamentosView() {
     });
   }, [levantamentos, filterCliente, filterSolicitante, filterResponsavel, filterStatus, showLixeira, selectedMonthGroup]);
 
-  // Total metros quadrados dynamic KPI summation (only Material PC)
+  // Total metros quadrados dynamic KPI summation (only Material HD)
   const totalMetrosQuadrados = useMemo(() => {
     return filteredLevantamentos.reduce((acc, current) => {
-      const subsPC = current.subestruturas_pc || [];
-      return acc + subsPC.reduce((itemSum, s) => {
-        return itemSum + (Number(s.qtdPC) || 0);
+      const subsHD = current.subestruturas || [];
+      return acc + subsHD.reduce((itemSum, s) => {
+        const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
+        return itemSum + (Number(q) || 0);
       }, 0);
     }, 0);
   }, [filteredLevantamentos]);
 
-  // Safe helper to obtain sum value for a single row (only Material PC)
+  // Safe helper to obtain sum value for a single row (only Material HD)
   const getLevantamentoTotalVal = (lev: Levantamento): number => {
-    const subsPC = lev.subestruturas_pc || [];
+    const subsHD = lev.subestruturas || [];
     
-    const pcVal = subsPC.reduce((sum, s) => {
-      return sum + ((Number(s.qtdPC) || 0) * (Number(s.valorUnitario) || 0));
+    const hdVal = subsHD.reduce((sum, s) => {
+      const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
+      return sum + ((Number(q) || 0) * (Number(s.valorUnitario) || 0));
     }, 0);
 
-    return pcVal;
+    return hdVal;
   };
 
   // Total monetário valor calculated as summation of (qtd * unit price) for filtered subset
@@ -483,6 +498,7 @@ export default function LevantamentosView() {
     setFormStatus("Pendente");
     setFormPrevisao("");
     setFormStatusEnvio("Proposta a Enviar");
+    setFormOrigemLeads("Projeto Certo");
     
     // Default with empty materials
     setFormSubestruturas([
@@ -512,6 +528,7 @@ export default function LevantamentosView() {
     setFormStatus(survey.status === "EXCLUIDO" ? "Pendente" : survey.status);
     setFormPrevisao(survey.previsao ? convertDateToBR(survey.previsao) : "");
     setFormStatusEnvio(survey.statusEnvio);
+    setFormOrigemLeads(survey.origemLeads || "Hunter Douglas");
     
     if (survey.subestruturas && survey.subestruturas.length > 0) {
       setFormSubestruturas(survey.subestruturas.map(s => ({
@@ -574,29 +591,7 @@ export default function LevantamentosView() {
       }
     }
 
-    // Material PC checks
-    let isPcMissing = false;
-    if (formSubestruturasPC.length === 0) {
-      isPcMissing = true;
-    } else {
-      // Validate entries for PC
-      for (let i = 0; i < formSubestruturasPC.length; i++) {
-        const item = formSubestruturasPC[i];
-        if (!item.material) {
-          alert("Digite a descrição para todos os campos do Material PC.");
-          return;
-        }
-        if (!item.qtdPC) {
-          alert("Insira a quantidade (Qtd PC) para todos os materiais PC.");
-          return;
-        }
-      }
-    }
 
-    if (isPcMissing) {
-      setAlertPopupOpen(true);
-      return;
-    }
 
     // Format subestruturas payload
     const processedSubs = validSubestruturas.map(item => {
@@ -636,8 +631,9 @@ export default function LevantamentosView() {
       status: formStatus,
       previsao: formPrevisao,
       subestruturas: processedSubs,
-      subestruturas_pc: processedSubsPC,
-      statusEnvio: formStatusEnvio
+      subestruturas_pc: [],
+      statusEnvio: formStatusEnvio,
+      origemLeads: formOrigemLeads
     };
 
     saveSurveyMutation.mutate(payload);
@@ -654,14 +650,16 @@ export default function LevantamentosView() {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2.5">
-          <button
-            onClick={handleOpenAddSurveyModal}
-            className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white text-xs font-bold rounded-xl inline-flex items-center gap-2 transition-colors cursor-pointer shadow-sm hover:shadow"
-            id="btn_novo_levantamento"
-          >
-            <Plus className="w-4 h-4 text-brand-accent shrink-0" />
-            Novo Levantamento
-          </button>
+          {canEdit && (
+            <button
+              onClick={handleOpenAddSurveyModal}
+              className="px-4 py-2 bg-brand-primary hover:bg-brand-secondary text-white text-xs font-bold rounded-xl inline-flex items-center gap-2 transition-colors cursor-pointer shadow-sm hover:shadow"
+              id="btn_novo_levantamento"
+            >
+              <Plus className="w-4 h-4 text-brand-accent shrink-0" />
+              Novo Levantamento
+            </button>
+          )}
         </div>
       </div>
 
@@ -728,6 +726,13 @@ export default function LevantamentosView() {
               <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 bg-slate-50 text-slate-600 border border-slate-100 rounded-lg">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 Pendente: {filteredLevantamentos.filter(l => l.status === "Pendente").length}
+              </span>
+              <span className="text-slate-300 font-light px-1">|</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 bg-blue-50/80 text-blue-700 border border-blue-100 rounded-lg">
+                Hunter Douglas: {filteredLevantamentos.filter(l => l.origemLeads === "Hunter Douglas").length}
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 bg-purple-50/80 text-purple-700 border border-purple-100 rounded-lg">
+                Projeto Certo: {filteredLevantamentos.filter(l => l.origemLeads === "Projeto Certo" || !l.origemLeads).length}
               </span>
             </div>
           </div>
@@ -866,11 +871,10 @@ export default function LevantamentosView() {
                   <th className="py-3 px-4">RESPONSÁVEL</th>
                   <th className="py-3 px-4 text-center">STATUS</th>
                   <th className="py-3 px-4">PREVISÃO</th>
-                  <th className="py-3 px-4">MATERIAL PC</th>
-                  <th className="py-3 px-4 text-right">QTD PC</th>
+                  <th className="py-3 px-4">MATERIAL HD</th>
+                  <th className="py-3 px-4 text-right">QTD HD</th>
                   <th className="py-3 px-4 text-right">VALOR TOTAL</th>
                   <th className="py-3 px-1.5 text-center w-[120px]">STATUS ENVIO</th>
-                  <th className="py-3 px-4 text-center">ENVIAR PARA ORÇAR</th>
                   <th className="py-3 px-4 text-right">AÇÕES</th>
                 </tr>
               </thead>
@@ -931,15 +935,16 @@ export default function LevantamentosView() {
                         onMouseEnter={(e) => handleMouseEnter(e, (
                           <div className="space-y-2">
                             <div className="font-extrabold uppercase tracking-wider mb-2 border-b border-slate-100 pb-2 flex justify-between items-center">
-                              <span>Materiais PC inclusos</span>
-                              <span className="font-mono text-[10px] text-slate-500">{subsPC.length} itens</span>
+                              <span>Materiais HD inclusos</span>
+                              <span className="font-mono text-[10px] text-slate-500">{subsHD.length} itens</span>
                             </div>
                             <div className="space-y-2 max-h-60 overflow-y-auto">
-                              {subsPC.map((sub, sIdx) => {
+                              {subsHD.map((sub, sIdx) => {
+                                const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
                                 return (
                                   <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
                                     <span className="font-semibold text-slate-700 break-words">{sub.material}</span>
-                                    <span className="font-mono font-bold text-slate-900 shrink-0">{Number(sub.qtdPC).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">{Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
                                   </div>
                                 );
                               })}
@@ -949,11 +954,11 @@ export default function LevantamentosView() {
                         onMouseLeave={handleMouseLeave}
                       >
                         <div className="font-extrabold text-slate-800 text-xs flex flex-wrap gap-1 items-center">
-                          {subsPC.length > 0 ? (
+                          {subsHD.length > 0 ? (
                             <>
-                              <span className="truncate text-[#b38025]">{subsPC.length} Mat. PC</span>
+                              <span className="truncate text-brand-primary">{subsHD.length} Mat. HD</span>
                               <div className="text-[9px] text-slate-400 font-mono">
-                                R$ {totalValorPC.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                R$ {totalValorHD.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                               </div>
                             </>
                           ) : (
@@ -963,8 +968,8 @@ export default function LevantamentosView() {
                       </td>
 
                       <td className="py-3.5 px-4 text-slate-600 font-mono font-bold text-right cursor-pointer">
-                        {subsPC.length > 0 ? (
-                          <span className="text-[#b38025]">{totalQtdPC.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
+                        {subsHD.length > 0 ? (
+                          <span className="text-brand-primary">{totalQtdHD.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
                         ) : (
                           <span className="text-slate-300 font-normal">-</span>
                         )}
@@ -996,30 +1001,10 @@ export default function LevantamentosView() {
                                   })}
                                 </div>
                               )}
-                              
-                              {/* PC Section */}
-                              {subsPC.length > 0 && (
-                                <div className="space-y-1 pt-1 border-t border-slate-100">
-                                  <div className="text-[10px] font-bold text-[#D9A441] uppercase tracking-wider">Material PC</div>
-                                  {subsPC.map((sub, sIdx) => {
-                                    const qtdPC = parseFloat(sub.qtdPC as any) || 0;
-                                    const valorUnitario = parseFloat(sub.valorUnitario as any) || 0;
-                                    const total = qtdPC * valorUnitario;
-                                    return (
-                                      <div key={sIdx} className="flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
-                                        <span className="font-semibold text-[#D9A441] break-words">{sub.material}</span>
-                                        <span className="font-mono text-slate-900 shrink-0">
-                                          {Number(qtdPC).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m² x R$ {valorUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
                             </div>
-                            <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-bold text-[#D9A441] text-xs">
-                              <span>VALOR TOTAL PC</span>
-                              <span className="font-mono">R$ {(totalValorPC || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-bold text-slate-800 text-xs">
+                              <span>VALOR TOTAL</span>
+                              <span className="font-mono">R$ {(totalVal || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                           </div>
                         ))}
@@ -1028,9 +1013,9 @@ export default function LevantamentosView() {
                         <div className="text-[11px] font-mono leading-tight">
                           R$ {totalVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        {(subsHD.length + subsPC.length) > 1 && (
+                        {subsHD.length > 1 && (
                           <span className="text-[9px] font-medium text-slate-400 block pt-0.5 leading-none">
-                            ({subsHD.length + subsPC.length} itens)
+                            ({subsHD.length} itens)
                           </span>
                         )}
                       </td>
@@ -1041,6 +1026,7 @@ export default function LevantamentosView() {
                         ) : (
                           <div className="inline-flex items-center justify-center w-full">
                             <select
+                              disabled={!canEdit}
                               value={lev.statusEnvio}
                               onChange={(e) => {
                                 updateStatusEnvioMutation.mutate({
@@ -1048,7 +1034,7 @@ export default function LevantamentosView() {
                                   statusEnvio: e.target.value as "Enviado" | "Proposta a Enviar"
                                 });
                               }}
-                              className={`text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-lg border transition-all cursor-pointer focus:outline-none focus:ring-1 text-center w-[105px] ${
+                              className={`text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-lg border transition-all ${canEdit ? 'cursor-pointer' : 'opacity-80'} focus:outline-none focus:ring-1 text-center w-[105px] ${
                                 lev.statusEnvio === "Enviado"
                                   ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100/70"
                                   : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/70"
@@ -1060,25 +1046,7 @@ export default function LevantamentosView() {
                           </div>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        {showLixeira ? (
-                          <span className="text-slate-400 font-semibold text-[10px]">—</span>
-                        ) : lev.contratoAFecharId ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 border border-green-250 text-[10px] font-bold uppercase rounded-lg">
-                            Enviado
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => convertToContractMutation.mutate(lev.id)}
-                            disabled={convertToContractMutation.isPending}
-                            className="p-1 px-3 bg-[#D9A441]/10 hover:bg-[#D9A441]/20 text-[#D9A441] hover:text-[#b38025] rounded-xl border border-transparent inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all disabled:opacity-40"
-                            title="Gerar Orçamento a Fechar automático"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                            <span>Enviar</span>
-                          </button>
-                        )}
-                      </td>
+
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
                           {showLixeira ? (
@@ -1113,20 +1081,24 @@ export default function LevantamentosView() {
                                   <ArrowRight className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              <button
-                                onClick={() => handleOpenEditSurveyModal(lev)}
-                                className="p-1 px-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-slate-600 cursor-pointer transition-all"
-                                title="Editar"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirmationId(lev.id)}
-                                className="p-1 px-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border border-red-100 cursor-pointer transition-all"
-                                title="Apagar"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canEdit && (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenEditSurveyModal(lev)}
+                                    className="p-1 px-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-slate-600 cursor-pointer transition-all"
+                                    title="Editar"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteConfirmationId(lev.id)}
+                                    className="p-1 px-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border border-red-100 cursor-pointer transition-all"
+                                    title="Apagar"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
                             </>
                           )}
                         </div>
@@ -1296,94 +1268,7 @@ export default function LevantamentosView() {
                     </div>
                   </div>
 
-                  {/* Dynamic Material PC Editor */}
-                  <div className="col-span-2 border-t border-slate-100 pt-3">
-                    <div className="flex justify-between items-center pb-2 flex-wrap gap-1">
-                      <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material PC *</label>
-                        <span className="text-[9px] text-slate-400 block">Obrigatório para enviar para Orçamentos a Fechar</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setFormSubestruturasPC([...formSubestruturasPC, { material: "", qtdPC: "", valorUnitario: "" }])}
-                        className="px-2 py-1 bg-[#D9A441]/10 hover:bg-[#D9A441]/20 text-[#b38025] text-[9px] font-extrabold uppercase rounded-lg border border-[#D9A441]/20 inline-flex items-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3 text-[#D9A441]" /> Adicionar Material PC
-                      </button>
-                    </div>
 
-                    <div className="space-y-3 pr-0.5">
-                      {formSubestruturasPC.length === 0 ? (
-                        <div className="text-center p-4 bg-orange-50/50 border border-orange-200/50 rounded-xl">
-                          <p className="text-[10px] font-semibold text-orange-700 uppercase">Falta Item em Material PC</p>
-                          <span className="text-[9px] text-orange-500 font-medium">Nenhum Material PC adicionado. Clique no botão acima para adicionar.</span>
-                        </div>
-                      ) : (
-                        formSubestruturasPC.map((item, idx) => (
-                          <div key={idx} className="bg-orange-50/50 p-3 border border-orange-200 rounded-xl space-y-2 relative">
-                            
-                            <div className="col-span-12">
-                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material PC (PREENCHER) *</label>
-                              <input
-                                type="text"
-                                required
-                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:ring-1 focus:ring-brand-primary"
-                                value={item.material}
-                                placeholder="Digite a descrição..."
-                                onChange={(e) => {
-                                  const copy = [...formSubestruturasPC];
-                                  copy[idx].material = e.target.value;
-                                  setFormSubestruturasPC(copy);
-                                }}
-                              />
-                            </div>
-
-                            <div className="flex gap-2 items-center">
-                              <div className="flex-1">
-                                <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd PC</label>
-                                <input
-                                  type="text"
-                                  required
-                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
-                                  value={item.qtdPC}
-                                  placeholder="0,00"
-                                  onChange={(e) => {
-                                    const copy = [...formSubestruturasPC];
-                                    copy[idx].qtdPC = e.target.value;
-                                    setFormSubestruturasPC(copy);
-                                  }}
-                                />
-                              </div>
-
-                              <div className="flex-1">
-                                <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Valor Unit. (R$)</label>
-                                <input
-                                  type="text"
-                                  required
-                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
-                                  value={item.valorUnitario}
-                                  placeholder="0,00"
-                                  onChange={(e) => {
-                                    const copy = [...formSubestruturasPC];
-                                    copy[idx].valorUnitario = e.target.value;
-                                    setFormSubestruturasPC(copy);
-                                  }}
-                                />
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => setFormSubestruturasPC(formSubestruturasPC.filter((_, i) => i !== idx))}
-                                className="p-1.5 bg-white hover:bg-red-50 text-red-500 rounded-lg border border-slate-200 text-xs font-bold transition-colors cursor-pointer self-end mb-0.5"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
 
                   {/* ABC code */}
                   <div>
@@ -1436,6 +1321,20 @@ export default function LevantamentosView() {
                       <option value="Pendente">Pendente</option>
                       <option value="Em Desenvolvimento">Em Desenvolvimento</option>
                       <option value="Concluído">Concluído</option>
+                    </select>
+                  </div>
+
+                  {/* Origem dos Leads */}
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider pb-1">Origem dos Leads *</label>
+                    <select
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                      value={formOrigemLeads}
+                      onChange={(e) => setFormOrigemLeads(e.target.value as any)}
+                      required
+                    >
+                      <option value="Hunter Douglas">Hunter Douglas</option>
+                      <option value="Projeto Certo">Projeto Certo</option>
                     </select>
                   </div>
                 </div>
@@ -1633,7 +1532,7 @@ export default function LevantamentosView() {
       </AnimatePresence>
       {tooltip.visible && createPortal(
         <div
-          className="fixed z-[60] bg-white text-slate-800 text-xs rounded-xl p-4 shadow-xl border border-slate-200 w-96 animate-in fade-in zoom-in-95 duration-100 pointer-events-none"
+          className="absolute z-[60] bg-white text-slate-800 text-xs rounded-xl p-4 shadow-xl border border-slate-200 w-96 animate-in fade-in zoom-in-95 duration-100 pointer-events-none"
           style={{ top: tooltip.y, left: tooltip.x }}
         >
           {tooltip.content}

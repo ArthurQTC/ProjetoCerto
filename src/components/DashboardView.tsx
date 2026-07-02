@@ -17,7 +17,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import KPICard from "./KPICard";
 import ProgressBarKPI from "./ProgressBarKPI";
 import { DashboardStats } from "../types";
-import { useUIStore } from "../store";
+import { useUIStore, useAuthStore } from "../store";
 
 const formatDateBR = (dateStr?: string | null) => {
   if (!dateStr) return "";
@@ -30,6 +30,7 @@ const formatDateBR = (dateStr?: string | null) => {
 
 export default function DashboardView() {
   const navigateToProject = useUIStore((state) => state.navigateToProject);
+  const { hasPermission } = useAuthStore();
   const queryClient = useQueryClient();
   const [isGlobalCostModalOpen, setIsGlobalCostModalOpen] = useState(false);
   const [globalCostValue, setGlobalCostValue] = useState("");
@@ -204,94 +205,125 @@ export default function DashboardView() {
             <h1 className="text-2xl font-black text-brand-text-primary tracking-tight">Dashboard</h1>
             <p className="text-xs text-brand-text-secondary font-semibold uppercase tracking-wider">Centro de Custos Obras</p>
           </div>
-          <button
-            onClick={async () => {
-              try {
-                const res = await fetch("/api/configuracoes/custo-adm-global");
-                if (res.ok) {
-                  const data = await res.json();
-                  setGlobalCostValue(String(data.valor));
-                } else {
+          {hasPermission("acoes", "editar") && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/configuracoes/custo-adm-global");
+                  if (res.ok) {
+                    const data = await res.json();
+                    setGlobalCostValue(String(data.valor));
+                  } else {
+                    setGlobalCostValue("5");
+                  }
+                } catch (err) {
                   setGlobalCostValue("5");
                 }
-              } catch (err) {
-                setGlobalCostValue("5");
-              }
-              setIsGlobalCostModalOpen(true);
-            }}
-            className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer w-fit"
-            id="dashboard_update_cost_adm_btn"
-          >
-            <Percent className="w-3.5 h-3.5 text-brand-accent" />
-            <span>Alterar Custo ADM</span>
-          </button>
+                setIsGlobalCostModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer w-fit"
+              id="dashboard_update_cost_adm_btn"
+            >
+              <Percent className="w-3.5 h-3.5 text-brand-accent" />
+              <span>Alterar Custo ADM</span>
+            </button>
+          )}
         </div>
         
         {/* Progress indicators placed in the top right, above the main KPI cards */}
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto shrink-0">
-          <div className="w-full sm:w-80 md:w-96 lg:w-[380px] xl:w-[420px] shrink-0">
-            <ProgressBarKPI
-              title="PROJEÇÃO 2026"
-              current={data.kpiProjecao.atual}
-              goal={6000000}
-              color="emerald"
-              hideBar={false}
-            />
-          </div>
-          <div className="w-full sm:w-80 md:w-96 lg:w-[380px] xl:w-[420px] shrink-0">
-            <ProgressBarKPI
-              title="DESPESAS ADM"
-              current={data.kpiAdm.atual}
-              goal={admMeta}
-              color="emerald"
-              hideBar={false}
-              onGoalChange={handleAdmMetaChange}
-              onClick={() => setShowAdmDetails(true)}
-            />
-          </div>
+          {hasPermission("indicadores", "kpiProjecao") && (
+            <div className="w-full sm:w-80 md:w-96 lg:w-[380px] xl:w-[420px] shrink-0">
+              <ProgressBarKPI
+                title="PROJEÇÃO 2026"
+                current={data.kpiProjecao.atual}
+                goal={6000000}
+                color="emerald"
+                hideBar={false}
+              />
+            </div>
+          )}
+          {hasPermission("indicadores", "kpiAdm") && (
+            <div className="w-full sm:w-80 md:w-96 lg:w-[380px] xl:w-[420px] shrink-0">
+              <ProgressBarKPI
+                title="DESPESAS ADM"
+                current={data.kpiAdm.atual}
+                goal={admMeta}
+                color="emerald"
+                hideBar={false}
+                onGoalChange={handleAdmMetaChange}
+                onClick={() => setShowAdmDetails(true)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Row 1: KPI Cards spread full-width to prevent any wrapping or squeezing */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          title="Receita Contratual"
-          value={data.totalContratos}
-          type="currency"
-          icon={<Briefcase className="w-4.5 h-4.5 text-amber-600" />}
-          subtitle="Faturamento total"
-          id="hdr_receita_contratual_total"
-        />
-        <KPICard
-          title="Custo dos Contratos"
-          value={data.totalVisaoGeral}
-          type="currency"
-          icon={<TrendingUp className="w-4.5 h-4.5 text-brand-accent" />}
-          subtitle="Projetos em progresso"
-          id="hdr_custo_ativo_total"
-        />
-        <KPICard
-          title="Margem Líquida"
-          value={data.totalMargem}
-          type="currency"
-          icon={<Coins className="w-4.5 h-4.5 text-brand-success" />}
-          subtitle="Lucro Líquido"
-          trend={{
-            value: data.totalContratos > 0 ? (data.totalMargem / data.totalContratos) * 100 : 0,
-            label: "Lucro Líquido",
-            positive: data.totalMargem >= 0,
-          }}
-          id="hdr_lucro_consolidado"
-        />
-        <KPICard
-          title="Percentual LL"
-          value={data.percentualMedio}
-          type="percentage"
-          icon={<Percent className="w-4.5 h-4.5 text-brand-secondary" />}
-          subtitle="Lucro Líquido"
-          id="hdr_percentual_margem_medio"
-        />
-      </div>
+      {(() => {
+        const showContratos = hasPermission("indicadores", "totalContratos");
+        const showVisaoGeral = hasPermission("indicadores", "totalVisaoGeral");
+        const showMargem = hasPermission("indicadores", "totalMargem");
+        const showPercentual = hasPermission("indicadores", "percentualMedio");
+        const visibleCount = [showContratos, showVisaoGeral, showMargem, showPercentual].filter(Boolean).length;
+        
+        if (visibleCount === 0) return null;
+        
+        return (
+          <div className={`grid grid-cols-1 ${
+            visibleCount === 3 ? 'sm:grid-cols-3' : 
+            visibleCount === 2 ? 'sm:grid-cols-2' : 
+            visibleCount === 1 ? 'grid-cols-1' : 
+            'sm:grid-cols-2 lg:grid-cols-4'
+          } gap-4`}>
+            {showContratos && (
+              <KPICard
+                title="Receita Contratual"
+                value={data.totalContratos}
+                type="currency"
+                icon={<Briefcase className="w-4.5 h-4.5 text-amber-600" />}
+                subtitle="Faturamento total"
+                id="hdr_receita_contratual_total"
+              />
+            )}
+            {showVisaoGeral && (
+              <KPICard
+                title="Custo dos Contratos"
+                value={data.totalVisaoGeral}
+                type="currency"
+                icon={<TrendingUp className="w-4.5 h-4.5 text-brand-accent" />}
+                subtitle="Projetos em progresso"
+                id="hdr_custo_ativo_total"
+              />
+            )}
+            {showMargem && (
+              <KPICard
+                title="Margem Líquida"
+                value={data.totalMargem}
+                type="currency"
+                icon={<Coins className="w-4.5 h-4.5 text-brand-success" />}
+                subtitle="Lucro Líquido"
+                trend={{
+                  value: data.totalContratos > 0 ? (data.totalMargem / data.totalContratos) * 100 : 0,
+                  label: "Lucro Líquido",
+                  positive: data.totalMargem >= 0,
+                }}
+                id="hdr_lucro_consolidado"
+              />
+            )}
+            {showPercentual && (
+              <KPICard
+                title="Percentual LL"
+                value={data.percentualMedio}
+                type="percentage"
+                icon={<Percent className="w-4.5 h-4.5 text-brand-secondary" />}
+                subtitle="Lucro Líquido"
+                id="hdr_percentual_margem_medio"
+              />
+            )}
+          </div>
+        );
+      })()}
 
       {/* Main Content Split: Cards on left, sidebar with stats on right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
@@ -299,25 +331,31 @@ export default function DashboardView() {
         <div className="lg:col-span-2 space-y-4">
           
           {/* Chart: Contracts vs operating cost */}
-          <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex flex-col justify-between">
-            <div>
-              <h4 className="text-xs font-bold text-brand-text-primary uppercase tracking-wide">Custo Geral vs. Valor Contrato</h4>
-              <p className="text-[10px] text-brand-text-secondary mt-0.5 font-semibold">Comparativo do Valor do Contrato PC com a evolução dos Custos Gerais.</p>
+          {hasPermission("indicadores", "graficoCustos") ? (
+            <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-brand-text-primary uppercase tracking-wide">Custo Geral vs. Valor Contrato</h4>
+                <p className="text-[10px] text-brand-text-secondary mt-0.5 font-semibold">Comparativo do Valor do Contrato PC com a evolução dos Custos Gerais.</p>
+              </div>
+              <div className="w-full h-52 mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#64748B" }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={(v: number) => `${v / 1000}k`} tick={{ fontSize: 9, fill: "#64748B" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend iconSize={6} iconType="circle" wrapperStyle={{ fontSize: 9, paddingTop: 10 }} />
+                    <Bar dataKey="Contrato" name="Valor Contrato" fill="#F97316" radius={[3, 3, 0, 0]} barSize={12} onClick={handleBarClick} className="cursor-pointer hover:opacity-85 transition-opacity" style={{ cursor: "pointer" }} />
+                    <Bar dataKey="Custos" name="Custo Geral" fill="#1A1A1A" radius={[3, 3, 0, 0]} barSize={12} onClick={handleBarClick} className="cursor-pointer hover:opacity-85 transition-opacity" style={{ cursor: "pointer" }} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-            <div className="w-full h-52 mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#64748B" }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={(v: number) => `${v / 1000}k`} tick={{ fontSize: 9, fill: "#64748B" }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend iconSize={6} iconType="circle" wrapperStyle={{ fontSize: 9, paddingTop: 10 }} />
-                  <Bar dataKey="Contrato" name="Valor Contrato" fill="#F97316" radius={[3, 3, 0, 0]} barSize={12} onClick={handleBarClick} className="cursor-pointer hover:opacity-85 transition-opacity" style={{ cursor: "pointer" }} />
-                  <Bar dataKey="Custos" name="Custo Geral" fill="#1A1A1A" radius={[3, 3, 0, 0]} barSize={12} onClick={handleBarClick} className="cursor-pointer hover:opacity-85 transition-opacity" style={{ cursor: "pointer" }} />
-                </BarChart>
-              </ResponsiveContainer>
+          ) : (
+            <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs text-center text-slate-400 text-xs py-12">
+              Você não possui permissão para visualizar o gráfico de custos gerais.
             </div>
-          </div>
+          )}
 
         </div>
 
@@ -325,56 +363,58 @@ export default function DashboardView() {
         <div className="lg:col-span-1 space-y-4">
           
           {/* Chart 2: Cost group distribution */}
-          <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex flex-col justify-between">
-            <div>
-              <h4 className="text-xs font-bold text-brand-text-primary uppercase tracking-wide">Gráfico das Despesas</h4>
+          {hasPermission("indicadores", "graficoCustos") && (
+            <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-brand-text-primary uppercase tracking-wide">Gráfico das Despesas</h4>
+              </div>
+              {pieData.length > 0 ? (
+                <div className="flex flex-col items-center justify-center mt-3">
+                  <div className="w-full h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={36}
+                          outerRadius={56}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: any) => [formatBRL(Number(value)), ""]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-3 w-full text-left">
+                    {(() => {
+                      const totalPieVal = pieData.reduce((acc, p) => acc + p.value, 0);
+                      return pieData.map((item, index) => {
+                        const percentage = totalPieVal > 0 ? Math.round((item.value / totalPieVal) * 100) : 0;
+                        return (
+                          <div key={item.name} className="flex items-center gap-1 text-[9px] font-bold text-brand-text-secondary border-b border-slate-50 py-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full inline-block shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                            <span className="truncate" title={translateGroup(item.name)}>
+                              {translateGroup(item.name)} {percentage}%
+                            </span>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-36 mt-4 text-brand-text-secondary/30">
+                  <FolderOpen className="w-6 h-6 opacity-30 mb-1" />
+                  <p className="text-[10px] font-bold">Sem despesas registradas ativas</p>
+                </div>
+              )}
             </div>
-            {pieData.length > 0 ? (
-              <div className="flex flex-col items-center justify-center mt-3">
-                <div className="w-full h-32">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={36}
-                        outerRadius={56}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: any) => [formatBRL(Number(value)), ""]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-3 w-full text-left">
-                  {(() => {
-                    const totalPieVal = pieData.reduce((acc, p) => acc + p.value, 0);
-                    return pieData.map((item, index) => {
-                      const percentage = totalPieVal > 0 ? Math.round((item.value / totalPieVal) * 100) : 0;
-                      return (
-                        <div key={item.name} className="flex items-center gap-1 text-[9px] font-bold text-brand-text-secondary border-b border-slate-50 py-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full inline-block shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                          <span className="truncate" title={translateGroup(item.name)}>
-                            {translateGroup(item.name)} {percentage}%
-                          </span>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-36 mt-4 text-brand-text-secondary/30">
-                <FolderOpen className="w-6 h-6 opacity-30 mb-1" />
-                <p className="text-[10px] font-bold">Sem despesas registradas ativas</p>
-              </div>
-            )}
-          </div>
+          )}
 
         </div>
       </div>
