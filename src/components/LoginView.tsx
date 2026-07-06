@@ -70,12 +70,16 @@ export default function LoginView() {
         <div className="p-8 space-y-8 relative">
           {/* Brand header */}
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-brand-primary/10 border border-white/10">
-              <Coins className="w-8 h-8 text-white animate-pulse" />
+            <div className="flex justify-center mb-6">
+              <img 
+                src="https://dptxkbsyzfntolgmhniz.supabase.co/storage/v1/object/sign/ProjetoCerto/faviconProjetoCerto.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8yY2MyYjJkMS1hMDBkLTQ5N2EtYTQwMC0zOWM0MjFkZmNmYWEiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJQcm9qZXRvQ2VydG8vZmF2aWNvblByb2pldG9DZXJ0by5wbmciLCJpYXQiOjE3ODA0MjQxNDIsImV4cCI6MjA5NTc4NDE0Mn0._ofXmRtiUUM0MbiBO-FO7fBd5btjixNn1B7EGjNUVy4" 
+                alt="Logo" 
+                className="w-16 h-16 object-contain"
+              />
             </div>
-            <div className="space-y-1">
+            <div className="text-center space-y-1">
               <h1 className="text-2xl font-black tracking-wider text-slate-800 leading-none">PROJETO CERTO</h1>
-              <p className="text-[10px] font-extrabold text-[#D9A441] uppercase tracking-widest leading-none">Gestão de Custos & ERP</p>
+              <p className="text-[10px] font-extrabold text-[#D9A441] uppercase tracking-widest leading-none">Gestão de Custos</p>
             </div>
           </div>
 
@@ -95,6 +99,7 @@ export default function LoginView() {
                   type="text"
                   required
                   value={email}
+                  placeholder="usuario ou usuario@email.com"
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none transition-all placeholder:text-slate-300 font-semibold text-slate-700"
                 />

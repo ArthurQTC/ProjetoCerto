@@ -316,15 +316,24 @@ export default function LevantamentosView() {
   }, [levantamentos, filterCliente, filterSolicitante, filterResponsavel, filterStatus, showLixeira, selectedMonthGroup]);
 
   // Total metros quadrados dynamic KPI summation (only Material HD)
+  const sortedLevantamentos = useMemo(() => {
+    let sorted = [...filteredLevantamentos];
+    if (selectedMonthGroup !== "Todos") {
+      sorted.sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+    return sorted;
+  }, [filteredLevantamentos, selectedMonthGroup]);
+
+  // Total metros quadrados dynamic KPI summation (only Material HD)
   const totalMetrosQuadrados = useMemo(() => {
-    return filteredLevantamentos.reduce((acc, current) => {
+    return sortedLevantamentos.reduce((acc, current) => {
       const subsHD = current.subestruturas || [];
       return acc + subsHD.reduce((itemSum, s) => {
         const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
         return itemSum + (Number(q) || 0);
       }, 0);
     }, 0);
-  }, [filteredLevantamentos]);
+  }, [sortedLevantamentos]);
 
   // Safe helper to obtain sum value for a single row (only Material HD)
   const getLevantamentoTotalVal = (lev: Levantamento): number => {
@@ -340,10 +349,10 @@ export default function LevantamentosView() {
 
   // Total monetário valor calculated as summation of (qtd * unit price) for filtered subset
   const totalValueSum = useMemo(() => {
-    return filteredLevantamentos.reduce((acc, current) => {
+    return sortedLevantamentos.reduce((acc, current) => {
       return acc + getLevantamentoTotalVal(current);
     }, 0);
-  }, [filteredLevantamentos]);
+  }, [sortedLevantamentos]);
 
   // Reset filter criteria fields
   const clearFilters = () => {
@@ -891,7 +900,7 @@ export default function LevantamentosView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredLevantamentos.map((lev) => {
+                {sortedLevantamentos.map((lev) => {
                   const totalVal = getLevantamentoTotalVal(lev);
                   const subsHD = lev.subestruturas || [];
                   const subsPC = lev.subestruturas_pc || [];
@@ -1285,26 +1294,31 @@ export default function LevantamentosView() {
                   {/* ABC code */}
                   <div>
                     <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider pb-1">Curva ABC</label>
-                    <input
-                      type="text"
-                      maxLength={5}
+                    <select
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-primary"
                       value={formAbc}
                       onChange={(e) => setFormAbc(e.target.value)}
-                      placeholder="C"
-                    />
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                    </select>
                   </div>
 
                   {/* Solicitante */}
                   <div>
                     <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider pb-1">Solicitante</label>
-                    <input
-                      type="text"
+                    <select
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-primary"
                       value={formSolicitante}
                       onChange={(e) => setFormSolicitante(e.target.value)}
-                      placeholder="Ex: Reginaldo (Opcional)"
-                    />
+                    >
+                      <option value="">Selecione o solicitante...</option>
+                      {solicitanteOptions.map(sol => (
+                        <option key={sol} value={sol}>{sol}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Responsavel */}

@@ -362,7 +362,7 @@ function AppContent() {
         {/* Top Header Panel bar with custom Logo support validation */}
         <div className="hidden md:flex items-center justify-between bg-white h-16 border-b border-slate-100 px-8 z-20">
           <div className="flex items-center gap-2.5 text-xs text-brand-text-secondary font-semibold font-mono">
-            <span>PROJETO CERTO ERP</span>
+            <span>PROJETO CERTO GESTÃO</span>
           </div>
           <div className="flex items-center gap-4">
             {!logoFailed && logoUrl !== DEFAULT_LOGO_URL && (
