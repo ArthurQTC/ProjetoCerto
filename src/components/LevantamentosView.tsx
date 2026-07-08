@@ -246,6 +246,14 @@ export default function LevantamentosView() {
     return ["Todos", ...sorted];
   }, [levantamentos]);
 
+  const allDatabaseSolicitantes = useMemo(() => {
+    const options = new Set<string>();
+    levantamentos.forEach((lev) => {
+      if (lev.solicitante) options.add(lev.solicitante.trim());
+    });
+    return Array.from(options).sort();
+  }, [levantamentos]);
+
   const solicitanteOptions = useMemo(() => {
     const options = new Set<string>();
     levantamentos.forEach((lev) => {
@@ -1315,7 +1323,7 @@ export default function LevantamentosView() {
                       onChange={(e) => setFormSolicitante(e.target.value)}
                     >
                       <option value="">Selecione o solicitante...</option>
-                      {solicitanteOptions.map(sol => (
+                      {allDatabaseSolicitantes.map(sol => (
                         <option key={sol} value={sol}>{sol}</option>
                       ))}
                     </select>
