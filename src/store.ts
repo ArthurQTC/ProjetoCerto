@@ -3,7 +3,9 @@ import { persist } from "zustand/middleware";
 import { ItemOrcamento, SubItemOrcamento } from "./types";
 
 interface UIState {
-  activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase" | "levantamentos" | "usuarios";
+  activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase" | "levantamentos" | "usuarios" | "fluxo-operacional";
+  fluxoSubView: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico";
+  fluxoMenuExpanded: boolean;
   projectFilter: "CONSOLIDADO" | "A_FECHAR";
   selectedProjectId: String | null;
   selectedObraId: String | null;
@@ -16,6 +18,9 @@ interface UIState {
   navigateToSupabase: () => void;
   navigateToLevantamentos: () => void;
   navigateToUsuarios: () => void;
+  navigateToFluxoOperacional: (subView?: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico") => void;
+  setFluxoSubView: (subView: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico") => void;
+  setFluxoMenuExpanded: (expanded: boolean) => void;
   setSearchTerm: (term: string) => void;
   setProjectFilter: (filter: "CONSOLIDADO" | "A_FECHAR") => void;
 }
@@ -24,6 +29,8 @@ export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
       activeView: "dashboard",
+      fluxoSubView: "dashboard",
+      fluxoMenuExpanded: false,
       projectFilter: "CONSOLIDADO",
       selectedProjectId: null,
       selectedObraId: null,
@@ -36,6 +43,9 @@ export const useUIStore = create<UIState>()(
       navigateToSupabase: () => set({ activeView: "supabase", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
       navigateToLevantamentos: () => set({ activeView: "levantamentos", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
       navigateToUsuarios: () => set({ activeView: "usuarios", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
+      navigateToFluxoOperacional: (subView = "dashboard") => set({ activeView: "fluxo-operacional", fluxoSubView: subView, fluxoMenuExpanded: true, selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
+      setFluxoSubView: (subView) => set({ fluxoSubView: subView }),
+      setFluxoMenuExpanded: (expanded) => set({ fluxoMenuExpanded: expanded }),
       setSearchTerm: (term) => set({ searchTerm: term }),
       setProjectFilter: (filter) => set({ projectFilter: filter }),
     }),
@@ -151,6 +161,13 @@ export interface Usuario {
       etapasContrato: boolean | 'visualizar' | 'editar' | 'nenhum';
       levantamentosOrcamentos: boolean | 'visualizar' | 'editar' | 'nenhum';
       usuarios: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacional?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacionalTradicional?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacionalExecutivo?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacionalPainel?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacionalWorkflow?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacionalHistorico?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      fluxoOperacionalDashboard?: boolean | 'visualizar' | 'editar' | 'nenhum';
     };
     indicadores: {
       totalContratos: boolean | 'visualizar' | 'editar' | 'nenhum';

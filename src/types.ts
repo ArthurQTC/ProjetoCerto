@@ -44,6 +44,26 @@ export interface DocumentoAnexo {
   url: string;
 }
 
+export interface WorkflowMovimentacao {
+  id: string;
+  obraId: string;
+  usuario: string;
+  data: string;
+  hora: string;
+  etapaAnterior: string | null;
+  novaEtapa: string;
+  subetapa: string | null;
+  descricao: string | null;
+  observacao: string | null;
+  createdAt?: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  descricao: string;
+  feito: boolean;
+}
+
 export interface Obra {
   id: string;
   nome: string;
@@ -67,6 +87,16 @@ export interface Obra {
   dataInicioContrato?: string | null;
   dataFimContrato?: string | null;
   custoAdm?: number | null;
+  
+  // Workflow-specific fields
+  workflowEtapa?: string;
+  workflowSubetapa?: string | null;
+  workflowResponsavel?: string | null;
+  workflowStatus?: 'Em Andamento' | 'Atrasado' | 'Aguardando' | 'Finalizado';
+  workflowLogoUrl?: string | null;
+  workflowObservacao?: string | null;
+  workflowPrazo?: string | null;
+  workflowChecklist?: ChecklistItem[];
 }
 
 export type Projeto = Obra;
@@ -86,6 +116,7 @@ export interface LevantamentoSubestrutura {
   qtdHD?: number;
   qtdM2?: number; // fallback/legacy
   valorUnitario: number;
+  unidade?: 'Peças' | 'Metro Quadrado';
 }
 
 export interface LevantamentoSubestruturaPC {
@@ -140,6 +171,16 @@ export interface ObraSummary {
   despesaAdm?: number;
   itens?: ItemOrcamento[];
   custoAdm?: number | null;
+  
+  // Workflow-specific fields
+  workflowEtapa?: string;
+  workflowSubetapa?: string | null;
+  workflowResponsavel?: string | null;
+  workflowStatus?: 'Em Andamento' | 'Atrasado' | 'Aguardando' | 'Finalizado';
+  workflowLogoUrl?: string | null;
+  workflowObservacao?: string | null;
+  workflowPrazo?: string | null;
+  workflowChecklist?: ChecklistItem[];
 }
 
 export type ProjetoSummary = ObraSummary;

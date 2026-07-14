@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -102,13 +102,24 @@ const handleDateInputChange = (
 ) => {
   let val = e.target.value;
   
+  // Identify if user is deleting/backspacing
+  const isDeleting = (e.nativeEvent as any)?.inputType?.includes("delete") || false;
+  
   // Only allow digits and slashes
   val = val.replace(/[^0-9/]/g, "").slice(0, 10);
   
-  // Automatically format if they enter 8 digits without slashes, e.g. "01062026" -> "01/06/2026"
   const digits = val.replace(/\D/g, "");
-  if (val.length === 8 && !val.includes("/")) {
-    val = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+  
+  if (!isDeleting) {
+    if (digits.length > 0) {
+      if (digits.length <= 2) {
+        val = digits;
+      } else if (digits.length <= 4) {
+        val = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      } else {
+        val = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+      }
+    }
   }
   
   setter(val);
@@ -167,8 +178,31 @@ export default function LevantamentosView() {
   const [formOrigemLeads, setFormOrigemLeads] = useState<"Hunter Douglas" | "Projeto Certo">("Projeto Certo");
   
   // Dynamic list of multiple materials / subestruturas
-  const [formSubestruturas, setFormSubestruturas] = useState<{ material: string; qtdHD: string; valorUnitario: string }[]>([]);
+  const [formSubestruturas, setFormSubestruturas] = useState<{ material: string; qtdHD: string; valorUnitario: string; unidade?: 'Peças' | 'Metro Quadrado' }[]>([]);
   const [formSubestruturasPC, setFormSubestruturasPC] = useState<{ material: string; qtdPC: string; valorUnitario: string }[]>([]);
+
+  // Selection state for levantamentos list
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // ESC key press listener to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedIds(new Set());
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  // Whenever Solicitante is "Aline", automatically set Leads Origin to "Hunter Douglas"
+  useEffect(() => {
+    if (formSolicitante && formSolicitante.trim().toLowerCase() === "aline") {
+      setFormOrigemLeads("Hunter Douglas");
+    }
+  }, [formSolicitante]);
 
   // Success Conversion modal state
   const [conversionSuccess, setConversionSuccess] = useState<{
@@ -332,22 +366,24 @@ export default function LevantamentosView() {
     return sorted;
   }, [filteredLevantamentos, selectedMonthGroup]);
 
-  // Total metros quadrados dynamic KPI summation (only Material HD)
+  // Total metros quadrados dynamic KPI summation (only Material HD and unit is not Peças)
   const totalMetrosQuadrados = useMemo(() => {
     return sortedLevantamentos.reduce((acc, current) => {
       const subsHD = current.subestruturas || [];
       return acc + subsHD.reduce((itemSum, s) => {
+        if (s.unidade === "Peças") return itemSum;
         const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
         return itemSum + (Number(q) || 0);
       }, 0);
     }, 0);
   }, [sortedLevantamentos]);
 
-  // Safe helper to obtain sum value for a single row (only Material HD)
+  // Safe helper to obtain sum value for a single row (only Material HD and unit is not Peças)
   const getLevantamentoTotalVal = (lev: Levantamento): number => {
     const subsHD = lev.subestruturas || [];
     
     const hdVal = subsHD.reduce((sum, s) => {
+      if (s.unidade === "Peças") return sum;
       const q = s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || 0);
       return sum + ((Number(q) || 0) * (Number(s.valorUnitario) || 0));
     }, 0);
@@ -552,11 +588,12 @@ export default function LevantamentosView() {
       setFormSubestruturas(survey.subestruturas.map(s => ({
         material: typeof s.material === 'object' && s.material !== null ? (s.material as any).descricao : (s.material || ""),
         qtdHD: formatInputVal(s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || "")),
-        valorUnitario: formatInputVal(s.valorUnitario || "0")
+        valorUnitario: formatInputVal(s.valorUnitario || "0"),
+        unidade: s.unidade || "Metro Quadrado"
       })));
     } else {
       setFormSubestruturas([
-        { material: "", qtdHD: "", valorUnitario: "" }
+        { material: "", qtdHD: "", valorUnitario: "", unidade: "Metro Quadrado" }
       ]);
     }
 
@@ -597,10 +634,6 @@ export default function LevantamentosView() {
     for (let i = 0; i < formSubestruturas.length; i++) {
       const item = formSubestruturas[i];
       if (item.material || item.qtdHD) {
-        if (!item.material) {
-          alert("Digite a descrição do material para os campos preenchidos do Material HD.");
-          return;
-        }
         if (!item.qtdHD) {
           alert("Insira a quantidade (Qtd HD) para os materiais HD preenchidos.");
           return;
@@ -619,10 +652,11 @@ export default function LevantamentosView() {
       const v = rawVal ? parseFloat(rawVal) : 0;
 
       return {
-        material: item.material || "Produto HD",
+        material: item.material || "",
         qtdHD: isNaN(q) ? 0 : q,
         qtdM2: isNaN(q) ? 0 : q, // backward compatibility fallback
-        valorUnitario: isNaN(v) ? 0 : v
+        valorUnitario: isNaN(v) ? 0 : v,
+        unidade: item.unidade || "Metro Quadrado"
       };
     });
 
@@ -891,6 +925,20 @@ export default function LevantamentosView() {
             <table className="w-full text-left border-collapse">
               <thead className={`${stickyColumns ? "sticky top-0 z-20" : ""}`}>
                 <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 tracking-wider border-b border-slate-100">
+                  <th className="py-3 px-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={sortedLevantamentos.length > 0 && selectedIds.size === sortedLevantamentos.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(sortedLevantamentos.map(l => l.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                      className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 cursor-pointer animate-show"
+                    />
+                  </th>
                   <th className="py-3 px-4 w-16">REF</th>
                   <th className="py-3 px-4">OBRA</th>
                   <th className="py-3 px-4">CLIENTE</th>
@@ -913,13 +961,57 @@ export default function LevantamentosView() {
                   const subsHD = lev.subestruturas || [];
                   const subsPC = lev.subestruturas_pc || [];
                   
-                  const totalQtdHD = subsHD.reduce((acc, sub) => acc + (sub.qtdHD || sub.qtdM2 || 0), 0);
-                  const totalValorHD = subsHD.reduce((acc, sub) => acc + (sub.qtdHD || sub.qtdM2 || 0) * (sub.valorUnitario || 0), 0);
+                  const totalQtdHD = subsHD.reduce((acc, sub) => {
+                    if (sub.unidade === "Peças") return acc;
+                    return acc + (sub.qtdHD || sub.qtdM2 || 0);
+                  }, 0);
+                  const totalValorHD = subsHD.reduce((acc, sub) => {
+                    if (sub.unidade === "Peças") return acc;
+                    return acc + (sub.qtdHD || sub.qtdM2 || 0) * (sub.valorUnitario || 0);
+                  }, 0);
                   const totalQtdPC = subsPC.reduce((acc, sub) => acc + (sub.qtdPC || 0), 0);
                   const totalValorPC = subsPC.reduce((acc, sub) => acc + (sub.qtdPC || 0) * (sub.valorUnitario || 0), 0);
 
+                  const isSelected = selectedIds.has(lev.id);
+
                   return (
-                    <tr key={lev.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr
+                      key={lev.id}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest("button") || target.closest("select") || target.closest("input") || target.closest("a")) {
+                          return;
+                        }
+                        const copy = new Set(selectedIds);
+                        if (copy.has(lev.id)) {
+                          copy.delete(lev.id);
+                        } else {
+                          copy.add(lev.id);
+                        }
+                        setSelectedIds(copy);
+                      }}
+                      className={`transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-amber-50/70 hover:bg-amber-100/70"
+                          : "hover:bg-slate-50/50"
+                      }`}
+                    >
+                      <td className="py-3.5 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            const copy = new Set(selectedIds);
+                            if (copy.has(lev.id)) {
+                              copy.delete(lev.id);
+                            } else {
+                              copy.add(lev.id);
+                            }
+                            setSelectedIds(copy);
+                          }}
+                          className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3.5 px-4 font-mono font-extrabold text-brand-primary">
                         {lev.ref}
                       </td>
@@ -970,10 +1062,18 @@ export default function LevantamentosView() {
                             <div className="space-y-2 max-h-60 overflow-y-auto">
                               {subsHD.map((sub, sIdx) => {
                                 const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
+                                const isPecas = sub.unidade === "Peças";
                                 return (
                                   <div key={sIdx} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
-                                    <span className="font-semibold text-slate-700 break-words">{sub.material}</span>
-                                    <span className="font-mono font-bold text-slate-900 shrink-0">{Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</span>
+                                    <div className="flex flex-col">
+                                      <span className="font-semibold text-slate-700 break-words">{sub.material || ""}</span>
+                                      {isPecas && (
+                                        <span className="text-[9px] text-amber-600 font-bold uppercase">(PEÇAS)</span>
+                                      )}
+                                    </div>
+                                    <span className="font-mono font-bold text-slate-900 shrink-0">
+                                      {Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {isPecas ? "un" : "m²"}
+                                    </span>
                                   </div>
                                 );
                               })}
@@ -1018,12 +1118,13 @@ export default function LevantamentosView() {
                                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Material HD</div>
                                   {subsHD.map((sub, sIdx) => {
                                     const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
-                                    const total = q * (sub.valorUnitario || 0);
+                                    const isPecas = sub.unidade === "Peças";
+                                    const total = isPecas ? 0 : q * (sub.valorUnitario || 0);
                                     return (
-                                      <div key={sIdx} className="flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0">
-                                        <span className="font-semibold text-slate-700 truncate max-w-[150px]">{sub.material || "Produto HD"}</span>
+                                      <div key={sIdx} className={`flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0 ${isPecas ? 'opacity-50' : ''}`}>
+                                        <span className="font-semibold text-slate-700 truncate max-w-[150px]">{sub.material || ""} {isPecas && "(Peças)"}</span>
                                         <span className="font-mono text-slate-900 shrink-0">
-                                          {Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m² x R$ {sub.valorUnitario?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                          {Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {isPecas ? "un" : "m²"} x R$ {sub.valorUnitario?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                                         </span>
                                       </div>
                                     );
@@ -1226,7 +1327,7 @@ export default function LevantamentosView() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setFormSubestruturas([...formSubestruturas, { material: "", qtdHD: "", valorUnitario: "" }])}
+                        onClick={() => setFormSubestruturas([...formSubestruturas, { material: "", qtdHD: "", valorUnitario: "", unidade: "Metro Quadrado" }])}
                         className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[9px] font-extrabold uppercase rounded-lg border border-emerald-200 inline-flex items-center gap-1 transition-colors cursor-pointer"
                       >
                         <Plus className="w-3 h-3 text-emerald-600" /> Adicionar Material HD
@@ -1265,6 +1366,22 @@ export default function LevantamentosView() {
                                   setFormSubestruturas(copy);
                                 }}
                               />
+                            </div>
+
+                            <div className="flex-1 min-w-[110px]">
+                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Unidade</label>
+                              <select
+                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold focus:ring-1 focus:ring-brand-primary cursor-pointer"
+                                value={item.unidade || "Metro Quadrado"}
+                                onChange={(e) => {
+                                  const copy = [...formSubestruturas];
+                                  copy[idx].unidade = e.target.value as any;
+                                  setFormSubestruturas(copy);
+                                }}
+                              >
+                                <option value="Metro Quadrado">Metro Quadrado (M²)</option>
+                                <option value="Peças">Peças</option>
+                              </select>
                             </div>
 
                             <div className="flex-1">

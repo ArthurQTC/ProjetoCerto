@@ -509,12 +509,47 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataInicioContrato" VARCHAR(255)');
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataFimContrato" VARCHAR(255)');
         await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "custoAdm" DOUBLE PRECISION');
+        
+        // Workflow columns
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowEtapa" VARCHAR(255) NOT NULL DEFAULT \'Solicitação\'');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowSubetapa" VARCHAR(255)');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowResponsavel" VARCHAR(255)');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowStatus" VARCHAR(255) NOT NULL DEFAULT \'Em Andamento\'');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowLogoUrl" TEXT');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowObservacao" TEXT');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowPrazo" VARCHAR(255)');
+        await pool.query('ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowChecklist" TEXT NOT NULL DEFAULT \'[]\'');
+
+        // Create workflow history table
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS workflow_movimentacoes (
+            id VARCHAR(255) PRIMARY KEY,
+            "obraId" VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            usuario VARCHAR(255) NOT NULL,
+            "data" VARCHAR(255) NOT NULL,
+            hora VARCHAR(255) NOT NULL,
+            "etapaAnterior" VARCHAR(255),
+            "novaEtapa" VARCHAR(255) NOT NULL,
+            subetapa VARCHAR(255),
+            descricao TEXT,
+            observacao TEXT,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
 
         // Create table configuracoes_sistema for system-wide configs like custo_adm_global
         await pool.query(`
           CREATE TABLE IF NOT EXISTS configuracoes_sistema (
             chave VARCHAR(255) PRIMARY KEY,
             valor VARCHAR(255) NOT NULL
+          )
+        `);
+
+        // Create table workflow_traditional_layout for visual process flow configurations and node coordinates
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS workflow_traditional_layout (
+            id VARCHAR(50) PRIMARY KEY,
+            data TEXT NOT NULL
           )
         `);
 
@@ -692,10 +727,79 @@ async function checkDbConnection() {
             levantamento_id VARCHAR(255) NOT NULL REFERENCES levantamentos(id) ON DELETE CASCADE,
             material TEXT NOT NULL,
             qtd_m2 DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            valor_unitario DOUBLE PRECISION DEFAULT 0.0,
+            unidade VARCHAR(100) DEFAULT 'Metro Quadrado',
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
         `);
+
+        // Garante que as colunas novas existam caso a tabela já estivesse criada
+        await pool.query('ALTER TABLE levantamento_materiais ADD COLUMN IF NOT EXISTS valor_unitario DOUBLE PRECISION DEFAULT 0.0');
+        await pool.query('ALTER TABLE levantamento_materiais ADD COLUMN IF NOT EXISTS unidade VARCHAR(100) DEFAULT \'Metro Quadrado\'');
+
+        // Executar a query de migração dos dados de subestruturas (JSON) para a tabela de materiais (levantamento_materiais)
+        try {
+          console.log("[pg Sync] Migrando subestruturas (JSON) para a tabela de materiais levantamento_materiais...");
+          await pool.query(`
+            WITH exploded AS (
+              SELECT
+                l.id AS lev_id,
+                l."contratoAFecharId" AS o_id,
+                elem->>'material' AS mat,
+                COALESCE(
+                  (elem->>'qtdHD')::DOUBLE PRECISION,
+                  (elem->>'qtdM2')::DOUBLE PRECISION,
+                  0.0
+                ) AS q_m2,
+                COALESCE(
+                  (elem->>'valorUnitario')::DOUBLE PRECISION,
+                  0.0
+                ) AS val_un,
+                COALESCE(
+                  elem->>'unidade',
+                  'Metro Quadrado'
+                ) AS un,
+                row_number() OVER (PARTITION BY l.id) AS seq
+              FROM levantamentos l,
+              json_array_elements(
+                CASE 
+                  WHEN l.subestruturas IS NULL OR trim(l.subestruturas) = '' OR trim(l.subestruturas) = '[]' OR NOT trim(l.subestruturas) LIKE '[%' THEN '[]'::json
+                  ELSE l.subestruturas::json
+                END
+              ) AS elem
+            )
+            INSERT INTO levantamento_materiais (
+              id, 
+              levantamento_id, 
+              material, 
+              qtd_m2, 
+              valor_unitario, 
+              unidade, 
+              "createdAt", 
+              "updatedAt"
+            )
+            SELECT 
+              concat(lev_id, '-', seq) AS id,
+              lev_id,
+              COALESCE(mat, ''),
+              q_m2,
+              val_un,
+              un,
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP
+            FROM exploded
+            ON CONFLICT (id) DO UPDATE SET
+              material = EXCLUDED.material,
+              qtd_m2 = EXCLUDED.qtd_m2,
+              valor_unitario = EXCLUDED.valor_unitario,
+              unidade = EXCLUDED.unidade,
+              "updatedAt" = CURRENT_TIMESTAMP
+          `);
+          console.log("[pg Sync] Migração de subestruturas para levantamento_materiais concluída!");
+        } catch (migErr: any) {
+          console.error("Erro ao migrar subestruturas para a tabela levantamento_materiais:", migErr);
+        }
 
         // Migrar datas de solicitação existentes para o formato brasileiro DD/MM/AAAA de forma robusta
         try {
@@ -1067,6 +1171,24 @@ const formatObraWithMetrics = (obra: any) => {
     dataInicioContrato: obra.dataInicioContrato || null,
     dataFimContrato: obra.dataFimContrato || null,
     custoAdm: obra.custoAdm !== null && obra.custoAdm !== undefined ? Number(obra.custoAdm) : null,
+    
+    // Workflow-specific fields
+    workflowEtapa: obra.workflowEtapa || "Solicitação",
+    workflowSubetapa: obra.workflowSubetapa || null,
+    workflowResponsavel: obra.workflowResponsavel || null,
+    workflowStatus: obra.workflowStatus || "Em Andamento",
+    workflowLogoUrl: obra.workflowLogoUrl || null,
+    workflowObservacao: obra.workflowObservacao || null,
+    workflowPrazo: obra.workflowPrazo || null,
+    workflowChecklist: (() => {
+      try {
+        return obra.workflowChecklist
+          ? (typeof obra.workflowChecklist === "string" ? JSON.parse(obra.workflowChecklist) : obra.workflowChecklist)
+          : [];
+      } catch (e) {
+        return [];
+      }
+    })()
   };
 };
 
@@ -1607,10 +1729,38 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataInicioContrato" VARCHAR(255);
           ALTER TABLE obras ADD COLUMN IF NOT EXISTS "dataFimContrato" VARCHAR(255);
           ALTER TABLE obras ADD COLUMN IF NOT EXISTS "custoAdm" DOUBLE PRECISION;
+          
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowEtapa" VARCHAR(255) NOT NULL DEFAULT 'Solicitação';
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowSubetapa" VARCHAR(255);
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowResponsavel" VARCHAR(255);
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowStatus" VARCHAR(255) NOT NULL DEFAULT 'Em Andamento';
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowLogoUrl" TEXT;
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowObservacao" TEXT;
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowPrazo" VARCHAR(255);
+          ALTER TABLE obras ADD COLUMN IF NOT EXISTS "workflowChecklist" TEXT NOT NULL DEFAULT '[]';
+
+          CREATE TABLE IF NOT EXISTS workflow_movimentacoes (
+            id VARCHAR(255) PRIMARY KEY,
+            "obraId" VARCHAR(255) NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+            usuario VARCHAR(255) NOT NULL,
+            "data" VARCHAR(255) NOT NULL,
+            hora VARCHAR(255) NOT NULL,
+            "etapaAnterior" VARCHAR(255),
+            "novaEtapa" VARCHAR(255) NOT NULL,
+            subetapa VARCHAR(255),
+            descricao TEXT,
+            observacao TEXT,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
 
           CREATE TABLE IF NOT EXISTS configuracoes_sistema (
             chave VARCHAR(255) PRIMARY KEY,
             valor VARCHAR(255) NOT NULL
+          );
+
+          CREATE TABLE IF NOT EXISTS workflow_traditional_layout (
+            id VARCHAR(50) PRIMARY KEY,
+            data TEXT NOT NULL
           );
 
           CREATE TABLE IF NOT EXISTS itens_orcamento (
@@ -1676,6 +1826,8 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             levantamento_id VARCHAR(255) NOT NULL REFERENCES levantamentos(id) ON DELETE CASCADE,
             material TEXT NOT NULL,
             qtd_m2 DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            valor_unitario DOUBLE PRECISION DEFAULT 0.0,
+            unidade VARCHAR(100) DEFAULT 'Metro Quadrado',
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
@@ -2514,6 +2666,281 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
     }
   });
 
+  // ==========================================
+  // WORKFLOW / FLUXO OPERACIONAL ENDPOINTS
+  // ==========================================
+
+  // GET /api/workflow/movimentacoes - Get global history of all workflow movements
+  app.get("/api/workflow/movimentacoes", requireAuth, async (req, res) => {
+    try {
+      if (dbConnected && pool) {
+        const histRes = await pool.query(`
+          SELECT wm.*, o.nome as "obraNome", o.cliente as "obraCliente"
+          FROM workflow_movimentacoes wm
+          LEFT JOIN obras o ON wm."obraId" = o.id
+          ORDER BY wm."createdAt" DESC, wm.id DESC
+          LIMIT 200
+        `);
+        return res.json(histRes.rows);
+      } else {
+        return res.status(400).json({ error: "Banco de dados não conectado." });
+      }
+    } catch (error: any) {
+      console.error("[GET /api/workflow/movimentacoes] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao buscar histórico global do workflow" });
+    }
+  });
+
+  // GET /api/obras/:id/workflow/movimentacoes - Get history of workflow movements
+  app.get("/api/obras/:id/workflow/movimentacoes", requireAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (dbConnected && pool) {
+        const histRes = await pool.query(`
+          SELECT * FROM workflow_movimentacoes 
+          WHERE "obraId" = $1 
+          ORDER BY "createdAt" DESC, id DESC
+        `, [id]);
+        return res.json(histRes.rows);
+      } else {
+        return res.status(400).json({ error: "Banco de dados não conectado." });
+      }
+    } catch (error: any) {
+      console.error("[GET /api/obras/:id/workflow/movimentacoes] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao buscar histórico do workflow" });
+    }
+  });
+
+  // POST /api/obras/:id/workflow/movimentar - Register a state movement and update obra workflow fields
+  app.post("/api/obras/:id/workflow/movimentar", requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const {
+      novaEtapa,
+      subetapa,
+      descricao,
+      observacao,
+      workflowStatus,
+      workflowResponsavel,
+      workflowPrazo,
+      workflowLogoUrl
+    } = req.body;
+
+    const user = (req as any).user;
+    const usuarioNome = user ? user.nome : (req.body.usuario || "Operador");
+
+    try {
+      if (dbConnected && pool) {
+        // Get current stage
+        const existingRes = await pool.query('SELECT * FROM obras WHERE id = $1 LIMIT 1', [id]);
+        if (existingRes.rowCount === 0) {
+          return res.status(404).json({ error: "Contrato não encontrado." });
+        }
+        const currentObra = existingRes.rows[0];
+        const etapaAnterior = currentObra.workflowEtapa || "Solicitação";
+
+        const now = new Date();
+        const dataStr = now.toLocaleDateString('pt-BR');
+        const horaStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const movementId = "mov_" + Math.random().toString(36).substr(2, 9);
+
+        // Update workflow fields on obra
+        const updatedEtapa = novaEtapa !== undefined ? novaEtapa : etapaAnterior;
+        const updatedSubetapa = subetapa !== undefined ? subetapa : currentObra.workflowSubetapa;
+        const updatedResponsavel = workflowResponsavel !== undefined ? workflowResponsavel : currentObra.workflowResponsavel;
+        const updatedStatus = workflowStatus !== undefined ? workflowStatus : (currentObra.workflowStatus || "Em Andamento");
+        const updatedLogoUrl = workflowLogoUrl !== undefined ? workflowLogoUrl : currentObra.workflowLogoUrl;
+        const updatedObservacao = observacao !== undefined ? observacao : currentObra.workflowObservacao;
+        const updatedPrazo = workflowPrazo !== undefined ? workflowPrazo : currentObra.workflowPrazo;
+
+        await pool.query(`
+          UPDATE obras SET
+            "workflowEtapa" = $1,
+            "workflowSubetapa" = $2,
+            "workflowResponsavel" = $3,
+            "workflowStatus" = $4,
+            "workflowLogoUrl" = $5,
+            "workflowObservacao" = $6,
+            "workflowPrazo" = $7,
+            "updatedAt" = NOW()
+          WHERE id = $8
+        `, [
+          updatedEtapa,
+          updatedSubetapa,
+          updatedResponsavel,
+          updatedStatus,
+          updatedLogoUrl,
+          updatedObservacao,
+          updatedPrazo,
+          id
+        ]);
+
+        // Insert into history (workflow_movimentacoes)
+        await pool.query(`
+          INSERT INTO workflow_movimentacoes (
+            id, "obraId", usuario, "data", hora, "etapaAnterior", "novaEtapa", subetapa, descricao, observacao
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `, [
+          movementId,
+          id,
+          usuarioNome,
+          dataStr,
+          horaStr,
+          etapaAnterior,
+          updatedEtapa,
+          updatedSubetapa,
+          descricao || `Movido para ${updatedEtapa}` + (updatedSubetapa ? ` (${updatedSubetapa})` : ""),
+          observacao || null
+        ]);
+
+        return res.json({ success: true, updatedEtapa, updatedSubetapa });
+      } else {
+        return res.status(400).json({ error: "Banco de dados não conectado." });
+      }
+    } catch (error: any) {
+      console.error("[POST /api/obras/:id/workflow/movimentar] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao registrar movimentação do workflow" });
+    }
+  });
+
+  // POST /api/obras/:id/workflow/checklist - Update checklist
+  app.post("/api/obras/:id/workflow/checklist", requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { checklist } = req.body;
+
+    try {
+      if (dbConnected && pool) {
+        const checklistStr = typeof checklist === 'string' ? checklist : JSON.stringify(checklist || []);
+        await pool.query(`
+          UPDATE obras SET
+            "workflowChecklist" = $1,
+            "updatedAt" = NOW()
+          WHERE id = $2
+        `, [checklistStr, id]);
+        return res.json({ success: true });
+      } else {
+        return res.status(400).json({ error: "Banco de dados não conectado." });
+      }
+    } catch (error: any) {
+      console.error("[POST /api/obras/:id/workflow/checklist] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao atualizar checklist do workflow" });
+    }
+  });
+
+  // POST /api/obras/:id/workflow/config - Update workflow configurations like responsavel, status, etc.
+  app.post("/api/obras/:id/workflow/config", requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const {
+      workflowResponsavel,
+      workflowStatus,
+      workflowObservacao,
+      workflowPrazo,
+      workflowLogoUrl
+    } = req.body;
+
+    try {
+      if (dbConnected && pool) {
+        const existingRes = await pool.query('SELECT * FROM obras WHERE id = $1 LIMIT 1', [id]);
+        if (existingRes.rowCount === 0) {
+          return res.status(404).json({ error: "Contrato não encontrado." });
+        }
+        const currentObra = existingRes.rows[0];
+
+        const updatedResponsavel = workflowResponsavel !== undefined ? workflowResponsavel : currentObra.workflowResponsavel;
+        const updatedStatus = workflowStatus !== undefined ? workflowStatus : (currentObra.workflowStatus || "Em Andamento");
+        const updatedObservacao = workflowObservacao !== undefined ? workflowObservacao : currentObra.workflowObservacao;
+        const updatedPrazo = workflowPrazo !== undefined ? workflowPrazo : currentObra.workflowPrazo;
+        const updatedLogoUrl = workflowLogoUrl !== undefined ? workflowLogoUrl : currentObra.workflowLogoUrl;
+
+        await pool.query(`
+          UPDATE obras SET
+            "workflowResponsavel" = $1,
+            "workflowStatus" = $2,
+            "workflowObservacao" = $3,
+            "workflowPrazo" = $4,
+            "workflowLogoUrl" = $5,
+            "updatedAt" = NOW()
+          WHERE id = $6
+        `, [
+          updatedResponsavel,
+          updatedStatus,
+          updatedObservacao,
+          updatedPrazo,
+          updatedLogoUrl,
+          id
+        ]);
+
+        return res.json({ success: true });
+      } else {
+        return res.status(400).json({ error: "Banco de dados não conectado." });
+      }
+    } catch (error: any) {
+      console.error("[POST /api/obras/:id/workflow/config] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao atualizar configurações do workflow" });
+    }
+  });
+
+  // GET /api/workflow/traditional-layout - Retrieve visual flowchart positions, edges and lock status
+  app.get("/api/workflow/traditional-layout", async (req, res) => {
+    try {
+      if (dbConnected && pool) {
+        const layoutRes = await pool.query("SELECT data FROM workflow_traditional_layout WHERE id = 'traditional' LIMIT 1");
+        if (layoutRes.rowCount > 0) {
+          const layoutObj = JSON.parse(layoutRes.rows[0].data);
+          return res.json({ success: true, layout: layoutObj });
+        }
+      }
+      
+      // Fallback: Read from local storage file if exists
+      const localLayoutFile = path.join(process.cwd(), "uploads", "traditional_layout.json");
+      if (fs.existsSync(localLayoutFile)) {
+        try {
+          const data = fs.readFileSync(localLayoutFile, "utf-8");
+          return res.json({ success: true, layout: JSON.parse(data) });
+        } catch (fileErr) {
+          console.error("Erro ao ler traditional_layout.json local:", fileErr);
+        }
+      }
+      
+      return res.json({ success: true, layout: null });
+    } catch (error: any) {
+      console.error("[GET /api/workflow/traditional-layout] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao buscar o layout do fluxograma." });
+    }
+  });
+
+  // POST /api/workflow/traditional-layout - Save visual flowchart positions, edges and lock status
+  app.post("/api/workflow/traditional-layout", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const canEdit = user && (user.nivel === 'ADMIN' || user.nivel === 'GESTOR' || (user.permissoes?.modulos?.fluxoOperacionalTradicional === 'editar' || user.permissoes?.modulos?.fluxoOperacionalTradicional === true));
+    
+    if (!canEdit) {
+      return res.status(403).json({ error: "Você não possui permissão para editar o layout do fluxograma tradicional." });
+    }
+
+    const { nodes, edges, zoom, lockState } = req.body;
+    const layoutObj = { nodes, edges, zoom, lockState, updatedAt: new Date().toISOString(), updatedBy: user.nome };
+    const layoutStr = JSON.stringify(layoutObj);
+
+    try {
+      if (dbConnected && pool) {
+        await pool.query(`
+          INSERT INTO workflow_traditional_layout (id, data)
+          VALUES ('traditional', $1)
+          ON CONFLICT (id) DO UPDATE SET data = $1
+        `, [layoutStr]);
+      }
+      
+      // Keep local backup file synced for safety/fallbacks
+      const localLayoutFile = path.join(process.cwd(), "uploads", "traditional_layout.json");
+      fs.writeFileSync(localLayoutFile, layoutStr, "utf-8");
+
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("[POST /api/workflow/traditional-layout] FAILED:", error);
+      return res.status(500).json({ error: "Erro ao salvar o layout do fluxograma tradicional." });
+    }
+  });
+
   // DELETE Excluir Obra
   app.delete(["/api/obras/:id", "/api/projetos/:id"], async (req, res) => {
     const { id } = req.params;
@@ -2620,8 +3047,29 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         `;
         const result = await pool.query(query);
 
+        // Buscar todos os materiais da tabela levantamento_materiais
+        const matsRes = await pool.query('SELECT * FROM levantamento_materiais');
+        const matsMap: Record<string, any[]> = {};
+        for (const mat of matsRes.rows) {
+          const lId = mat.levantamento_id;
+          if (!matsMap[lId]) {
+            matsMap[lId] = [];
+          }
+          matsMap[lId].push({
+            material: mat.material,
+            qtdHD: Number(mat.qtd_m2),
+            qtdM2: Number(mat.qtd_m2),
+            valorUnitario: Number(mat.valor_unitario),
+            unidade: mat.unidade || "Metro Quadrado"
+          });
+        }
+
          const list = result.rows.map(row => {
-           let subList: any[] = [];
+           let enrichedHD = matsMap[row.id];
+           if (enrichedHD && enrichedHD.length > 0) {
+             // We have the materials!
+           } else {
+             let subList: any[] = [];
            if (row.subestruturas) {
              try {
                subList = typeof row.subestruturas === "string" ? JSON.parse(row.subestruturas) : row.subestruturas;
@@ -2639,15 +3087,17 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
              }
            }
 
-           const enrichedHD = subList.map((item: any) => {
+           enrichedHD = subList.map((item: any) => {
              return {
-               material: item.material || "Produto HD",
+               material: item.material || "",
                qtdHD: Number(item.qtdHD !== undefined ? item.qtdHD : (item.qtdM2 || 0)),
-               valorUnitario: Number(item.valorUnitario || 0)
+               valorUnitario: Number(item.valorUnitario || 0),
+               unidade: item.unidade || "Metro Quadrado"
              };
            });
+          }
 
-           let subListPC: any[] = [];
+          let subListPC: any[] = [];
            if (row.subestruturas_pc) {
              try {
                subListPC = typeof row.subestruturas_pc === "string" ? JSON.parse(row.subestruturas_pc) : row.subestruturas_pc;
@@ -2800,6 +3250,23 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           origemLeads || "Projeto Certo"
         ]);
 
+        if (subListHD.length > 0) {
+          for (let i = 0; i < subListHD.length; i++) {
+            const mat = subListHD[i];
+            const matId = `${id}-${i + 1}`;
+            const q = mat.qtdHD !== undefined ? mat.qtdHD : (mat.qtdM2 || 0);
+            await pool.query(`
+              INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade)
+              VALUES ($1, $2::VARCHAR, $3, $4, $5, $6)
+              ON CONFLICT (id) DO UPDATE SET
+                material = EXCLUDED.material,
+                qtd_m2 = EXCLUDED.qtd_m2,
+                valor_unitario = EXCLUDED.valor_unitario,
+                unidade = EXCLUDED.unidade
+            `, [matId, id, mat.material || "", Number(q) || 0, Number(mat.valorUnitario) || 0, mat.unidade || "Metro Quadrado"]);
+          }
+        }
+
         const query = `
           SELECT l.*
           FROM levantamentos l
@@ -2872,6 +3339,20 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           origemLeads || null,
           id
          ]);
+
+         const existingObraId = checkRes.rows[0].contratoAFecharId || null;
+         await pool.query('DELETE FROM levantamento_materiais WHERE levantamento_id = $1', [id]);
+         if (subListHD.length > 0) {
+           for (let i = 0; i < subListHD.length; i++) {
+             const mat = subListHD[i];
+             const matId = crypto.randomUUID();
+             const q = mat.qtdHD !== undefined ? mat.qtdHD : (mat.qtdM2 || 0);
+             await pool.query(`
+               INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade)
+               VALUES ($1, $2::VARCHAR, $3, $4, $5, $6)
+             `, [matId, id, mat.material || "", Number(q) || 0, Number(mat.valorUnitario) || 0, mat.unidade || "Metro Quadrado"]);
+           }
+         }
 
          const query = `
            SELECT l.*
@@ -3003,7 +3484,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           const itemVal = (Number(q) || 0) * (Number(item.valorUnitario) || 0);
           totalValor += itemVal;
           return {
-            material: item.material || "Produto HD",
+            material: item.material || "",
             qtdHD: Number(q) || 0,
             valorUnitario: Number(item.valorUnitario) || 0,
             itemVal

@@ -16,8 +16,10 @@ import {
   LogOut,
   UserCheck,
   ShieldAlert,
+  GitFork,
+  ChevronDown,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useUIStore, useAuthStore } from "./store";
 import DashboardView from "./components/DashboardView";
 import ProjectsListView from "./components/ProjectsListView";
@@ -26,6 +28,7 @@ import ContractStepsView from "./components/ContractStepsView";
 import LevantamentosView from "./components/LevantamentosView";
 import UsuariosView from "./components/UsuariosView";
 import LoginView from "./components/LoginView";
+import FluxoOperacionalView from "./components/FluxoOperacionalView";
 
 // Global Fetch Interceptor to automatically attach authorization tokens
 const originalFetch = window.fetch;
@@ -78,12 +81,15 @@ const DEFAULT_LOGO_URL = "https://dptxkbsyzfntolgmhniz.supabase.co/storage/v1/ob
 
 function AppContent() {
   const activeView = useUIStore((state) => state.activeView);
+  const fluxoSubView = useUIStore((state) => state.fluxoSubView);
+  const fluxoMenuExpanded = useUIStore((state) => state.fluxoMenuExpanded);
   const projectFilter = useUIStore((state) => state.projectFilter);
   const navigateToDashboard = useUIStore((state) => state.navigateToDashboard);
   const navigateToProjects = useUIStore((state) => state.navigateToProjects);
   const navigateToSteps = useUIStore((state) => state.navigateToSteps);
   const navigateToLevantamentos = useUIStore((state) => state.navigateToLevantamentos);
   const navigateToUsuarios = useUIStore((state) => state.navigateToUsuarios);
+  const navigateToFluxoOperacional = useUIStore((state) => state.navigateToFluxoOperacional);
 
   const { user, isAuthenticated, isChecking, logout, hasPermission } = useAuthStore();
 
@@ -123,6 +129,7 @@ function AppContent() {
       else if (activeView === "projects" && projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar")) hasAccess = true;
       else if (activeView === "steps" && hasPermission("modulos", "etapasContrato")) hasAccess = true;
       else if (activeView === "levantamentos" && hasPermission("modulos", "levantamentosOrcamentos")) hasAccess = true;
+      else if (activeView === "fluxo-operacional") hasAccess = true;
       else if (activeView === "usuarios" && user.nivel === 'ADMIN') hasAccess = true;
       else if (activeView === "project-detail") hasAccess = true; // handled inside ObraDetailView
 
@@ -301,6 +308,160 @@ function AppContent() {
                 </button>
               )}
 
+              {/* Fluxo Operacional - Expandable Accordion Menu */}
+              {hasPermission("modulos", "fluxoOperacional") && (
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      if (activeView === "fluxo-operacional") {
+                        useUIStore.getState().setFluxoMenuExpanded(!fluxoMenuExpanded);
+                      } else {
+                        navigateToFluxoOperacional("dashboard");
+                        useUIStore.getState().setFluxoMenuExpanded(true);
+                      }
+                    }}
+                    className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center justify-between transition-all duration-200 ${
+                      activeView === "fluxo-operacional"
+                        ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                        : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                    }`}
+                    id="sidebar_nav_fluxo_operacional"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <GitFork className="w-4 h-4 text-brand-accent" />
+                      <span>Fluxo Operacional</span>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-white/50 transition-transform duration-200 ${fluxoMenuExpanded ? "rotate-180" : ""}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {fluxoMenuExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="pl-4 pr-1 py-1 space-y-1 bg-white/5 rounded-lg border border-white/5 overflow-hidden"
+                      >
+                        {/* 1. Dashboard */}
+                        {hasPermission("modulos", "fluxoOperacionalDashboard") && (
+                          <button
+                            onClick={() => {
+                              navigateToFluxoOperacional("dashboard");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full py-2 px-3 rounded-md text-[11px] font-semibold leading-none flex items-center gap-2 transition-all duration-200 ${
+                              activeView === "fluxo-operacional" && fluxoSubView === "dashboard"
+                                ? "bg-white/10 text-white font-black"
+                                : "text-white/60 hover:text-white hover:bg-white/5"
+                            }`}
+                            id="subnav_dashboard"
+                          >
+                            <span className="text-sm">📊</span>
+                            <span>Dashboard</span>
+                          </button>
+                        )}
+
+                        {/* 2. Fluxograma Tradicional */}
+                        {hasPermission("modulos", "fluxoOperacionalTradicional") && (
+                          <button
+                            onClick={() => {
+                              navigateToFluxoOperacional("tradicional");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full py-2 px-3 rounded-md text-[11px] font-semibold leading-none flex items-center gap-2 transition-all duration-200 ${
+                              activeView === "fluxo-operacional" && fluxoSubView === "tradicional"
+                                ? "bg-white/10 text-white font-black"
+                                : "text-white/60 hover:text-white hover:bg-white/5"
+                            }`}
+                            id="subnav_tradicional"
+                          >
+                            <span className="text-sm">🗺️</span>
+                            <span>Fluxograma Tradicional</span>
+                          </button>
+                        )}
+
+                        {/* 3. Fluxograma Executivo */}
+                        {hasPermission("modulos", "fluxoOperacionalExecutivo") && (
+                          <button
+                            onClick={() => {
+                              navigateToFluxoOperacional("executivo");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full py-2 px-3 rounded-md text-[11px] font-semibold leading-none flex items-center gap-2 transition-all duration-200 ${
+                              activeView === "fluxo-operacional" && fluxoSubView === "executivo"
+                                ? "bg-white/10 text-white font-black"
+                                : "text-white/60 hover:text-white hover:bg-white/5"
+                            }`}
+                            id="subnav_executivo"
+                          >
+                            <span className="text-sm">📈</span>
+                            <span>Fluxograma Executivo</span>
+                          </button>
+                        )}
+
+                        {/* 4. Painel Operacional (Kanban) */}
+                        {hasPermission("modulos", "fluxoOperacionalPainel") && (
+                          <button
+                            onClick={() => {
+                              navigateToFluxoOperacional("painel");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full py-2 px-3 rounded-md text-[11px] font-semibold leading-none flex items-center gap-2 transition-all duration-200 ${
+                              activeView === "fluxo-operacional" && fluxoSubView === "painel"
+                                ? "bg-white/10 text-white font-black"
+                                : "text-white/60 hover:text-white hover:bg-white/5"
+                            }`}
+                            id="subnav_painel"
+                          >
+                            <span className="text-sm">📋</span>
+                            <span>Painel Operacional</span>
+                          </button>
+                        )}
+
+                        {/* 5. Workflow */}
+                        {hasPermission("modulos", "fluxoOperacionalWorkflow") && (
+                          <button
+                            onClick={() => {
+                              navigateToFluxoOperacional("workflow");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full py-2 px-3 rounded-md text-[11px] font-semibold leading-none flex items-center gap-2 transition-all duration-200 ${
+                              activeView === "fluxo-operacional" && fluxoSubView === "workflow"
+                                ? "bg-white/10 text-white font-black"
+                                : "text-white/60 hover:text-white hover:bg-white/5"
+                            }`}
+                            id="subnav_workflow"
+                          >
+                            <span className="text-sm">🔄</span>
+                            <span>Workflow</span>
+                          </button>
+                        )}
+
+                        {/* 6. Histórico */}
+                        {hasPermission("modulos", "fluxoOperacionalHistorico") && (
+                          <button
+                            onClick={() => {
+                              navigateToFluxoOperacional("historico");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full py-2 px-3 rounded-md text-[11px] font-semibold leading-none flex items-center gap-2 transition-all duration-200 ${
+                              activeView === "fluxo-operacional" && fluxoSubView === "historico"
+                                ? "bg-white/10 text-white font-black"
+                                : "text-white/60 hover:text-white hover:bg-white/5"
+                            }`}
+                            id="subnav_historico"
+                          >
+                            <span className="text-sm">🕒</span>
+                            <span>Histórico</span>
+                          </button>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
               {/* Controle de Acessos */}
               {user?.nivel === 'ADMIN' && (
                 <button
@@ -398,6 +559,8 @@ function AppContent() {
               <ContractStepsView />
             ) : activeView === "levantamentos" && hasPermission("modulos", "levantamentosOrcamentos") ? (
               <LevantamentosView />
+            ) : activeView === "fluxo-operacional" ? (
+              <FluxoOperacionalView />
             ) : activeView === "usuarios" && user?.nivel === 'ADMIN' ? (
               <UsuariosView />
             ) : activeView === "project-detail" ? (

@@ -13,7 +13,10 @@ import {
   AlertTriangle,
   X,
   Eye,
-  Key
+  Key,
+  FolderOpen,
+  Shuffle,
+  Calculator
 } from "lucide-react";
 import { useAuthStore, Usuario } from "../store";
 
@@ -31,6 +34,13 @@ const MODULE_OPTIONS = [
   { key: "orcamentosAFechar", label: "Orçamentos a Fechar", tooltip: "Acesso aos orçamentos pendentes. Edição permite alterar, excluir itens e documentos dentro de orçamentos." },
   { key: "etapasContrato", label: "Etapas do Contrato", tooltip: "Gestão do cronograma e macro-etapas. Edição permite criar e modificar etapas." },
   { key: "levantamentosOrcamentos", label: "Levantamentos/Orçamentos", tooltip: "Controle de levantamentos. Edição permite criar, editar e excluir levantamentos e alterar status." },
+  { key: "fluxoOperacional", label: "Fluxo Operacional - Geral", tooltip: "Módulo pai do Fluxo Operacional." },
+  { key: "fluxoOperacionalTradicional", label: "Fluxo Op. - Fluxograma Tradicional", tooltip: "Permite visualizar ou interagir com o Fluxograma Tradicional." },
+  { key: "fluxoOperacionalExecutivo", label: "Fluxo Op. - Fluxograma Executivo", tooltip: "Permite visualizar ou editar o Fluxograma Executivo." },
+  { key: "fluxoOperacionalPainel", label: "Fluxo Op. - Painel Operacional", tooltip: "Permite visualizar ou editar o Painel Operacional (Kanban)." },
+  { key: "fluxoOperacionalWorkflow", label: "Fluxo Op. - Workflow", tooltip: "Permite gerenciar movimentações e listas de contratos no Workflow." },
+  { key: "fluxoOperacionalHistorico", label: "Fluxo Op. - Histórico de Movimentações", tooltip: "Permite visualizar o histórico completo de movimentações de contratos." },
+  { key: "fluxoOperacionalDashboard", label: "Fluxo Op. - Dashboard Operacional", tooltip: "Permite visualizar os indicadores e gráficos operacionais." },
   { key: "usuarios", label: "Gestão de Usuários", tooltip: "Acesso à tela de usuários. Edição permite criar e configurar permissões." }
 ];
 
@@ -65,7 +75,14 @@ const DEFAULT_PERMISSIONS = {
     orcamentosAFechar: "editar",
     etapasContrato: "nenhum",
     levantamentosOrcamentos: "editar",
-    usuarios: "nenhum"
+    usuarios: "nenhum",
+    fluxoOperacional: "editar",
+    fluxoOperacionalTradicional: "editar",
+    fluxoOperacionalExecutivo: "editar",
+    fluxoOperacionalPainel: "editar",
+    fluxoOperacionalWorkflow: "editar",
+    fluxoOperacionalHistorico: "editar",
+    fluxoOperacionalDashboard: "editar"
   },
   indicadores: {
     totalContratos: "visualizar",
@@ -89,6 +106,128 @@ const DEFAULT_PERMISSIONS = {
     editar: "editar"
   }
 };
+
+const PERMISSION_HIERARCHY = [
+  {
+    id: "comercial",
+    name: "Módulo Comercial & Engenharia de Obras",
+    description: "Gestão integrada de propostas, quantitativos e cronogramas físicos.",
+    icon: "FolderOpen",
+    groups: [
+      {
+        name: "Gestão de Projetos e Obras",
+        description: "Lista de contratos de obras ativas e documentos vinculados",
+        tools: [
+          { key: "contratosConsolidados", category: "modulos", label: "Contratos Consolidados", tooltip: "Acesso à lista e detalhes de Obras ativas. Edição permite alterar, adicionar e remover itens e documentos do contrato." },
+          { key: "orcamentosAFechar", category: "modulos", label: "Orçamentos a Fechar", tooltip: "Acesso aos orçamentos pendentes. Edição permite alterar, excluir itens e documentos dentro de orçamentos." }
+        ]
+      },
+      {
+        name: "Orçamentação e Cronograma",
+        description: "Levantamento de materiais, composições e definição de cronograma",
+        tools: [
+          { key: "levantamentosOrcamentos", category: "modulos", label: "Levantamentos / Orçamentos", tooltip: "Controle de levantamentos. Edição permite criar, editar e excluir levantamentos e alterar status." },
+          { key: "etapasContrato", category: "modulos", label: "Etapas do Contrato (Cronograma)", tooltip: "Gestão do cronograma e macro-etapas. Edição permite criar e modificar etapas." }
+        ]
+      }
+    ]
+  },
+  {
+    id: "operacional",
+    name: "Módulo Workflow & Fluxo Operacional",
+    description: "Gestão de pipeline de obras, diagramas operacionais e BPMN interativo.",
+    icon: "Shuffle",
+    groups: [
+      {
+        name: "Monitores Visuais",
+        description: "Pipelines e diagramas visuais e interativos de acompanhamento",
+        tools: [
+          { key: "fluxoOperacionalPainel", category: "modulos", label: "Painel Operacional (Kanban)", tooltip: "Permite visualizar ou editar o Painel Operacional (Kanban)." },
+          { key: "fluxoOperacionalTradicional", category: "modulos", label: "Fluxograma Tradicional (BPMN)", tooltip: "Permite visualizar ou interagir com o Fluxograma Tradicional." },
+          { key: "fluxoOperacionalExecutivo", category: "modulos", label: "Fluxograma Executivo (Reduzido)", tooltip: "Permite visualizar ou editar o Fluxograma Executivo." }
+        ]
+      },
+      {
+        name: "Coordenação & Auditoria",
+        description: "Log de histórico e movimentações no fluxo",
+        tools: [
+          { key: "fluxoOperacionalWorkflow", category: "modulos", label: "Mesa de Workflow", tooltip: "Permite gerenciar movimentações e listas de contratos no Workflow." },
+          { key: "fluxoOperacionalHistorico", category: "modulos", label: "Histórico de Movimentações (Logs)", tooltip: "Permite visualizar o histórico completo de movimentações de contratos." }
+        ]
+      },
+      {
+        name: "Geral & Configurações de Fluxo",
+        description: "Módulos pai e inteligência integrada do fluxo operacional",
+        tools: [
+          { key: "fluxoOperacional", category: "modulos", label: "Fluxo Operacional - Geral", tooltip: "Módulo pai do Fluxo Operacional." },
+          { key: "fluxoOperacionalDashboard", category: "modulos", label: "Dashboard Operacional (KPIs)", tooltip: "Permite visualizar os indicadores e gráficos operacionais." }
+        ]
+      }
+    ]
+  },
+  {
+    id: "bi",
+    name: "Módulo Inteligência Estratégica & BI",
+    description: "Relatórios analíticos, gráficos de rateio e indicadores gerenciais.",
+    icon: "Calculator",
+    groups: [
+      {
+        name: "Indicadores de Cartões (Top Cards)",
+        description: "Visualização individual das métricas do Dashboard",
+        tools: [
+          { key: "totalContratos", category: "indicadores", label: "Faturamento Total (Contratos)", tooltip: "Exibir o card de Faturamento Total no Dashboard." },
+          { key: "totalVisaoGeral", category: "indicadores", label: "Custo Total (Visão Geral)", tooltip: "Exibir o card de Custo Total Projetado." },
+          { key: "totalMargem", category: "indicadores", label: "Margem Líquida Total (R$ e %)", tooltip: "Exibir o card de Margem Líquida." },
+          { key: "percentualMedio", category: "indicadores", label: "% Médio de Margem", tooltip: "Exibir o percentual médio dos contratos." },
+          { key: "totalAdm", category: "indicadores", label: "Despesa Adm Acumulada", tooltip: "Exibir a despesa administrativa total calculada." }
+        ]
+      },
+      {
+        name: "KPIs e Metas",
+        description: "Velocímetros e barras de progresso comparativas",
+        tools: [
+          { key: "kpiProjecao", category: "indicadores", label: "KPI de Projeção (Barra de Metas)", tooltip: "Exibir as barras de progresso (metas)." },
+          { key: "kpiAdm", category: "indicadores", label: "KPI de Administrativo (Medidor)", tooltip: "Exibir o medidor de despesas em relação ao faturamento." }
+        ]
+      },
+      {
+        name: "Gráficos de rateio",
+        description: "Gráficos de rateio e pizza do Dashboard",
+        tools: [
+          { key: "graficoCustos", category: "indicadores", label: "Gráfico de Composição de Custos", tooltip: "Exibir o gráfico de composição (Materiais, MDO, Adm)." }
+        ]
+      }
+    ]
+  },
+  {
+    id: "seguranca",
+    name: "Módulo Segurança, Colunas Críticas & Operações",
+    description: "Restrição de acesso a dados confidenciais e privilégios administrativos.",
+    icon: "Lock",
+    groups: [
+      {
+        name: "Colunas Críticas (Restrição Financeira)",
+        description: "Exibição de valores, custos e margens confidenciais em tabelas",
+        tools: [
+          { key: "valorContrato", category: "colunas", label: "Valores Fechados do Contrato (Obras)", tooltip: "Ver (visualizar) ou alterar (editar) os valores fechados do contrato." },
+          { key: "margemLiquida", category: "colunas", label: "Margem Líquida da Obra", tooltip: "Ver (visualizar) a margem líquida da obra." },
+          { key: "custoAdm", category: "colunas", label: "Custo Adm Unitário (Obras)", tooltip: "Ver (visualizar) ou alterar (editar) o custo administrativo na edição de obra." },
+          { key: "valorItens", category: "colunas", label: "Valor de Itens/Subitens (Planilhas)", tooltip: "Ver (visualizar) ou alterar (editar) o valor unitário das composições (R$). Se removido, mascara valores." },
+          { key: "subestruturas", category: "colunas", label: "Subestruturas & Cálculo de m²", tooltip: "Controla a visualização e edição da expansão de subestruturas e cálculo de m² (HD e PC)." }
+        ]
+      },
+      {
+        name: "Operações Globais & Administração",
+        description: "Privilégios de modificações de dados e controle de usuários",
+        tools: [
+          { key: "usuarios", category: "modulos", label: "Gestão de Usuários e Permissões", tooltip: "Acesso à tela de usuários. Edição permite criar e configurar permissões." },
+          { key: "visualizar", category: "acoes", label: "Visualização Completa (Global)", tooltip: "Permissão base para ler e exibir os dados nas telas em que possui acesso." },
+          { key: "editar", category: "acoes", label: "Criação / Edição de Dados (Global)", tooltip: "Permissão geral para interagir com botões de Salvar, Excluir, Adicionar e Editar onde possuir acesso aos módulos." }
+        ]
+      }
+    ]
+  }
+];
 
 export default function UsuariosView() {
   const queryClient = useQueryClient();
@@ -261,6 +400,23 @@ export default function UsuariosView() {
     });
   };
 
+  const setModulePermissions = (moduleId: string, value: 'editar' | 'visualizar' | 'nenhum') => {
+    const mod = PERMISSION_HIERARCHY.find(m => m.id === moduleId);
+    if (!mod) return;
+    setPermissoes(prev => {
+      const copy = JSON.parse(JSON.stringify(prev || DEFAULT_PERMISSIONS));
+      mod.groups.forEach(group => {
+        group.tools.forEach(tool => {
+          if (!copy[tool.category]) {
+            copy[tool.category] = {};
+          }
+          copy[tool.category][tool.key] = value;
+        });
+      });
+      return copy;
+    });
+  };
+
   const renderPermissionSelector = (
     category: keyof Usuario["permissoes"], 
     key: string, 
@@ -341,6 +497,13 @@ export default function UsuariosView() {
       updated.modulos.etapasContrato = 'editar';
       updated.modulos.levantamentosOrcamentos = 'editar';
       updated.modulos.usuarios = 'nenhum';
+      updated.modulos.fluxoOperacional = 'editar';
+      updated.modulos.fluxoOperacionalTradicional = 'editar';
+      updated.modulos.fluxoOperacionalExecutivo = 'editar';
+      updated.modulos.fluxoOperacionalPainel = 'editar';
+      updated.modulos.fluxoOperacionalWorkflow = 'editar';
+      updated.modulos.fluxoOperacionalHistorico = 'editar';
+      updated.modulos.fluxoOperacionalDashboard = 'editar';
 
       updated.indicadores.totalContratos = 'visualizar';
       updated.indicadores.totalVisaoGeral = 'visualizar';
@@ -366,6 +529,13 @@ export default function UsuariosView() {
       updated.modulos.etapasContrato = 'nenhum';
       updated.modulos.levantamentosOrcamentos = 'editar';
       updated.modulos.usuarios = 'nenhum';
+      updated.modulos.fluxoOperacional = 'editar';
+      updated.modulos.fluxoOperacionalTradicional = 'editar';
+      updated.modulos.fluxoOperacionalExecutivo = 'visualizar';
+      updated.modulos.fluxoOperacionalPainel = 'editar';
+      updated.modulos.fluxoOperacionalWorkflow = 'editar';
+      updated.modulos.fluxoOperacionalHistorico = 'visualizar';
+      updated.modulos.fluxoOperacionalDashboard = 'visualizar';
 
       updated.indicadores.totalContratos = 'nenhum';
       updated.indicadores.totalVisaoGeral = 'nenhum';
@@ -391,6 +561,13 @@ export default function UsuariosView() {
       updated.modulos.etapasContrato = 'nenhum';
       updated.modulos.levantamentosOrcamentos = 'nenhum';
       updated.modulos.usuarios = 'nenhum';
+      updated.modulos.fluxoOperacional = 'visualizar';
+      updated.modulos.fluxoOperacionalTradicional = 'visualizar';
+      updated.modulos.fluxoOperacionalExecutivo = 'visualizar';
+      updated.modulos.fluxoOperacionalPainel = 'visualizar';
+      updated.modulos.fluxoOperacionalWorkflow = 'visualizar';
+      updated.modulos.fluxoOperacionalHistorico = 'visualizar';
+      updated.modulos.fluxoOperacionalDashboard = 'visualizar';
 
       updated.indicadores.totalContratos = 'visualizar';
       updated.indicadores.totalVisaoGeral = 'nenhum';
@@ -416,6 +593,13 @@ export default function UsuariosView() {
       updated.modulos.etapasContrato = 'nenhum';
       updated.modulos.levantamentosOrcamentos = 'editar';
       updated.modulos.usuarios = 'nenhum';
+      updated.modulos.fluxoOperacional = 'visualizar';
+      updated.modulos.fluxoOperacionalTradicional = 'visualizar';
+      updated.modulos.fluxoOperacionalExecutivo = 'visualizar';
+      updated.modulos.fluxoOperacionalPainel = 'visualizar';
+      updated.modulos.fluxoOperacionalWorkflow = 'visualizar';
+      updated.modulos.fluxoOperacionalHistorico = 'visualizar';
+      updated.modulos.fluxoOperacionalDashboard = 'visualizar';
 
       updated.indicadores.totalContratos = 'nenhum';
       updated.indicadores.totalVisaoGeral = 'nenhum';
@@ -723,55 +907,92 @@ export default function UsuariosView() {
                 </div>
               </div>
 
-              {/* Níveis de Permissões Fine-Grained */}
+              {/* Níveis de Permissões Fine-Grained - Hierarquia RLS */}
               {nivel !== "ADMIN" && (
                 <div className="space-y-6">
-                  <h3 className="text-xs font-black uppercase text-brand-primary border-b border-slate-100 pb-1.5">2. Configuração Fina de Permissões</h3>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Módulos do Sistema */}
-                    <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[11px] font-black uppercase text-slate-700 flex items-center gap-1">
-                        <Lock className="w-3.5 h-3.5 text-brand-primary" />
-                        Acesso aos Módulos
-                      </h4>
-                      <div className="space-y-2.5">
-                        {MODULE_OPTIONS.map((opt) => renderPermissionSelector("modulos", opt.key, opt.label, opt.tooltip))}
-                      </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-2 gap-2">
+                    <div>
+                      <h3 className="text-xs font-black uppercase text-brand-primary">2. Configuração Fina de Permissões (Hierárquico)</h3>
+                      <p className="text-[10px] text-slate-400 font-medium">Configure acessos e visibilidade organizados por Módulos, Grupos e Ferramentas.</p>
                     </div>
+                  </div>
 
-                    {/* Indicadores de Painel */}
-                    <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[11px] font-black uppercase text-slate-700 flex items-center gap-1">
-                        <Lock className="w-3.5 h-3.5 text-brand-primary" />
-                        Métricas / Indicadores
-                      </h4>
-                      <div className="space-y-2.5 max-h-96 overflow-y-auto">
-                        {INDICATOR_OPTIONS.map((opt) => renderPermissionSelector("indicadores", opt.key, opt.label, opt.tooltip))}
-                      </div>
-                    </div>
+                  <div className="space-y-6">
+                    {PERMISSION_HIERARCHY.map((module) => {
+                      // Determine the icon component dynamically
+                      const IconComponent = 
+                        module.icon === "FolderOpen" ? FolderOpen :
+                        module.icon === "Shuffle" ? Shuffle :
+                        module.icon === "Calculator" ? Calculator :
+                        Lock;
 
-                    {/* Exibição de Colunas */}
-                    <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[11px] font-black uppercase text-slate-700 flex items-center gap-1">
-                        <Lock className="w-3.5 h-3.5 text-brand-primary" />
-                        Colunas Críticas / Valores
-                      </h4>
-                      <div className="space-y-2.5">
-                        {COLUMN_OPTIONS.map((opt) => renderPermissionSelector("colunas", opt.key, opt.label, opt.tooltip))}
-                      </div>
-                    </div>
+                      return (
+                        <div key={module.id} className="bg-slate-50/70 rounded-2xl border border-slate-200/60 shadow-xs overflow-hidden">
+                          {/* Header do Módulo */}
+                          <div className="bg-white p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 bg-slate-50 rounded-xl border border-slate-100 text-brand-primary shrink-0">
+                                <IconComponent className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{module.name}</h4>
+                                <p className="text-[10px] text-slate-500 font-medium">{module.description}</p>
+                              </div>
+                            </div>
 
-                    {/* Ações permitidas */}
-                    <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[11px] font-black uppercase text-slate-700 flex items-center gap-1">
-                        <Lock className="w-3.5 h-3.5 text-brand-primary" />
-                        Ações & Operações
-                      </h4>
-                      <div className="space-y-2.5">
-                        {ACTION_OPTIONS.map((opt) => renderPermissionSelector("acoes", opt.key, opt.label, opt.tooltip))}
-                      </div>
-                    </div>
+                            {/* Ações rápidas do módulo */}
+                            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/50 self-start lg:self-auto">
+                              <span className="text-[8px] font-black uppercase text-slate-400 px-1.5">Ações Rápidas:</span>
+                              <button
+                                type="button"
+                                onClick={() => setModulePermissions(module.id, 'editar')}
+                                className="px-2 py-1 text-[9px] font-black uppercase bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg transition-all cursor-pointer"
+                              >
+                                Liberar Tudo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModulePermissions(module.id, 'visualizar')}
+                                className="px-2 py-1 text-[9px] font-black uppercase bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-all cursor-pointer"
+                              >
+                                Somente Leitura
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModulePermissions(module.id, 'nenhum')}
+                                className="px-2 py-1 text-[9px] font-black uppercase bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-all cursor-pointer"
+                              >
+                                Bloquear Tudo
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Grupos e Ferramentas do Módulo */}
+                          <div className="p-4 space-y-5">
+                            {module.groups.map((group, gIdx) => (
+                              <div key={gIdx} className="space-y-2.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-px bg-slate-200 flex-1"></div>
+                                  <div className="text-center px-3 py-1 bg-slate-100 rounded-full border border-slate-200 text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                    Grupo: {group.name}
+                                  </div>
+                                  <div className="h-px bg-slate-200 flex-1"></div>
+                                </div>
+                                {group.description && (
+                                  <p className="text-[9px] text-slate-400 font-semibold italic text-center -mt-1">{group.description}</p>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                  {group.tools.map((tool) => 
+                                    renderPermissionSelector(tool.category as keyof Usuario["permissoes"], tool.key, tool.label, tool.tooltip)
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
