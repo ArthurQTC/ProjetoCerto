@@ -458,7 +458,7 @@ export default function ProjectsListView() {
                     {hasPermission("colunas", "valorContrato") ? "Margem Líquida" : "Margem (Restrita)"}
                   </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
-                  {!showLixeira && <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Enviar Para Equipe</th>}
+                  {!showLixeira && projectFilter !== "A_FECHAR" && <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Enviar Para Equipe</th>}
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Ações</th>
                 </tr>
               </thead>
@@ -521,7 +521,7 @@ export default function ProjectsListView() {
                           {hasPermission("colunas", "margemLiquida") ? `${p.percentualMargem.toFixed(2)}%` : "••••••"}
                         </span>
                       </td>
-                      {!showLixeira && (
+                      {!showLixeira && projectFilter !== "A_FECHAR" && (
                         <td className="py-3.5 px-5 text-center">
                           <button
                             onClick={async (e) => {
