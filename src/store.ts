@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { ItemOrcamento, SubItemOrcamento } from "./types";
 
 interface UIState {
-  activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase" | "levantamentos" | "usuarios" | "fluxo-operacional";
+  activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase" | "levantamentos" | "usuarios" | "fluxo-operacional" | "contratos-ativos";
   fluxoSubView: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico";
   fluxoMenuExpanded: boolean;
   projectFilter: "CONSOLIDADO" | "A_FECHAR";
@@ -18,6 +18,7 @@ interface UIState {
   navigateToSupabase: () => void;
   navigateToLevantamentos: () => void;
   navigateToUsuarios: () => void;
+  navigateToContratosAtivos: () => void;
   navigateToFluxoOperacional: (subView?: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico") => void;
   setFluxoSubView: (subView: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico") => void;
   setFluxoMenuExpanded: (expanded: boolean) => void;
@@ -43,6 +44,7 @@ export const useUIStore = create<UIState>()(
       navigateToSupabase: () => set({ activeView: "supabase", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
       navigateToLevantamentos: () => set({ activeView: "levantamentos", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
       navigateToUsuarios: () => set({ activeView: "usuarios", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
+      navigateToContratosAtivos: () => set({ activeView: "contratos-ativos", selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
       navigateToFluxoOperacional: (subView = "dashboard") => set({ activeView: "fluxo-operacional", fluxoSubView: subView, fluxoMenuExpanded: true, selectedProjectId: null, selectedObraId: null, searchTerm: "" }),
       setFluxoSubView: (subView) => set({ fluxoSubView: subView }),
       setFluxoMenuExpanded: (expanded) => set({ fluxoMenuExpanded: expanded }),
@@ -78,7 +80,10 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
         const currentSubs = item.subitens || [];
         const newSub = { id: `sub-${Date.now()}`, ...subItemPayload };
         const updatedSubs = [...currentSubs, newSub];
-        const newTotal = updatedSubs.reduce((acc, s) => acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0)), 0);
+        const newTotal = updatedSubs.reduce((acc, s) => {
+          if (s.unidade === 'Peças') return acc;
+          return acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0));
+        }, 0);
         updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
         return updatedItem;
       });
@@ -94,7 +99,10 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
         if (item.id !== itemId) return item;
         const currentSubs = item.subitens || [];
         const updatedSubs = currentSubs.map(s => s.id === subId ? { ...s, ...payload } : s);
-        const newTotal = updatedSubs.reduce((acc, s) => acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0)), 0);
+        const newTotal = updatedSubs.reduce((acc, s) => {
+          if (s.unidade === 'Peças') return acc;
+          return acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0));
+        }, 0);
         updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
         return updatedItem;
       });
@@ -110,7 +118,10 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
         if (item.id !== itemId) return item;
         const currentSubs = item.subitens || [];
         const updatedSubs = currentSubs.filter(s => s.id !== subId);
-        const newTotal = updatedSubs.reduce((acc, s) => acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0)), 0);
+        const newTotal = updatedSubs.reduce((acc, s) => {
+          if (s.unidade === 'Peças') return acc;
+          return acc + (Number(s.qtd !== undefined ? s.qtd : 1) * Number(s.valor || 0));
+        }, 0);
         updatedItem = { ...item, subitens: updatedSubs, valor: newTotal };
         return updatedItem;
       });
@@ -157,10 +168,13 @@ export interface Usuario {
     modulos: {
       dashboard: boolean | 'visualizar' | 'editar' | 'nenhum';
       contratosConsolidados: boolean | 'visualizar' | 'editar' | 'nenhum';
+      contratosAtivos?: boolean | 'visualizar' | 'editar' | 'nenhum';
       orcamentosAFechar: boolean | 'visualizar' | 'editar' | 'nenhum';
       etapasContrato: boolean | 'visualizar' | 'editar' | 'nenhum';
       levantamentosOrcamentos: boolean | 'visualizar' | 'editar' | 'nenhum';
       usuarios: boolean | 'visualizar' | 'editar' | 'nenhum';
+      exportarExcelContratos?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      exportarExcelOrcamentos?: boolean | 'visualizar' | 'editar' | 'nenhum';
       fluxoOperacional?: boolean | 'visualizar' | 'editar' | 'nenhum';
       fluxoOperacionalTradicional?: boolean | 'visualizar' | 'editar' | 'nenhum';
       fluxoOperacionalExecutivo?: boolean | 'visualizar' | 'editar' | 'nenhum';

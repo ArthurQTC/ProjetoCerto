@@ -18,6 +18,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "framer-motion": "latest",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.395.0",
     "luckyexcel": "^1.0.1",
     "motion": "latest",
@@ -27,6 +29,7 @@
     "react-dom": "^18.3.1",
     "reactflow": "^11.11.4",
     "recharts": "^2.12.7",
+    "resend": "^6.17.2",
     "xlsx": "^0.18.5",
     "zustand": "^4.5.2"
   },

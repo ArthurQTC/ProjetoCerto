@@ -469,9 +469,9 @@ export default function DashboardView() {
                         {(p.dataInicioContrato || p.dataFimContrato) && (
                           <div className="text-[10px] text-slate-400 font-semibold mt-0.5 flex flex-wrap items-center gap-1">
                             <span>Período:</span>
-                            <span>{p.dataInicioContrato ? formatDateBR(p.dataInicioContrato) : "N/I"}</span>
+                            <span>{(p.dataInicioContrato && p.dataInicioContrato !== "N/I") ? formatDateBR(p.dataInicioContrato) : ""}</span>
                             <span className="opacity-60">até</span>
-                            <span>{p.dataFimContrato ? formatDateBR(p.dataFimContrato) : "N/I"}</span>
+                            <span>{(p.dataFimContrato && p.dataFimContrato !== "N/I") ? formatDateBR(p.dataFimContrato) : ""}</span>
                           </div>
                         )}
                       </td>

@@ -197,14 +197,6 @@ export default function LevantamentosView() {
     };
   }, []);
 
-  // Whenever Solicitante is "Aline", automatically set Leads Origin to "Hunter Douglas"
-  useEffect(() => {
-    if (formSolicitante && formSolicitante.trim().toLowerCase() === "aline") {
-      setFormOrigemLeads("Hunter Douglas");
-    }
-  }, [formSolicitante]);
-
-  // Success Conversion modal state
   const [conversionSuccess, setConversionSuccess] = useState<{
     open: boolean;
     contractId: string;
@@ -218,7 +210,8 @@ export default function LevantamentosView() {
     content: React.ReactNode;
     x: number;
     y: number;
-  }>({ visible: false, content: null, x: 0, y: 0 });
+    placement: 'top' | 'bottom';
+  }>({ visible: false, content: null, x: 0, y: 0, placement: 'bottom' });
 
   const handleMouseEnter = (e: React.MouseEvent, content: React.ReactNode) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -231,11 +224,16 @@ export default function LevantamentosView() {
     }
     if (x < 10) x = 10;
 
+    // Detect if we should flip to top
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placement = spaceBelow < 350 ? 'top' : 'bottom';
+
     setTooltip({
       visible: true,
       content,
       x,
-      y: rect.bottom + window.scrollY + 8,
+      y: placement === 'bottom' ? rect.bottom + window.scrollY + 8 : rect.top + window.scrollY - 8,
+      placement,
     });
   };
   const handleMouseLeave = () => setTooltip({ ...tooltip, visible: false });
@@ -582,7 +580,7 @@ export default function LevantamentosView() {
     setFormStatus(survey.status === "EXCLUIDO" ? "Pendente" : survey.status);
     setFormPrevisao(survey.previsao ? convertDateToBR(survey.previsao) : "");
     setFormStatusEnvio(survey.statusEnvio);
-    setFormOrigemLeads(survey.origemLeads || "Hunter Douglas");
+    setFormOrigemLeads(survey.origemLeads || "Projeto Certo");
     
     if (survey.subestruturas && survey.subestruturas.length > 0) {
       setFormSubestruturas(survey.subestruturas.map(s => ({
@@ -613,14 +611,14 @@ export default function LevantamentosView() {
   const handleSubmitSurveyForm = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formObra || !formDataSolicitacao) {
-      alert("Preencha todos os campos obrigatórios marcados com *");
+    if (!formObra) {
+      alert("Preencha todos os campos obrigatórios marcados com * (Obra)");
       return;
     }
 
-    // Validate that dates are fully typed DD/MM/AAAA
-    if (!isValidDateFull(formDataSolicitacao)) {
-      alert("Por favor, preencha a Data de Solicitação completa no formato DD/MM/AAAA (ex: 02/02/2026).");
+    // Validate that dates are fully typed DD/MM/AAAA if provided
+    if (formDataSolicitacao && !isValidDateFull(formDataSolicitacao)) {
+      alert("Por favor, preencha a Data de Solicitação completa no formato DD/MM/AAAA (ex: 02/02/2026) ou deixe em branco.");
       return;
     }
 
@@ -667,7 +665,7 @@ export default function LevantamentosView() {
       const q = rawQty ? parseFloat(rawQty) : 0;
       const v = rawVal ? parseFloat(rawVal) : 0;
       return {
-        material: item.material || "Produto PC",
+        material: item.material || "",
         qtdPC: isNaN(q) ? 0 : q,
         valorUnitario: isNaN(v) ? 0 : v
       };
@@ -948,10 +946,8 @@ export default function LevantamentosView() {
                   <th className="py-3 px-4">RESPONSÁVEL</th>
                   <th className="py-3 px-4 text-center">STATUS</th>
                   <th className="py-3 px-4">PREVISÃO</th>
-                  <th className="py-3 px-4">MATERIAL HD</th>
-                  <th className="py-3 px-4 text-right">QTD HD</th>
-                  <th className="py-3 px-4 text-right">VALOR TOTAL</th>
-                  <th className="py-3 px-1.5 text-center w-[120px]">STATUS ENVIO</th>
+                  <th className="py-3 px-4">MATERIAL</th>
+                  <th className="py-3 px-4 text-right">QTD</th>
                   <th className="py-3 px-4 text-right">AÇÕES</th>
                 </tr>
               </thead>
@@ -1056,7 +1052,7 @@ export default function LevantamentosView() {
                         onMouseEnter={(e) => handleMouseEnter(e, (
                           <div className="space-y-2">
                             <div className="font-extrabold uppercase tracking-wider mb-2 border-b border-slate-100 pb-2 flex justify-between items-center">
-                              <span>Materiais HD inclusos</span>
+                              <span>Materiais inclusos</span>
                               <span className="font-mono text-[10px] text-slate-500">{subsHD.length} itens</span>
                             </div>
                             <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -1085,7 +1081,7 @@ export default function LevantamentosView() {
                         <div className="font-extrabold text-slate-800 text-xs flex flex-wrap gap-1 items-center">
                           {subsHD.length > 0 ? (
                             <>
-                              <span className="truncate text-brand-primary">{subsHD.length} Mat. HD</span>
+                              <span className="truncate text-brand-primary">{subsHD.length} Mat.</span>
                               <div className="text-[9px] text-slate-400 font-mono">
                                 R$ {totalValorHD.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                               </div>
@@ -1105,78 +1101,6 @@ export default function LevantamentosView() {
                       </td>
 
                       {/* VALOR TOTAL COLUMN WITH HOVER VALUES BREAKDOWN */}
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-900 font-mono cursor-pointer"
-                        onMouseEnter={(e) => handleMouseEnter(e, (
-                          <div className="space-y-3">
-                            <div className="font-extrabold text-slate-800 uppercase tracking-wider mb-2 border-b border-slate-200 pb-2 flex justify-between items-center">
-                              <span>Valores Detalhados</span>
-                            </div>
-                            <div className="space-y-3 max-h-60 overflow-y-auto">
-                              {/* HD Section */}
-                              {subsHD.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Material HD</div>
-                                  {subsHD.map((sub, sIdx) => {
-                                    const q = sub.qtdHD !== undefined ? sub.qtdHD : (sub.qtdM2 || 0);
-                                    const isPecas = sub.unidade === "Peças";
-                                    const total = isPecas ? 0 : q * (sub.valorUnitario || 0);
-                                    return (
-                                      <div key={sIdx} className={`flex justify-between items-center gap-2 border-b border-slate-50 pb-1 last:border-0 last:pb-0 ${isPecas ? 'opacity-50' : ''}`}>
-                                        <span className="font-semibold text-slate-700 truncate max-w-[150px]">{sub.material || ""} {isPecas && "(Peças)"}</span>
-                                        <span className="font-mono text-slate-900 shrink-0">
-                                          {Number(q).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {isPecas ? "un" : "m²"} x R$ {sub.valorUnitario?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"} = <span className="font-bold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                            <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-bold text-slate-800 text-xs">
-                              <span>VALOR TOTAL</span>
-                              <span className="font-mono">R$ {(totalVal || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
-                          </div>
-                        ))}
-                        onMouseLeave={handleMouseLeave}
-                      >
-                        <div className="text-[11px] font-mono leading-tight">
-                          R$ {totalVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        {subsHD.length > 1 && (
-                          <span className="text-[9px] font-medium text-slate-400 block pt-0.5 leading-none">
-                            ({subsHD.length} itens)
-                          </span>
-                        )}
-                      </td>
-                      {/* STATUS DE ENVIO (NOVA COLUNA INTERATIVA) */}
-                      <td className="py-2 px-1 text-center whitespace-nowrap w-[120px]">
-                        {showLixeira ? (
-                          <span className="text-slate-400 font-semibold text-[9px]">—</span>
-                        ) : (
-                          <div className="inline-flex items-center justify-center w-full">
-                            <select
-                              disabled={!canEdit}
-                              value={lev.statusEnvio}
-                              onChange={(e) => {
-                                updateStatusEnvioMutation.mutate({
-                                  id: lev.id,
-                                  statusEnvio: e.target.value as "Enviado" | "Proposta a Enviar"
-                                });
-                              }}
-                              className={`text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-lg border transition-all ${canEdit ? 'cursor-pointer' : 'opacity-80'} focus:outline-none focus:ring-1 text-center w-[105px] ${
-                                lev.statusEnvio === "Enviado"
-                                  ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100/70"
-                                  : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/70"
-                              }`}
-                            >
-                              <option value="Proposta a Enviar">A Enviar</option>
-                              <option value="Enviado">Enviado</option>
-                            </select>
-                          </div>
-                        )}
-                      </td>
-
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
                           {showLixeira ? (
@@ -1200,7 +1124,7 @@ export default function LevantamentosView() {
                             </>
                           ) : (
                             <>
-                              {lev.contratoAFecharId && (
+                              {lev.contratoAFecharId ? (
                                 <button
                                   onClick={() => {
                                     if (lev.contratoAFecharId) navigateToProject(lev.contratoAFecharId);
@@ -1210,6 +1134,17 @@ export default function LevantamentosView() {
                                 >
                                   <ArrowRight className="w-3.5 h-3.5" />
                                 </button>
+                              ) : (
+                                canEdit && (
+                                  <button
+                                    onClick={() => convertToContractMutation.mutate(lev.id)}
+                                    className="p-1 px-2.5 bg-brand-primary/10 hover:bg-brand-primary text-brand-primary hover:text-white rounded-xl border border-brand-primary/20 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all"
+                                    title="Enviar para Orçamentos a Fechar"
+                                  >
+                                    <Send className="w-3 h-3" />
+                                    <span>Enviar p/ Orçar</span>
+                                  </button>
+                                )
                               )}
                               {canEdit && (
                                 <>
@@ -1293,7 +1228,7 @@ export default function LevantamentosView() {
 
                   {/* Data Solicitacao (Mask) */}
                   <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider pb-1">Data de Solicitação *</label>
+                    <label className="block text-[10px] font-black uppercase text-slate-500 tracking-wider pb-1">Data de Solicitação</label>
                     <input
                       type="text"
                       maxLength={10}
@@ -1301,7 +1236,6 @@ export default function LevantamentosView() {
                       value={formDataSolicitacao}
                       onChange={(e) => handleDateInputChange(e, setFormDataSolicitacao)}
                       placeholder="DD/MM/AAAA"
-                      required
                     />
                   </div>
 
@@ -1322,7 +1256,7 @@ export default function LevantamentosView() {
                   <div className="col-span-2 border-t border-slate-100 pt-3">
                     <div className="flex justify-between items-center pb-2 flex-wrap gap-1">
                       <div>
-                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material HD</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 tracking-wider">Material</label>
                         <span className="text-[9px] text-slate-400 block">Preencha o material digitando ou use o catálogo opcional</span>
                       </div>
                       <button
@@ -1330,7 +1264,7 @@ export default function LevantamentosView() {
                         onClick={() => setFormSubestruturas([...formSubestruturas, { material: "", qtdHD: "", valorUnitario: "", unidade: "Metro Quadrado" }])}
                         className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[9px] font-extrabold uppercase rounded-lg border border-emerald-200 inline-flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3 h-3 text-emerald-600" /> Adicionar Material HD
+                        <Plus className="w-3 h-3 text-emerald-600" /> Adicionar Material
                       </button>
                     </div>
 
@@ -1338,7 +1272,7 @@ export default function LevantamentosView() {
                       {formSubestruturas.map((item, idx) => (
                         <div key={idx} className="bg-blue-50/50 p-3 border border-blue-200 rounded-xl space-y-2 relative">
                           <div className="col-span-12">
-                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material HD (PREENCHER)</label>
+                            <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Descrição do Material (PREENCHER)</label>
                             <input
                               type="text"
                               className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:ring-1 focus:ring-brand-primary"
@@ -1354,7 +1288,7 @@ export default function LevantamentosView() {
 
                           <div className="flex gap-2 items-center">
                             <div className="flex-1">
-                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd HD</label>
+                              <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Qtd</label>
                               <input
                                 type="text"
                                 className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-right font-mono"
@@ -1384,7 +1318,7 @@ export default function LevantamentosView() {
                               </select>
                             </div>
 
-                            <div className="flex-1">
+                            <div className="flex-1 hidden">
                               <label className="block text-[8px] font-bold text-slate-400 uppercase pb-0.5">Valor Unit. (R$)</label>
                               <input
                                 type="text"
@@ -1684,7 +1618,11 @@ export default function LevantamentosView() {
       {tooltip.visible && createPortal(
         <div
           className="absolute z-[60] bg-white text-slate-800 text-xs rounded-xl p-4 shadow-xl border border-slate-200 w-96 animate-in fade-in zoom-in-95 duration-100 pointer-events-none"
-          style={{ top: tooltip.y, left: tooltip.x }}
+          style={{ 
+            top: tooltip.y, 
+            left: tooltip.x,
+            transform: tooltip.placement === 'top' ? 'translateY(-100%)' : 'none'
+          }}
         >
           {tooltip.content}
         </div>,

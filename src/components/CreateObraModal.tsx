@@ -220,7 +220,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
             <div>
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                {projectFilter === "A_FECHAR" ? "Início do Orçamento" : "Início do Contrato"}
+                Envio do Orçamento
               </label>
               <input
                 type="date"
@@ -234,7 +234,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
             <div>
               <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                {projectFilter === "A_FECHAR" ? "Fim do Orçamento" : "Fim do Contrato"}
+                Aprovação do Orçamento
               </label>
               <input
                 type="date"

@@ -29,6 +29,7 @@ import LevantamentosView from "./components/LevantamentosView";
 import UsuariosView from "./components/UsuariosView";
 import LoginView from "./components/LoginView";
 import FluxoOperacionalView from "./components/FluxoOperacionalView";
+import ContratosAtivosView from "./components/ContratosAtivosView";
 
 // Global Fetch Interceptor to automatically attach authorization tokens
 const originalFetch = window.fetch;
@@ -127,6 +128,7 @@ function AppContent() {
       if (activeView === "dashboard" && hasPermission("modulos", "dashboard")) hasAccess = true;
       else if (activeView === "projects" && projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) hasAccess = true;
       else if (activeView === "projects" && projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar")) hasAccess = true;
+      else if (activeView === "contratos-ativos" && hasPermission("modulos", "contratosAtivos")) hasAccess = true;
       else if (activeView === "steps" && hasPermission("modulos", "etapasContrato")) hasAccess = true;
       else if (activeView === "levantamentos" && hasPermission("modulos", "levantamentosOrcamentos")) hasAccess = true;
       else if (activeView === "fluxo-operacional") hasAccess = true;
@@ -249,6 +251,24 @@ function AppContent() {
                 </button>
               )}
 
+              {hasPermission("modulos", "contratosAtivos") && (
+                <button
+                  onClick={() => {
+                    useUIStore.getState().navigateToContratosAtivos();
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    activeView === "contratos-ativos"
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_contratos_ativos"
+                >
+                  <Folders className="w-4 h-4 text-brand-accent" />
+                  Contratos Ativos
+                </button>
+              )}
+
               {hasPermission("modulos", "orcamentosAFechar") && (
                 <button
                   onClick={() => {
@@ -310,6 +330,13 @@ function AppContent() {
 
               {/* Fluxo Operacional - Expandable Accordion Menu */}
               {hasPermission("modulos", "fluxoOperacional") && (
+                hasPermission("modulos", "fluxoOperacionalDashboard") ||
+                hasPermission("modulos", "fluxoOperacionalTradicional") ||
+                hasPermission("modulos", "fluxoOperacionalExecutivo") ||
+                hasPermission("modulos", "fluxoOperacionalPainel") ||
+                hasPermission("modulos", "fluxoOperacionalWorkflow") ||
+                hasPermission("modulos", "fluxoOperacionalHistorico")
+              ) && (
                 <div className="space-y-1">
                   <button
                     onClick={() => {
@@ -555,6 +582,8 @@ function AppContent() {
               <DashboardView />
             ) : activeView === "projects" && ((projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) || (projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar"))) ? (
               <ProjectsListView />
+            ) : activeView === "contratos-ativos" && hasPermission("modulos", "contratosAtivos") ? (
+              <ContratosAtivosView />
             ) : activeView === "steps" && hasPermission("modulos", "etapasContrato") ? (
               <ContractStepsView />
             ) : activeView === "levantamentos" && hasPermission("modulos", "levantamentosOrcamentos") ? (

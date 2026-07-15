@@ -13,7 +13,9 @@ import {
   Edit2,
   Trash2,
   FileSpreadsheet,
-  RotateCcw
+  RotateCcw,
+  Lock,
+  Send
 } from "lucide-react";
 import { useUIStore, useAuthStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
@@ -39,8 +41,11 @@ export default function ProjectsListView() {
   const [stickyColumns, setStickyColumns] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState<string>("");
+  const [restoreConfirmationId, setRestoreConfirmationId] = useState<string | null>(null);
+  const [restoreConfirmationName, setRestoreConfirmationName] = useState<string>("");
   const [permanentDeleteConfirmationId, setPermanentDeleteConfirmationId] = useState<string | null>(null);
   const [permanentDeleteConfirmationName, setPermanentDeleteConfirmationName] = useState<string>("");
+  const [isSendingId, setIsSendingId] = useState<string | null>(null);
 
   // Auto-reset trash view on tab change
   useEffect(() => {
@@ -77,11 +82,13 @@ export default function ProjectsListView() {
     }).format(val);
   };
 
-  const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
+  const handleDeleteProject = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Tem certeza que deseja enviar o projeto "${name}" para a lixeira?`)) {
-      return;
-    }
+    setDeleteConfirmationId(id);
+    setDeleteConfirmationName(name);
+  };
+
+  const executeDeleteProject = async (id: string) => {
     try {
       const res = await fetch(`/api/projetos/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Erro ao remover projeto");
@@ -91,11 +98,13 @@ export default function ProjectsListView() {
     }
   };
 
-  const handleRestoreProject = async (id: string, name: string, e: React.MouseEvent) => {
+  const handleRestoreProject = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Tem certeza que deseja restaurar o projeto "${name}"?`)) {
-      return;
-    }
+    setRestoreConfirmationId(id);
+    setRestoreConfirmationName(name);
+  };
+
+  const executeRestoreProject = async (id: string) => {
     try {
       const res = await fetch(`/api/projetos/${id}/restaurar`, { method: "POST" });
       if (!res.ok) throw new Error("Erro ao restaurar projeto");
@@ -281,14 +290,39 @@ export default function ProjectsListView() {
           )}
 
           {/* Exportar Excel */}
-          <button
-            onClick={handleExportToExcel}
-            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
-            id="export_all_projects_excel_btn"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar Excel</span>
-          </button>
+          {(() => {
+            const exportPermissionKey = projectFilter === "A_FECHAR" ? "exportarExcelOrcamentos" : "exportarExcelContratos";
+            const canViewExport = hasPermission("modulos", exportPermissionKey, "visualizar");
+            const canExecuteExport = hasPermission("modulos", exportPermissionKey, "editar");
+            
+            if (!canViewExport) return null;
+            
+            if (!canExecuteExport) {
+              return (
+                <button
+                  type="button"
+                  onClick={() => alert("Apenas visualização. Você precisa de permissão de edição para exportar para o Excel.")}
+                  className="px-3 py-2 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-not-allowed opacity-75"
+                  id="export_all_projects_excel_btn"
+                  title="Permissão de exportação necessária (Edição)"
+                >
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span className="hidden sm:inline text-slate-400">Exportar Excel (Bloqueado)</span>
+                </button>
+              );
+            }
+
+            return (
+              <button
+                onClick={handleExportToExcel}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                id="export_all_projects_excel_btn"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span className="hidden sm:inline">Exportar Excel</span>
+              </button>
+            );
+          })()}
           
           {hasPermission("acoes", "editar") && (
             <button
@@ -424,6 +458,7 @@ export default function ProjectsListView() {
                     {hasPermission("colunas", "valorContrato") ? "Margem Líquida" : "Margem (Restrita)"}
                   </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
+                  {!showLixeira && <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Enviar Para Equipe</th>}
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Ações</th>
                 </tr>
               </thead>
@@ -456,9 +491,9 @@ export default function ProjectsListView() {
                         {(p.dataInicioContrato || p.dataFimContrato) && (
                           <div className="text-[10px] text-slate-400 font-semibold mt-1.5 flex flex-wrap items-center gap-1">
                             <span>Período:</span>
-                            <span className="text-slate-500 font-bold">{p.dataInicioContrato ? formatDateBR(p.dataInicioContrato) : "N/I"}</span>
+                            <span className="text-slate-500 font-bold">{(p.dataInicioContrato && p.dataInicioContrato !== "N/I") ? formatDateBR(p.dataInicioContrato) : ""}</span>
                             <span className="opacity-60">até</span>
-                            <span className="text-slate-500 font-bold">{p.dataFimContrato ? formatDateBR(p.dataFimContrato) : "N/I"}</span>
+                            <span className="text-slate-500 font-bold">{(p.dataFimContrato && p.dataFimContrato !== "N/I") ? formatDateBR(p.dataFimContrato) : ""}</span>
                           </div>
                         )}
                       </td>
@@ -486,6 +521,36 @@ export default function ProjectsListView() {
                           {hasPermission("colunas", "margemLiquida") ? `${p.percentualMargem.toFixed(2)}%` : "••••••"}
                         </span>
                       </td>
+                      {!showLixeira && (
+                        <td className="py-3.5 px-5 text-center">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setIsSendingId(p.id);
+                              try {
+                                const res = await fetch("/api/enviar-para-equipe", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ contratoNome: p.nome, detalhes: `Valor: ${p.valorContrato}, Margem: ${p.percentualMargem.toFixed(2)}%` })
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || "Erro ao enviar e-mail");
+                                alert("E-mail enviado com sucesso!");
+                              } catch (err: any) {
+                                alert(err.message);
+                              } finally {
+                                setIsSendingId(null);
+                              }
+                            }}
+                            disabled={isSendingId === p.id}
+                            className="p-1 px-2 hover:bg-slate-100 text-brand-text-secondary hover:text-brand-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px] disabled:opacity-50"
+                            title="Enviar para Equipe"
+                          >
+                            <Send className={`w-3 h-3 ${isSendingId === p.id ? 'animate-spin' : ''}`} />
+                            {isSendingId === p.id ? 'Enviando...' : 'Enviar'}
+                          </button>
+                        </td>
+                      )}
                       <td className="py-3.5 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           {showLixeira ? (
@@ -889,6 +954,97 @@ export default function ProjectsListView() {
                   }}
                 >
                   Excluir Permanentemente
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: DELETE CONFIRMATION */}
+      <AnimatePresence>
+        {deleteConfirmationId && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-slate-100 overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider">
+                Excluir Orçamento
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                Tem certeza que deseja enviar o projeto <span className="font-bold text-slate-900">"{deleteConfirmationName}"</span> para a lixeira?
+              </p>
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmationId(null);
+                    setDeleteConfirmationName("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  onClick={() => {
+                    executeDeleteProject(deleteConfirmationId);
+                    setDeleteConfirmationId(null);
+                    setDeleteConfirmationName("");
+                  }}
+                >
+                  Excluir
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: RESTORE CONFIRMATION */}
+      <AnimatePresence>
+        {restoreConfirmationId && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-emerald-100 overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="text-sm font-black uppercase text-emerald-600 tracking-wider">
+                Restaurar Levantamento
+              </h3>
+              <p className="text-xs text-emerald-700 leading-relaxed font-bold">
+                Tem certeza que deseja restaurar levantamento?
+              </p>
+              <p className="text-[11px] text-slate-500 font-medium">
+                O orçamento <span className="font-bold text-slate-700">"{restoreConfirmationName}"</span> será retornado para a lista ativa.
+              </p>
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRestoreConfirmationId(null);
+                    setRestoreConfirmationName("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  onClick={() => {
+                    executeRestoreProject(restoreConfirmationId);
+                    setRestoreConfirmationId(null);
+                    setRestoreConfirmationName("");
+                  }}
+                >
+                  Restaurar
                 </button>
               </div>
             </motion.div>

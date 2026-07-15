@@ -20,6 +20,7 @@ export interface SubItemOrcamento {
   descricao: string;
   valor: number;
   qtd?: number;
+  unidade?: 'Peças' | 'Metro Quadrado';
 }
 
 export interface ItemOrcamento {
@@ -27,6 +28,7 @@ export interface ItemOrcamento {
   descricao: string;
   valor: number;
   status: ItemStatus;
+  unidade?: 'Peças' | 'Metro Quadrado';
   observacao: string | null;
   obraId: string;
   categoriaId: string;
@@ -184,6 +186,22 @@ export interface ObraSummary {
 }
 
 export type ProjetoSummary = ObraSummary;
+
+export interface ContratoAtivo {
+  id: string;
+  obraId: string;
+  cnpj: string | null;
+  contato: string | null;
+  endereco: string | null;
+  enderecoEntrega: string | null;
+  condicoesComerciais: string | null;
+  freteTipo: 'CIF' | 'FOB';
+  entrada: number;
+  saldoReceber: number;
+  tipoObra?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface DashboardStats {
   totalContratos: number;

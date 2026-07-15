@@ -15,6 +15,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
   const [categoriaId, setCategoriaId] = useState("");
   const [valor, setValor] = useState("");
   const [status, setStatus] = useState<ItemStatus>("ATIVO");
+  const [unidade, setUnidade] = useState<"Peças" | "Metro Quadrado">("Metro Quadrado");
   const [observacao, setObservacao] = useState("");
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,14 +28,26 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
   const isFixedItem = itemToEdit ? (itemToEdit.descricao === "Imposto Fixo" || itemToEdit.descricao === "Custo ADM") : false;
   const hasSubItems = !!(itemToEdit?.subitens && itemToEdit.subitens.length > 0);
 
+  const parseCurrencyToNumber = (val: string): number => {
+    if (!val) return 0;
+    const cleaned = val.replace(/\./g, "").replace(",", ".");
+    return parseFloat(cleaned) || 0;
+  };
+
   const getBRLPreview = (valStr: string) => {
-    let cleanVal = valStr.replace(/[^0-9,.-]+/g, "");
-    if (cleanVal.includes(",") && !cleanVal.includes(".")) {
-      cleanVal = cleanVal.replace(",", ".");
-    }
-    const rawVal = parseFloat(cleanVal);
-    if (isNaN(rawVal)) return null;
+    const rawVal = parseCurrencyToNumber(valStr);
+    if (!rawVal) return null;
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(rawVal);
+  };
+
+  const handleCurrencyInputChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+    let value = e.target.value.replace(/\D/g, "");
+    if (value === "") {
+      setter("");
+      return;
+    }
+    const numericValue = parseInt(value, 10) / 100;
+    setter(numericValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
   // Fetch categories list
@@ -77,6 +90,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
       setDescricao(itemToEdit.descricao);
       setCategoriaId(itemToEdit.categoriaId);
       setStatus(itemToEdit.status);
+      setUnidade((itemToEdit as any).unidade || "Metro Quadrado");
       
       const isFixed = itemToEdit.descricao === "Imposto Fixo" || itemToEdit.descricao === "Custo ADM";
       if (isFixed) {
@@ -88,18 +102,19 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
           setValor("");
         } else {
           setAdjustmentType("VALUE");
-          setValor(itemToEdit.valor.toString());
+          setValor(itemToEdit.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
           setPercentValue("");
         }
         setObservacao(itemToEdit.observacao || "");
       } else {
-        setValor(itemToEdit.valor.toString());
+        setValor(itemToEdit.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
         setObservacao(itemToEdit.observacao || "");
       }
     } else {
       setDescricao("");
       setValor("");
       setStatus("ATIVO");
+      setUnidade("Metro Quadrado");
       setObservacao("");
       setAdjustmentType("PERCENT");
       setPercentValue("");
@@ -137,11 +152,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
         parsedValor = Math.round(valorContrato * (parsedPercent / 100) * 100) / 100;
         savedObservacao = percentValue.trim() + "%";
       } else {
-        let cleanValStr = valor.replace(/[^0-9,.-]+/g, "");
-        if (cleanValStr.includes(",") && !cleanValStr.includes(".")) {
-          cleanValStr = cleanValStr.replace(",", ".");
-        }
-        parsedValor = parseFloat(cleanValStr);
+        parsedValor = parseCurrencyToNumber(valor);
         if (isNaN(parsedValor) || parsedValor < 0) {
           setError("Informe um valor de custo válido");
           return;
@@ -149,11 +160,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
         savedObservacao = "Valor Fixo";
       }
     } else {
-      let cleanValStr = valor.replace(/[^0-9,.-]+/g, "");
-      if (cleanValStr.includes(",") && !cleanValStr.includes(".")) {
-        cleanValStr = cleanValStr.replace(",", ".");
-      }
-      parsedValor = parseFloat(cleanValStr);
+      parsedValor = parseCurrencyToNumber(valor);
       if (isNaN(parsedValor) || parsedValor < 0) {
         setError("Informe um valor de custo válido");
         return;
@@ -168,6 +175,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
       categoriaId,
       valor: parsedValor,
       status,
+      unidade,
       observacao: savedObservacao,
     };
 
@@ -288,17 +296,20 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
 
                 <div>
                   <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                    Custo do Item (R$) *
+                    Custo do Item *
                   </label>
-                  <input
-                    type="text"
-                    className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors font-mono font-semibold disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100"
-                    placeholder="Ex: 5000"
-                    value={valor}
-                    onChange={(e) => setValor(e.target.value)}
-                    disabled={loading}
-                    id="item_valor_input"
-                  />
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3.5 text-slate-400 font-mono text-sm font-bold select-none">R$</span>
+                    <input
+                      type="text"
+                      className="w-full text-sm py-2 pl-9 pr-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors font-mono font-semibold disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100"
+                      placeholder="0,00"
+                      value={valor}
+                      onChange={(e) => handleCurrencyInputChange(e, setValor)}
+                      disabled={loading}
+                      id="item_valor_input"
+                    />
+                  </div>
                   {hasSubItems && (
                     <p className="mt-1 text-[8.5px] font-bold text-amber-600 leading-tight">
                       Este item possui composições de subitens. Alterar o valor aqui excluirá todos os subitens após confirmação.
@@ -310,6 +321,38 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
                       <span className="text-brand-primary font-extrabold">{getBRLPreview(valor)}</span>
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+                  Unidade do Item *
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-750 font-bold cursor-pointer bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-2.5 w-1/2 justify-center hover:bg-slate-100 transition-colors">
+                    <input
+                      type="radio"
+                      name="item_unidade"
+                      value="Metro Quadrado"
+                      checked={unidade === "Metro Quadrado"}
+                      onChange={() => setUnidade("Metro Quadrado")}
+                      disabled={loading}
+                      className="cursor-pointer text-brand-primary focus:ring-brand-primary accent-emerald-600 h-4 w-4"
+                    />
+                    Metro Quadrado
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-755 font-bold cursor-pointer bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-2.5 w-1/2 justify-center hover:bg-slate-100 transition-colors">
+                    <input
+                      type="radio"
+                      name="item_unidade"
+                      value="Peças"
+                      checked={unidade === "Peças"}
+                      onChange={() => setUnidade("Peças")}
+                      disabled={loading}
+                      className="cursor-pointer text-brand-primary focus:ring-brand-primary accent-emerald-600 h-4 w-4"
+                    />
+                    Peças
+                  </label>
                 </div>
               </div>
 
@@ -383,17 +426,20 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
               ) : (
                 <div className="animate-in fade-in duration-100">
                   <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
-                    Valor Fixo (R$) *
+                    Valor Fixo *
                   </label>
-                  <input
-                    type="text"
-                    className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors font-mono font-semibold"
-                    placeholder="Ex: 15000"
-                    value={valor}
-                    onChange={(e) => setValor(e.target.value)}
-                    disabled={loading}
-                    id="item_valor_input"
-                  />
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3.5 text-slate-400 font-mono text-sm font-bold select-none">R$</span>
+                    <input
+                      type="text"
+                      className="w-full text-sm py-2 pl-9 pr-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors font-mono font-semibold"
+                      placeholder="0,00"
+                      value={valor}
+                      onChange={(e) => handleCurrencyInputChange(e, setValor)}
+                      disabled={loading}
+                      id="item_valor_input"
+                    />
+                  </div>
                   {valor && getBRLPreview(valor) && (
                     <div id="cost_preview_brl_fixed" className="mt-1.5 text-[11px] font-mono text-brand-text-secondary bg-white px-3 py-1.5 rounded-lg border border-slate-100/60 flex justify-between items-center animate-in fade-in duration-150">
                       <span className="font-semibold text-slate-400 font-sans">Confirmado:</span>

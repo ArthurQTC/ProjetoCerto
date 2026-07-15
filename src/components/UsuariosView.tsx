@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Users, 
@@ -16,7 +17,9 @@ import {
   Key,
   FolderOpen,
   Shuffle,
-  Calculator
+  Calculator,
+  FileSpreadsheet,
+  Layers
 } from "lucide-react";
 import { useAuthStore, Usuario } from "../store";
 
@@ -72,7 +75,10 @@ const DEFAULT_PERMISSIONS = {
   modulos: {
     dashboard: "editar",
     contratosConsolidados: "editar",
+    contratosAtivos: "editar",
     orcamentosAFechar: "editar",
+    exportarExcelContratos: "editar",
+    exportarExcelOrcamentos: "editar",
     etapasContrato: "nenhum",
     levantamentosOrcamentos: "editar",
     usuarios: "nenhum",
@@ -118,16 +124,58 @@ const PERMISSION_HIERARCHY = [
         name: "Gestão de Projetos e Obras",
         description: "Lista de contratos de obras ativas e documentos vinculados",
         tools: [
-          { key: "contratosConsolidados", category: "modulos", label: "Contratos Consolidados", tooltip: "Acesso à lista e detalhes de Obras ativas. Edição permite alterar, adicionar e remover itens e documentos do contrato." },
-          { key: "orcamentosAFechar", category: "modulos", label: "Orçamentos a Fechar", tooltip: "Acesso aos orçamentos pendentes. Edição permite alterar, excluir itens e documentos dentro de orçamentos." }
+          { 
+            key: "contratosConsolidados", 
+            category: "modulos", 
+            label: "Contratos Consolidados", 
+            tooltip: "Acesso à lista e detalhes de Obras ativas. Edição permite alterar, adicionar e remover itens e documentos do contrato.",
+            rlsFields: [
+              { key: "valorContrato", category: "colunas", label: "Coluna: Valor Contratado (Fechado)", tooltip: "Controla a visibilidade e edição do valor de faturamento do contrato nas tabelas e detalhes." },
+              { key: "margemLiquida", category: "colunas", label: "Coluna: Margem Líquida da Obra", tooltip: "Controla se o cálculo da margem de lucro (R$ e %) é exibido ou ocultado nas tabelas." },
+              { key: "custoAdm", category: "colunas", label: "Coluna: Custo Administrativo", tooltip: "Controla a visibilidade e edição do valor do custo administrativo alocado à obra." },
+              { key: "exportarExcelContratos", category: "modulos", label: "Função: Exportar para Excel (XLS)", tooltip: "Permite que o usuário exporte os dados financeiros e cadastrais de obras para planilhas excel." }
+            ]
+          },
+          { 
+            key: "contratosAtivos", 
+            category: "modulos", 
+            label: "Contratos Ativos", 
+            tooltip: "Acesso à lista e preenchimento de Dados do Contrato (CNPJ, Endereço, CIF/FOB, Entrada e Saldo).",
+            rlsFields: []
+          },
+          { 
+            key: "orcamentosAFechar", 
+            category: "modulos", 
+            label: "Orçamentos a Fechar", 
+            tooltip: "Acesso aos orçamentos pendentes. Edição permite alterar, excluir itens e documentos dentro de orçamentos.",
+            rlsFields: [
+              { key: "valorContrato", category: "colunas", label: "Coluna: Valor Orçado (Proposta)", tooltip: "Controla a visibilidade do valor total orçado em propostas pendentes." },
+              { key: "valorItens", category: "colunas", label: "Coluna: Valores Unitários de Itens", tooltip: "Mascara ou exibe os custos unitários das composições e insumos na lista de orçamento." },
+              { key: "exportarExcelOrcamentos", category: "modulos", label: "Função: Exportar Propostas (XLS)", tooltip: "Permite exportar a lista de orçamentos a fechar para planilhas XLS." }
+            ]
+          }
         ]
       },
       {
         name: "Orçamentação e Cronograma",
         description: "Levantamento de materiais, composições e definição de cronograma",
         tools: [
-          { key: "levantamentosOrcamentos", category: "modulos", label: "Levantamentos / Orçamentos", tooltip: "Controle de levantamentos. Edição permite criar, editar e excluir levantamentos e alterar status." },
-          { key: "etapasContrato", category: "modulos", label: "Etapas do Contrato (Cronograma)", tooltip: "Gestão do cronograma e macro-etapas. Edição permite criar e modificar etapas." }
+          { 
+            key: "levantamentosOrcamentos", 
+            category: "modulos", 
+            label: "Levantamentos / Orçamentos", 
+            tooltip: "Controle de levantamentos. Edição permite criar, editar e excluir levantamentos e alterar status.",
+            rlsFields: [
+              { key: "valorItens", category: "colunas", label: "Coluna: Valores Unitários de Planilha", tooltip: "Mascara ou exibe os custos e preços unitários dos levantamentos de materiais/serviços." },
+              { key: "subestruturas", category: "colunas", label: "Função: Expandir Subestruturas (m²)", tooltip: "Permite visualizar ou editar o desdobramento e memorial de cálculo de áreas (subestruturas)." }
+            ]
+          },
+          { 
+            key: "etapasContrato", 
+            category: "modulos", 
+            label: "Etapas do Contrato (Cronograma)", 
+            tooltip: "Gestão do cronograma e macro-etapas. Edição permite criar e modificar etapas." 
+          }
         ]
       }
     ]
@@ -139,28 +187,72 @@ const PERMISSION_HIERARCHY = [
     icon: "Shuffle",
     groups: [
       {
-        name: "Monitores Visuais",
-        description: "Pipelines e diagramas visuais e interativos de acompanhamento",
+        name: "Workflow & Monitores Operacionais",
+        description: "Pipelines, mesa de workflow e diagramas interativos de acompanhamento",
         tools: [
-          { key: "fluxoOperacionalPainel", category: "modulos", label: "Painel Operacional (Kanban)", tooltip: "Permite visualizar ou editar o Painel Operacional (Kanban)." },
-          { key: "fluxoOperacionalTradicional", category: "modulos", label: "Fluxograma Tradicional (BPMN)", tooltip: "Permite visualizar ou interagir com o Fluxograma Tradicional." },
-          { key: "fluxoOperacionalExecutivo", category: "modulos", label: "Fluxograma Executivo (Reduzido)", tooltip: "Permite visualizar ou editar o Fluxograma Executivo." }
+          { 
+            key: "fluxoOperacionalWorkflow", 
+            category: "modulos", 
+            label: "Mesa de Workflow", 
+            tooltip: "Permite gerenciar movimentações e listas de contratos no Workflow.",
+            rlsFields: [
+               { key: "fluxoOperacionalWorkflow", category: "modulos", label: "Controle: Acesso ao Workflow", tooltip: "Permite gerenciar movimentações e listas de contratos no Workflow." },
+               { key: "fluxoOperacionalPainel", category: "modulos", label: "Controle: Acesso ao Painel", tooltip: "Permite visualizar ou editar o Painel Operacional (Kanban)." },
+               { key: "fluxoOperacionalTradicional", category: "modulos", label: "Controle: Acesso ao Fluxograma Tradicional", tooltip: "Permite visualizar ou interagir com o Fluxograma Tradicional." },
+               { key: "fluxoOperacionalExecutivo", category: "modulos", label: "Controle: Acesso ao Fluxograma Executivo", tooltip: "Permite visualizar ou editar o Fluxograma Executivo." }
+            ]
+          },
+          { 
+            key: "fluxoOperacionalPainel", 
+            category: "modulos", 
+            label: "Painel Operacional (Kanban)", 
+            tooltip: "Permite visualizar ou editar o Painel Operacional (Kanban).",
+            rlsFields: [
+               { key: "fluxoOperacionalPainel", category: "modulos", label: "Controle: Acesso ao Painel", tooltip: "Permite visualizar ou editar o Painel Operacional (Kanban)." }
+            ]
+          },
+          { 
+            key: "fluxoOperacionalTradicional", 
+            category: "modulos", 
+            label: "Fluxograma Tradicional (BPMN)", 
+            tooltip: "Permite visualizar ou interagir com o Fluxograma Tradicional.",
+            rlsFields: [
+               { key: "fluxoOperacionalTradicional", category: "modulos", label: "Controle: Acesso ao Fluxograma Tradicional", tooltip: "Permite visualizar ou interagir com o Fluxograma Tradicional." }
+            ]
+          },
+          { 
+            key: "fluxoOperacionalExecutivo", 
+            category: "modulos", 
+            label: "Fluxograma Executivo (Reduzido)", 
+            tooltip: "Permite visualizar ou editar o Fluxograma Executivo.",
+            rlsFields: [
+               { key: "fluxoOperacionalExecutivo", category: "modulos", label: "Controle: Acesso ao Fluxograma Executivo", tooltip: "Permite visualizar ou editar o Fluxograma Executivo." }
+            ]
+          }
         ]
       },
       {
         name: "Coordenação & Auditoria",
-        description: "Log de histórico e movimentações no fluxo",
+        description: "Indicadores operacionais e histórico completo de movimentações",
         tools: [
-          { key: "fluxoOperacionalWorkflow", category: "modulos", label: "Mesa de Workflow", tooltip: "Permite gerenciar movimentações e listas de contratos no Workflow." },
-          { key: "fluxoOperacionalHistorico", category: "modulos", label: "Histórico de Movimentações (Logs)", tooltip: "Permite visualizar o histórico completo de movimentações de contratos." }
-        ]
-      },
-      {
-        name: "Geral & Configurações de Fluxo",
-        description: "Módulos pai e inteligência integrada do fluxo operacional",
-        tools: [
-          { key: "fluxoOperacional", category: "modulos", label: "Fluxo Operacional - Geral", tooltip: "Módulo pai do Fluxo Operacional." },
-          { key: "fluxoOperacionalDashboard", category: "modulos", label: "Dashboard Operacional (KPIs)", tooltip: "Permite visualizar os indicadores e gráficos operacionais." }
+          { 
+            key: "fluxoOperacionalDashboard", 
+            category: "modulos", 
+            label: "Dashboard Operacional (KPIs)", 
+            tooltip: "Permite visualizar os indicadores e gráficos operacionais do fluxo.",
+            rlsFields: [
+               { key: "fluxoOperacionalDashboard", category: "modulos", label: "Controle: Acesso ao Dashboard", tooltip: "Permite visualizar os indicadores e gráficos operacionais do fluxo." }
+            ]
+          },
+          { 
+            key: "fluxoOperacionalHistorico", 
+            category: "modulos", 
+            label: "Histórico de Movimentações", 
+            tooltip: "Permite visualizar o histórico completo de movimentações de contratos no fluxo.",
+            rlsFields: [
+               { key: "fluxoOperacionalHistorico", category: "modulos", label: "Controle: Acesso ao Histórico", tooltip: "Permite visualizar o histórico completo de movimentações de contratos no fluxo." }
+            ]
+          }
         ]
       }
     ]
@@ -172,50 +264,35 @@ const PERMISSION_HIERARCHY = [
     icon: "Calculator",
     groups: [
       {
-        name: "Indicadores de Cartões (Top Cards)",
-        description: "Visualização individual das métricas do Dashboard",
+        name: "Painel Principal de BI",
+        description: "Dashboard unificado de indicadores estratégicos e metas de faturamento",
         tools: [
-          { key: "totalContratos", category: "indicadores", label: "Faturamento Total (Contratos)", tooltip: "Exibir o card de Faturamento Total no Dashboard." },
-          { key: "totalVisaoGeral", category: "indicadores", label: "Custo Total (Visão Geral)", tooltip: "Exibir o card de Custo Total Projetado." },
-          { key: "totalMargem", category: "indicadores", label: "Margem Líquida Total (R$ e %)", tooltip: "Exibir o card de Margem Líquida." },
-          { key: "percentualMedio", category: "indicadores", label: "% Médio de Margem", tooltip: "Exibir o percentual médio dos contratos." },
-          { key: "totalAdm", category: "indicadores", label: "Despesa Adm Acumulada", tooltip: "Exibir a despesa administrativa total calculada." }
-        ]
-      },
-      {
-        name: "KPIs e Metas",
-        description: "Velocímetros e barras de progresso comparativas",
-        tools: [
-          { key: "kpiProjecao", category: "indicadores", label: "KPI de Projeção (Barra de Metas)", tooltip: "Exibir as barras de progresso (metas)." },
-          { key: "kpiAdm", category: "indicadores", label: "KPI de Administrativo (Medidor)", tooltip: "Exibir o medidor de despesas em relação ao faturamento." }
-        ]
-      },
-      {
-        name: "Gráficos de rateio",
-        description: "Gráficos de rateio e pizza do Dashboard",
-        tools: [
-          { key: "graficoCustos", category: "indicadores", label: "Gráfico de Composição de Custos", tooltip: "Exibir o gráfico de composição (Materiais, MDO, Adm)." }
+          { 
+            key: "dashboard", 
+            category: "modulos", 
+            label: "Painel Geral de BI", 
+            tooltip: "Acesso à tela de inteligência gerencial. Edição permite parametrizar metas e custos gerais.",
+            rlsFields: [
+              { key: "totalContratos", category: "indicadores", label: "Card: Faturamento Total (Contratos)", tooltip: "Exibir o card de Faturamento Total no Dashboard de BI." },
+              { key: "totalVisaoGeral", category: "indicadores", label: "Card: Custo Total (Visão Geral)", tooltip: "Exibir o card de Custo Total Projetado de obras." },
+              { key: "totalMargem", category: "indicadores", label: "Card: Margem Líquida Total (R$)", tooltip: "Exibir o card de Margem Líquida nominal no BI." },
+              { key: "percentualMedio", category: "indicadores", label: "Card: % Média de Margem", tooltip: "Exibir o percentual médio de margem dos contratos." },
+              { key: "totalAdm", category: "indicadores", label: "Card: Despesa Adm Acumulada", tooltip: "Exibir a despesa administrativa acumulada total calculada." },
+              { key: "kpiProjecao", category: "indicadores", label: "KPI: Barra de Metas e Projeção", tooltip: "Exibir as barras de progresso comparando o faturado com as metas." },
+              { key: "kpiAdm", category: "indicadores", label: "KPI: Velocímetro de Gasto ADM", tooltip: "Exibir o medidor analógico de despesas em relação ao faturamento." },
+              { key: "graficoCustos", category: "indicadores", label: "Gráfico: Composição e Rateio", tooltip: "Exibir o gráfico circular de rateio (Materiais, MDO, Administrativo)." }
+            ]
+          }
         ]
       }
     ]
   },
   {
     id: "seguranca",
-    name: "Módulo Segurança, Colunas Críticas & Operações",
-    description: "Restrição de acesso a dados confidenciais e privilégios administrativos.",
+    name: "Módulo Segurança, Configurações & Administração",
+    description: "Configurações globais de usuários, privilégios globais e auditorias.",
     icon: "Lock",
     groups: [
-      {
-        name: "Colunas Críticas (Restrição Financeira)",
-        description: "Exibição de valores, custos e margens confidenciais em tabelas",
-        tools: [
-          { key: "valorContrato", category: "colunas", label: "Valores Fechados do Contrato (Obras)", tooltip: "Ver (visualizar) ou alterar (editar) os valores fechados do contrato." },
-          { key: "margemLiquida", category: "colunas", label: "Margem Líquida da Obra", tooltip: "Ver (visualizar) a margem líquida da obra." },
-          { key: "custoAdm", category: "colunas", label: "Custo Adm Unitário (Obras)", tooltip: "Ver (visualizar) ou alterar (editar) o custo administrativo na edição de obra." },
-          { key: "valorItens", category: "colunas", label: "Valor de Itens/Subitens (Planilhas)", tooltip: "Ver (visualizar) ou alterar (editar) o valor unitário das composições (R$). Se removido, mascara valores." },
-          { key: "subestruturas", category: "colunas", label: "Subestruturas & Cálculo de m²", tooltip: "Controla a visualização e edição da expansão de subestruturas e cálculo de m² (HD e PC)." }
-        ]
-      },
       {
         name: "Operações Globais & Administração",
         description: "Privilégios de modificações de dados e controle de usuários",
@@ -233,6 +310,8 @@ export default function UsuariosView() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuthStore();
   const [modalOpen, setModalOpen] = useState(false);
+  const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState<string>("");
   const [editingUser, setEditingUser] = useState<Usuario | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -355,9 +434,8 @@ export default function UsuariosView() {
   });
 
   const handleDelete = (id: string, name: string) => {
-    if (confirm(`Tem certeza de que deseja remover o usuário "${name}"?`)) {
-      deleteUserMutation.mutate(id);
-    }
+    setDeleteConfirmationId(id);
+    setDeleteConfirmationName(name);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -391,11 +469,37 @@ export default function UsuariosView() {
     value: 'visualizar' | 'editar' | 'nenhum'
   ) => {
     setPermissoes(prev => {
-      const copy = { ...prev };
+      const copy = JSON.parse(JSON.stringify(prev || DEFAULT_PERMISSIONS));
       if (!copy[type]) {
         (copy as any)[type] = {};
       }
       (copy[type] as any)[key] = value;
+
+      // Automatically sync parent 'fluxoOperacional' key
+      if (type === "modulos") {
+        const submodules = [
+          "fluxoOperacionalDashboard",
+          "fluxoOperacionalTradicional",
+          "fluxoOperacionalExecutivo",
+          "fluxoOperacionalPainel",
+          "fluxoOperacionalWorkflow",
+          "fluxoOperacionalHistorico"
+        ];
+        if (submodules.includes(key)) {
+          let parentValue: 'visualizar' | 'editar' | 'nenhum' = 'nenhum';
+          for (const sub of submodules) {
+            const val = copy.modulos[sub];
+            if (val === 'editar') {
+              parentValue = 'editar';
+              break; // 'editar' is the highest priority
+            } else if (val === 'visualizar') {
+              parentValue = 'visualizar';
+            }
+          }
+          copy.modulos.fluxoOperacional = parentValue;
+        }
+      }
+
       return copy;
     });
   };
@@ -411,10 +515,705 @@ export default function UsuariosView() {
             copy[tool.category] = {};
           }
           copy[tool.category][tool.key] = value;
+          
+          // Cascading set for nested rlsFields inside the module
+          if (tool.rlsFields && tool.rlsFields.length > 0) {
+            tool.rlsFields.forEach(field => {
+              if (!copy[field.category]) {
+                copy[field.category] = {};
+              }
+              // Indicators/charts are usually read-only or blocked
+              if (field.category === "indicadores") {
+                copy[field.category][field.key] = value === "nenhum" ? "nenhum" : "visualizar";
+              } else {
+                copy[field.category][field.key] = value;
+              }
+            });
+          }
         });
       });
+
+      // Special handling: if we changed the Operational module, make sure the main parent permission key matches
+      if (moduleId === "operacional") {
+        copy.modulos.fluxoOperacional = value;
+      }
+
       return copy;
     });
+  };
+
+  const renderPermissionPreview = (key: string, tooltipText?: string) => {
+    switch (key) {
+      case "contratosAtivos":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Contratos Ativos</span>
+              <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">MÓDULO</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1.5">
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">CNPJ & Endereço</span>
+                <span className="text-[8px] bg-indigo-100 text-indigo-800 px-1 rounded-sm font-semibold">Dados</span>
+              </div>
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">CIF / FOB</span>
+                <span className="text-[8px] bg-indigo-100 text-indigo-800 px-1 rounded-sm font-semibold">Comercial</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "contratosConsolidados":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Tabela de Obras</span>
+              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">MÓDULO</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1.5">
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">Obra Alphaville</span>
+                <span className="text-[8px] bg-blue-100 text-blue-800 px-1 rounded-sm font-semibold">Ativo</span>
+              </div>
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">Reforma Clínica</span>
+                <span className="text-[8px] bg-blue-100 text-blue-800 px-1 rounded-sm font-semibold">Ativo</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "orcamentosAFechar":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Orçamentos Pendentes</span>
+              <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">PENDENTE</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1.5">
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">Galpão Logístico</span>
+                <span className="text-[8px] bg-amber-100 text-amber-800 px-1 rounded-sm font-semibold">Proposta</span>
+              </div>
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">Prédio Residencial</span>
+                <span className="text-[8px] bg-amber-100 text-amber-800 px-1 rounded-sm font-semibold">Proposta</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "exportarExcelContratos":
+      case "exportarExcelOrcamentos":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Relatório XLS Planilhado</span>
+              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">EXCEL</span>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 flex items-center gap-2">
+              <FileSpreadsheet className="w-6 h-6 text-emerald-600 shrink-0" />
+              <div className="space-y-1 flex-1">
+                <div className="h-1.5 w-24 bg-emerald-200 rounded-xs"></div>
+                <div className="h-1 w-16 bg-emerald-200 rounded-xs"></div>
+                <div className="h-1 w-20 bg-emerald-200 rounded-xs"></div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "levantamentosOrcamentos":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Planilha Quantitativa</span>
+              <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">PLANILHA</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+              <div className="flex justify-between text-[8px] text-slate-400 font-bold border-b border-slate-200 pb-0.5 mb-1">
+                <span>Item / Material</span>
+                <span>Qtd</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-700">
+                <span>Cimento CP-II</span>
+                <span className="font-mono font-bold">1.200 sc</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-700">
+                <span>Aço CA-50 10mm</span>
+                <span className="font-mono font-bold">4.500 kg</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "etapasContrato":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Cronograma de Obra</span>
+              <span className="text-[9px] bg-sky-100 text-sky-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">GANTT</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-2">
+              <div className="space-y-1">
+                <div className="flex justify-between text-[8px] text-slate-500 font-bold">
+                  <span>Fundações</span>
+                  <span>75%</span>
+                </div>
+                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div className="bg-blue-600 h-full rounded-full" style={{ width: "75%" }}></div>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[8px] text-slate-500 font-bold">
+                  <span>Superestrutura</span>
+                  <span>20%</span>
+                </div>
+                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div className="bg-blue-600 h-full rounded-full" style={{ width: "20%" }}></div>
+                </div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacionalPainel":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Painel Operacional (Kanban)</span>
+              <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">PIPELINE</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1.5">
+              <div className="bg-white p-1 rounded border border-slate-100 text-center text-[7px] font-bold text-slate-400">
+                <span>Estudo</span>
+                <div className="bg-indigo-50 border border-indigo-100 p-0.5 rounded-xs mt-1 text-[6px] text-indigo-700">Nº 102</div>
+              </div>
+              <div className="bg-white p-1 rounded border border-slate-100 text-center text-[7px] font-bold text-slate-400">
+                <span>Elabor.</span>
+                <div className="bg-amber-50 border border-amber-100 p-0.5 rounded-xs mt-1 text-[6px] text-amber-700 font-bold">Nº 098</div>
+              </div>
+              <div className="bg-white p-1 rounded border border-slate-100 text-center text-[7px] font-bold text-slate-400">
+                <span>Aprov.</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacionalTradicional":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Fluxograma Tradicional BPMN</span>
+              <span className="text-[9px] bg-teal-100 text-teal-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">DIAGRAMA</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-center gap-1.5">
+              <div className="w-5 h-5 rounded-full border border-teal-500 bg-teal-50 flex items-center justify-center text-[7px] font-bold text-teal-700 shadow-xs">Início</div>
+              <div className="w-3.5 h-px bg-teal-300"></div>
+              <div className="w-9 h-6 border border-slate-400 bg-white flex items-center justify-center text-[6px] font-medium text-slate-700 rounded-sm shadow-2xs">Orçamento</div>
+              <div className="w-3.5 h-px bg-teal-300"></div>
+              <div className="w-5 h-5 rounded-sm border border-amber-500 bg-amber-50 flex items-center justify-center text-[8px] font-bold text-amber-700 rotate-45 shadow-xs"><span className="-rotate-45 font-bold">?</span></div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacionalExecutivo":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Fluxograma Executivo</span>
+              <span className="text-[9px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">RESUMIDO</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex items-center justify-around gap-1">
+              <div className="bg-slate-200 text-slate-700 text-[8px] font-bold px-1.5 py-0.5 rounded-full">1. Orçamento</div>
+              <span className="text-slate-400 text-[9px]">&rarr;</span>
+              <div className="bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">2. Execução</div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacionalWorkflow":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Mesa de Workflow</span>
+              <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">WF MESA</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+              <div className="flex justify-between items-center text-[9px] bg-white p-1 rounded shadow-3xs">
+                <span className="font-medium text-slate-700">Fase 3: Elaborar Proposta</span>
+                <span className="text-[7px] text-brand-primary font-black">&rarr; Próxima</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacionalHistorico":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Histórico de Auditoria</span>
+              <span className="text-[9px] bg-slate-100 text-slate-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">AUDITORIA</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1.5">
+              <div className="flex gap-1 items-start text-[8px] text-slate-500 leading-none">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-0.5 shrink-0"></div>
+                <div>
+                  <strong className="text-slate-700 font-bold">Arthur</strong> aprovou proposta <span className="font-mono text-[7px]">14:15</span>
+                </div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacionalDashboard":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Métricas de Gargalo</span>
+              <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">KPI OPER</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex items-center justify-around gap-1.5">
+              <div className="text-center">
+                <span className="text-[8px] text-slate-400 block">Tempo Médio</span>
+                <span className="text-[11px] font-black font-mono text-purple-700">4.5 dias</span>
+              </div>
+              <div className="w-px h-6 bg-slate-300"></div>
+              <div className="text-center">
+                <span className="text-[8px] text-slate-400 block">Gargalo</span>
+                <span className="text-[10px] font-bold text-rose-600">Aprovação</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "totalContratos":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Faturamento Geral</span>
+              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">TOP CARD</span>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-3 shadow-md">
+              <span className="text-[8px] text-slate-400 uppercase font-bold">Faturamento Total</span>
+              <div className="text-xs font-black font-mono text-emerald-400 mt-0.5">R$ 14.580.000,00</div>
+              <span className="text-[7px] text-emerald-500 font-semibold">&uarr; +12% este mês</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "totalVisaoGeral":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Custo Geral</span>
+              <span className="text-[9px] bg-slate-100 text-slate-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">TOP CARD</span>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-3 shadow-md">
+              <span className="text-[8px] text-slate-400 uppercase font-bold">Custo Geral Projetado</span>
+              <div className="text-xs font-black font-mono text-slate-100 mt-0.5">R$ 11.230.000,00</div>
+              <span className="text-[7px] text-slate-400">Composições + ADM</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "totalMargem":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Margem de Lucro (R$)</span>
+              <span className="text-[9px] bg-brand-primary/10 text-brand-primary font-extrabold px-1.5 py-0.5 rounded-sm uppercase">TOP CARD</span>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-3 shadow-md">
+              <span className="text-[8px] text-slate-400 uppercase font-bold">Margem Líquida Total</span>
+              <div className="text-xs font-black font-mono text-brand-accent mt-0.5">R$ 3.350.000,00</div>
+              <span className="text-[7px] text-brand-accent font-semibold">22.97% média nominal</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "percentualMedio":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Média de Margem (%)</span>
+              <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">TOP CARD</span>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-3 shadow-md">
+              <span className="text-[8px] text-slate-400 uppercase font-bold">Média de Margem</span>
+              <div className="text-xs font-black font-mono text-sky-400 mt-0.5">22.97%</div>
+              <span className="text-[7px] text-sky-400">Eficiência geral</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "totalAdm":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Despesa ADM Acumulada</span>
+              <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">TOP CARD</span>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-3 shadow-md">
+              <span className="text-[8px] text-slate-400 uppercase font-bold">Despesas Administrativas</span>
+              <div className="text-xs font-black font-mono text-amber-400 mt-0.5">R$ 1.250.000,00</div>
+              <span className="text-[7px] text-amber-400 font-semibold">Soma de rateio geral</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "kpiProjecao":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Gráfico de Metas</span>
+              <span className="text-[9px] bg-orange-100 text-orange-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">KPI METAS</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
+              <div className="flex justify-between text-[8px] font-bold text-slate-500">
+                <span>Alvo Anual (R$ 15M)</span>
+                <span>97.2%</span>
+              </div>
+              <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                <div className="bg-amber-500 h-full rounded-full" style={{ width: "97.2%" }}></div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "kpiAdm":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Velocímetro de Gasto ADM</span>
+              <span className="text-[9px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">DIAL KPI</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col items-center justify-center">
+              <div className="w-14 h-7 overflow-hidden relative flex items-end justify-center">
+                <div className="w-14 h-14 rounded-full border-4 border-slate-200 border-b-transparent absolute"></div>
+                <div className="w-14 h-14 rounded-full border-4 border-rose-500 border-b-transparent border-l-transparent border-t-transparent absolute rotate-45"></div>
+                <span className="text-[8px] font-bold text-slate-600 mb-0.5 z-10">8.57%</span>
+              </div>
+              <span className="text-[7px] text-rose-600 font-bold mt-1">Limite Aceitável: 10%</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "graficoCustos":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Composição de Custos</span>
+              <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">PIZZA BI</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex items-center justify-center gap-2">
+              <div className="w-10 h-10 rounded-full border-4 border-emerald-500 border-r-indigo-500 border-t-indigo-500"></div>
+              <div className="text-[7px] space-y-0.5">
+                <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-xs bg-emerald-500"></div><span>Materiais</span></div>
+                <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-xs bg-indigo-500"></div><span>MDO</span></div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "valorContrato":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Valores Contratados</span>
+              <span className="text-[9px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">COLUNA RLS</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+              <div className="flex justify-between items-center bg-white p-1 rounded text-[10px] border border-slate-100">
+                <span className="font-medium text-slate-600">Sem Permissão</span>
+                <span className="font-mono text-slate-400">R$ ••••••••</span>
+              </div>
+              <div className="flex justify-between items-center bg-emerald-50 p-1 rounded text-[10px] border border-emerald-100">
+                <span className="font-medium text-slate-700">Com Permissão</span>
+                <span className="font-mono text-emerald-700 font-extrabold">R$ 1.580.000</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "margemLiquida":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Margem Líquida</span>
+              <span className="text-[9px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">COLUNA RLS</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+              <div className="flex justify-between items-center bg-white p-1 rounded text-[10px] border border-slate-100">
+                <span className="font-medium text-slate-600">Sem Permissão</span>
+                <span className="font-mono text-slate-400">••••••••</span>
+              </div>
+              <div className="flex justify-between items-center bg-teal-50 p-1 rounded text-[10px] border border-teal-100">
+                <span className="font-medium text-slate-700">Com Permissão</span>
+                <span className="font-mono text-teal-700 font-extrabold">24.50% (R$ 387k)</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "custoAdm":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Custo Adm. de Obra</span>
+              <span className="text-[9px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">COLUNA RLS</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+              <div className="flex justify-between items-center bg-white p-1 rounded text-[10px] border border-slate-100">
+                <span className="font-medium text-slate-600">Sem Permissão</span>
+                <span className="font-mono text-slate-400">R$ ••••••••</span>
+              </div>
+              <div className="flex justify-between items-center bg-amber-50 p-1 rounded text-[10px] border border-amber-100">
+                <span className="font-medium text-slate-700">Com Permissão</span>
+                <span className="font-mono text-amber-700 font-bold">R$ 4.200 / mês</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "valorItens":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Composições Unitárias</span>
+              <span className="text-[9px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">COLUNA RLS</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+              <div className="flex justify-between text-[9px] text-slate-400 font-bold border-b border-slate-200 pb-0.5 mb-1">
+                <span>Composição</span>
+                <span>Preço Unitário</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-700">
+                <span>Piso Cerâmico m²</span>
+                <span className="font-mono text-slate-400">R$ ••••••</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "subestruturas":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Cálculo de Áreas (m²)</span>
+              <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">SUBESTRUTURAS</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-2">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="font-bold text-slate-700">Ala Sul</span>
+                <span className="bg-indigo-100 text-indigo-800 text-[8px] font-bold px-1.5 rounded-sm">340 m²</span>
+              </div>
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="font-bold text-slate-700">Ala Norte</span>
+                <span className="bg-indigo-100 text-indigo-800 text-[8px] font-bold px-1.5 rounded-sm">180 m²</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "usuarios":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Usuários & Permissões</span>
+              <span className="text-[9px] bg-slate-100 text-slate-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">ADMIN</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center gap-2.5">
+              <div className="w-6 h-6 rounded-full bg-slate-300 flex items-center justify-center font-bold text-slate-700 text-xs">A</div>
+              <div className="leading-tight">
+                <div className="font-bold text-slate-700 text-[9px]">Arthur Quântica</div>
+                <div className="text-[7px] text-slate-400 font-mono">admin@quantica.eng.br</div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "visualizar":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Leitura Global</span>
+              <span className="text-[9px] bg-slate-100 text-slate-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">GLOBAL</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px] font-bold shadow-xs">&checkmark;</div>
+              <span className="text-[10px] font-extrabold text-slate-700">Pode Visualizar Telas</span>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "editar":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Modificações Globais</span>
+              <span className="text-[9px] bg-brand-primary/10 text-brand-primary font-extrabold px-1.5 py-0.5 rounded-sm uppercase">GLOBAL</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-center gap-3">
+              <div className="bg-white px-2 py-1 border border-slate-200 rounded text-[9px] font-bold text-slate-500 shadow-2xs">Adicionar</div>
+              <div className="bg-brand-primary text-white px-2 py-1 rounded text-[9px] font-bold shadow-2xs">Salvar</div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "fluxoOperacional":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Workflow Geral</span>
+              <span className="text-[9px] bg-slate-100 text-slate-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">GERAL</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-center">
+              <Shuffle className="w-5 h-5 text-slate-600" />
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      case "dashboard":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Painel Principal BI</span>
+              <span className="text-[9px] bg-slate-100 text-slate-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">MÓDULO</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-around gap-2">
+              <div className="w-7 h-7 rounded-full border-2 border-emerald-500 flex items-center justify-center text-[8px] font-black font-mono">BI</div>
+              <div className="space-y-1 flex-1">
+                <div className="h-1 bg-slate-300 rounded w-16"></div>
+                <div className="h-1 bg-slate-300 rounded w-10"></div>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+      default:
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1 mb-1">
+              <span className="font-extrabold text-slate-800">Recurso de Sistema</span>
+              <span className="text-[8px] bg-slate-100 text-slate-600 font-bold px-1 rounded-sm uppercase">RLS</span>
+            </div>
+            <p className="text-[10px] text-slate-500 font-medium">Controle granular para as colunas e visões desse item de dados.</p>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
+    }
+  };
+
+  const renderRLSFieldSelector = (
+    parentKey: string,
+    category: keyof Usuario["permissoes"], 
+    key: string, 
+    label: string,
+    tooltip?: string,
+    parentIsNone: boolean = false
+  ) => {
+    const valueRaw = permissoes[category]?.[key as any];
+    let currentVal: 'visualizar' | 'editar' | 'nenhum' = 'nenhum';
+    if (valueRaw === true) {
+      currentVal = (category === 'modulos' || category === 'colunas' || category === 'indicadores') ? 'editar' : 'visualizar';
+    } else if (valueRaw === false || valueRaw === undefined) {
+      currentVal = 'nenhum';
+    } else {
+      currentVal = valueRaw as 'visualizar' | 'editar' | 'nenhum';
+    }
+
+    const disabled = parentIsNone;
+
+    return (
+      <div 
+        key={key} 
+        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl border transition-all shadow-3xs group relative overflow-visible ${
+          disabled 
+            ? "bg-slate-50/50 border-slate-100 opacity-60 pointer-events-none select-none" 
+            : "bg-white border-slate-100 hover:border-slate-200 hover:shadow-2xs"
+        }`}
+      >
+        {/* Hover premium live preview */}
+        {!disabled && (
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 bg-white border border-slate-200 shadow-2xl rounded-2xl p-4 text-left pointer-events-none transition-all duration-200 invisible opacity-0 translate-y-2 scale-95 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100 z-50 border-t-4 border-t-brand-accent">
+            {renderPermissionPreview(key, tooltip)}
+            {/* Popover Arrow */}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b border-slate-200 rotate-45 -mt-1.5 shadow-xs"></div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${disabled ? 'bg-slate-300' : 'bg-brand-accent'}`}></div>
+          <span className="text-[10px] font-bold text-slate-600 truncate">{label}</span>
+          <span className="text-[8px] px-1 py-0.5 bg-slate-100 rounded text-slate-400 font-extrabold font-mono select-none uppercase shrink-0">
+            {category === 'colunas' ? 'RLS Coluna' : category === 'indicadores' ? 'RLS Indicador' : 'RLS Recurso'}
+          </span>
+          {disabled && (
+            <span className="text-[8px] bg-slate-100 text-slate-400 font-extrabold px-1 py-0.5 rounded flex items-center gap-1 shrink-0">
+              <Lock className="w-2 h-2" /> Trancado
+            </span>
+          )}
+        </div>
+        
+        <div className="flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60 shrink-0 w-full sm:w-auto">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setPermissionValue(category, key, 'nenhum')}
+            className={`flex-1 sm:flex-initial px-2 py-0.5 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
+              currentVal === 'nenhum' 
+                ? "bg-white text-slate-700 shadow-xs border border-slate-200/35 font-extrabold" 
+                : "text-slate-400 hover:text-slate-500"
+            }`}
+          >
+            Ocultar
+          </button>
+          
+          {category === 'indicadores' ? (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => setPermissionValue(category, key, 'visualizar')}
+              className={`flex-1 sm:flex-initial px-2 py-0.5 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
+                currentVal === 'visualizar' || currentVal === 'editar'
+                  ? "bg-indigo-100 text-indigo-800 shadow-xs border border-indigo-200/20 font-extrabold" 
+                  : "text-slate-400 hover:text-slate-500"
+              }`}
+            >
+              Exibir Card
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setPermissionValue(category, key, 'visualizar')}
+                className={`flex-1 sm:flex-initial px-2 py-0.5 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
+                  currentVal === 'visualizar' 
+                    ? "bg-amber-100 text-amber-800 shadow-xs border border-amber-200/20 font-extrabold" 
+                    : "text-slate-400 hover:text-slate-500"
+                }`}
+              >
+                Ler
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setPermissionValue(category, key, 'editar')}
+                className={`flex-1 sm:flex-initial px-2 py-0.5 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
+                  currentVal === 'editar' 
+                    ? "bg-brand-accent text-slate-900 font-extrabold shadow-xs" 
+                    : "text-slate-400 hover:text-slate-500"
+                }`}
+              >
+                Escrever
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const renderPermissionSelector = (
@@ -434,10 +1233,17 @@ export default function UsuariosView() {
     }
 
     return (
-      <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded-xl border border-slate-100 hover:border-slate-200/80 transition-all shadow-2xs" title={tooltip}>
-        <div className="flex items-center gap-1.5 cursor-help">
+      <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded-xl border border-slate-100 hover:border-slate-300 transition-all shadow-2xs group relative overflow-visible">
+        {/* Hover premium live preview */}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 bg-white border border-slate-200 shadow-2xl rounded-2xl p-4 text-left pointer-events-none transition-all duration-200 invisible opacity-0 translate-y-2 scale-95 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100 z-50 border-t-4 border-t-brand-primary">
+          {renderPermissionPreview(key, tooltip)}
+          {/* Popover Arrow */}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b border-slate-200 rotate-45 -mt-1.5 shadow-xs"></div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-bold text-slate-700">{label}</span>
-          {tooltip && <div className="w-3.5 h-3.5 rounded-full border border-slate-300 text-slate-400 text-[8px] flex items-center justify-center font-bold font-mono group relative">?<div className="absolute bottom-full mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[9px] p-2 rounded shadow-xl font-sans text-center whitespace-normal z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity before:content-[''] before:absolute before:-bottom-1 before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-t-slate-800">{tooltip}</div></div>}
+          <span className="text-[9px] px-1.5 py-0.5 bg-slate-50 rounded-sm text-slate-400 font-extrabold font-mono select-none">RLS</span>
         </div>
         
         <div className="flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60 shrink-0 w-full sm:w-auto">
@@ -635,6 +1441,49 @@ export default function UsuariosView() {
             Apenas administradores do sistema têm permissão para visualizar e gerenciar as contas de usuários e níveis de acesso.
           </p>
         </div>
+        {/* MODAL: DELETE CONFIRMATION */}
+        <AnimatePresence>
+          {deleteConfirmationId && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-slate-100 overflow-hidden p-6 space-y-4"
+              >
+                <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider">
+                  Excluir Usuário
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                  Deseja excluir usuário?
+                </p>
+                <div className="flex justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteConfirmationId(null);
+                      setDeleteConfirmationName("");
+                    }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                    onClick={() => {
+                      deleteUserMutation.mutate(deleteConfirmationId!);
+                      setDeleteConfirmationId(null);
+                      setDeleteConfirmationName("");
+                    }}
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -919,6 +1768,11 @@ export default function UsuariosView() {
 
                   <div className="space-y-6">
                     {PERMISSION_HIERARCHY.map((module) => {
+                      // HIDE operational module if user doesn't have permission for it
+                      if (module.id === "operacional" && (!permissoes.modulos?.fluxoOperacional || permissoes.modulos.fluxoOperacional === 'nenhum')) {
+                        return null;
+                      }
+
                       // Determine the icon component dynamically
                       const IconComponent = 
                         module.icon === "FolderOpen" ? FolderOpen :
@@ -927,7 +1781,7 @@ export default function UsuariosView() {
                         Lock;
 
                       return (
-                        <div key={module.id} className="bg-slate-50/70 rounded-2xl border border-slate-200/60 shadow-xs overflow-hidden">
+                        <div key={module.id} className="bg-slate-50/70 rounded-2xl border border-slate-200/60 shadow-xs overflow-visible">
                           {/* Header do Módulo */}
                           <div className="bg-white p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                             <div className="flex items-start gap-3">
@@ -968,9 +1822,9 @@ export default function UsuariosView() {
                           </div>
 
                           {/* Grupos e Ferramentas do Módulo */}
-                          <div className="p-4 space-y-5">
+                          <div className="p-4 space-y-6">
                             {module.groups.map((group, gIdx) => (
-                              <div key={gIdx} className="space-y-2.5">
+                              <div key={gIdx} className="space-y-3">
                                 <div className="flex items-center gap-2">
                                   <div className="h-px bg-slate-200 flex-1"></div>
                                   <div className="text-center px-3 py-1 bg-slate-100 rounded-full border border-slate-200 text-[9px] font-black text-slate-500 uppercase tracking-wider">
@@ -982,10 +1836,90 @@ export default function UsuariosView() {
                                   <p className="text-[9px] text-slate-400 font-semibold italic text-center -mt-1">{group.description}</p>
                                 )}
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                                  {group.tools.map((tool) => 
-                                    renderPermissionSelector(tool.category as keyof Usuario["permissoes"], tool.key, tool.label, tool.tooltip)
-                                  )}
+                                <div className="grid grid-cols-1 gap-4 pt-1">
+                                  {group.tools.map((tool) => {
+                                    const parentValRaw = permissoes[tool.category as keyof Usuario["permissoes"]]?.[tool.key as any];
+                                    const parentIsNone = parentValRaw === 'nenhum' || parentValRaw === false || parentValRaw === undefined;
+                                    
+                                    return (
+                                      <div key={tool.key} className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:border-slate-300 transition-all overflow-visible p-4 space-y-4">
+                                        {/* Main Module Permission Header Row */}
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
+                                          <div className="flex items-start gap-2.5 group relative min-w-0">
+                                            {/* Hover premium live preview of parent */}
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 bg-white border border-slate-200 shadow-2xl rounded-2xl p-4 text-left pointer-events-none transition-all duration-200 invisible opacity-0 translate-y-2 scale-95 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100 z-50 border-t-4 border-t-brand-primary">
+                                              {renderPermissionPreview(tool.key, tool.tooltip)}
+                                              {/* Popover Arrow */}
+                                              <div className="absolute top-full left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b border-slate-200 rotate-45 -mt-1.5 shadow-xs"></div>
+                                            </div>
+
+                                            <div className="p-1.5 bg-slate-50 rounded-lg text-brand-primary shrink-0">
+                                              <Shield className="w-4 h-4" />
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="flex items-center gap-1.5">
+                                                <h5 className="text-[12px] font-black text-slate-800 uppercase tracking-tight truncate">{tool.label}</h5>
+                                                <span className="text-[8px] px-1.5 py-0.5 bg-indigo-50 rounded text-brand-primary font-black font-mono uppercase tracking-wider select-none shrink-0">MÓDULO</span>
+                                              </div>
+                                              <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{tool.tooltip}</p>
+                                            </div>
+                                          </div>
+
+                                          {/* Main Tool Selector Buttons */}
+                                          <div className="flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60 shrink-0 w-full lg:w-auto">
+                                            <button
+                                              type="button"
+                                              onClick={() => setPermissionValue(tool.category as any, tool.key, 'nenhum')}
+                                              className={`flex-1 lg:flex-initial px-3 py-1.5 text-[10px] font-black rounded-md transition-all cursor-pointer uppercase ${
+                                                parentIsNone
+                                                  ? "bg-white text-slate-800 shadow-xs border border-slate-200/30" 
+                                                  : "text-slate-400 hover:text-slate-600"
+                                              }`}
+                                            >
+                                              Bloqueado
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setPermissionValue(tool.category as any, tool.key, 'visualizar')}
+                                              className={`flex-1 lg:flex-initial px-3 py-1.5 text-[10px] font-black rounded-md transition-all cursor-pointer uppercase ${
+                                                parentValRaw === 'visualizar' 
+                                                  ? "bg-amber-100 text-amber-800 shadow-xs border border-amber-200/20" 
+                                                  : "text-slate-400 hover:text-slate-600"
+                                              }`}
+                                            >
+                                              Somente Leitura
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setPermissionValue(tool.category as any, tool.key, 'editar')}
+                                              className={`flex-1 lg:flex-initial px-3 py-1.5 text-[10px] font-black rounded-md transition-all cursor-pointer uppercase ${
+                                                parentValRaw === 'editar' || parentValRaw === true
+                                                  ? "bg-brand-primary text-white shadow-xs font-black" 
+                                                  : "text-slate-400 hover:text-slate-600"
+                                              }`}
+                                            >
+                                              Total (Leitura + Escrita)
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* Nested RLS Fields inside the exact same Card block */}
+                                        {tool.rlsFields && tool.rlsFields.length > 0 && (
+                                          <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                                            <div className="flex items-center gap-1.5 text-[9px] font-black uppercase text-slate-400 select-none">
+                                              <Layers className="w-3.5 h-3.5 text-brand-accent shrink-0" />
+                                              <span>Controle de Dados Granulares & Colunas (RLS)</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                              {tool.rlsFields.map((field) => 
+                                                renderRLSFieldSelector(tool.key, field.category as keyof Usuario["permissoes"], field.key, field.label, field.tooltip, parentIsNone)
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             ))}

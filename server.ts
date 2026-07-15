@@ -131,6 +131,7 @@ async function runBootDiagnostics() {
 runBootDiagnostics().catch(e => console.error("Erro rodando boot diagnostics:", e));
 
 import express from "express";
+import { sendEmail } from "./src/services/emailService";
 import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -690,7 +691,7 @@ async function checkDbConnection() {
             ref VARCHAR(255) NOT NULL,
             obra VARCHAR(255) NOT NULL,
             cliente VARCHAR(255) NOT NULL,
-            "dataSolicitacao" VARCHAR(255) NOT NULL,
+            "dataSolicitacao" VARCHAR(255),
             abc VARCHAR(255),
             solicitante VARCHAR(255),
             responsavel VARCHAR(255) NOT NULL,
@@ -710,7 +711,6 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas TEXT');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS subestruturas_pc TEXT');
         await pool.query('ALTER TABLE levantamentos ADD COLUMN IF NOT EXISTS "origemLeads" VARCHAR(255) DEFAULT \'Projeto Certo\'');
-        await pool.query('UPDATE levantamentos SET "origemLeads" = \'Projeto Certo\'');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "cliente" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "statusEnvio" DROP NOT NULL');
         await pool.query('ALTER TABLE levantamentos ALTER COLUMN "responsavel" DROP NOT NULL');
@@ -734,163 +734,27 @@ async function checkDbConnection() {
           )
         `);
 
-        // Garante que as colunas novas existam caso a tabela já estivesse criada
-        await pool.query('ALTER TABLE levantamento_materiais ADD COLUMN IF NOT EXISTS valor_unitario DOUBLE PRECISION DEFAULT 0.0');
-        await pool.query('ALTER TABLE levantamento_materiais ADD COLUMN IF NOT EXISTS unidade VARCHAR(100) DEFAULT \'Metro Quadrado\'');
+        // Cria a tabela contratos_ativos se não existir
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS contratos_ativos (
+            id VARCHAR(255) PRIMARY KEY,
+            "obraId" VARCHAR(255) NOT NULL UNIQUE REFERENCES obras(id) ON DELETE CASCADE,
+            cnpj VARCHAR(255),
+            contato VARCHAR(255),
+            endereco TEXT,
+            "enderecoEntrega" TEXT,
+            "condicoesComerciais" TEXT,
+            "freteTipo" VARCHAR(50) DEFAULT 'CIF',
+            entrada DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "saldoReceber" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "tipoObra" VARCHAR(255) DEFAULT 'Instalação',
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "tipoObra" VARCHAR(255) DEFAULT \'Instalação\'');
 
-        // Executar a query de migração dos dados de subestruturas (JSON) para a tabela de materiais (levantamento_materiais)
-        try {
-          console.log("[pg Sync] Migrando subestruturas (JSON) para a tabela de materiais levantamento_materiais...");
-          await pool.query(`
-            WITH exploded AS (
-              SELECT
-                l.id AS lev_id,
-                l."contratoAFecharId" AS o_id,
-                elem->>'material' AS mat,
-                COALESCE(
-                  (elem->>'qtdHD')::DOUBLE PRECISION,
-                  (elem->>'qtdM2')::DOUBLE PRECISION,
-                  0.0
-                ) AS q_m2,
-                COALESCE(
-                  (elem->>'valorUnitario')::DOUBLE PRECISION,
-                  0.0
-                ) AS val_un,
-                COALESCE(
-                  elem->>'unidade',
-                  'Metro Quadrado'
-                ) AS un,
-                row_number() OVER (PARTITION BY l.id) AS seq
-              FROM levantamentos l,
-              json_array_elements(
-                CASE 
-                  WHEN l.subestruturas IS NULL OR trim(l.subestruturas) = '' OR trim(l.subestruturas) = '[]' OR NOT trim(l.subestruturas) LIKE '[%' THEN '[]'::json
-                  ELSE l.subestruturas::json
-                END
-              ) AS elem
-            )
-            INSERT INTO levantamento_materiais (
-              id, 
-              levantamento_id, 
-              material, 
-              qtd_m2, 
-              valor_unitario, 
-              unidade, 
-              "createdAt", 
-              "updatedAt"
-            )
-            SELECT 
-              concat(lev_id, '-', seq) AS id,
-              lev_id,
-              COALESCE(mat, ''),
-              q_m2,
-              val_un,
-              un,
-              CURRENT_TIMESTAMP,
-              CURRENT_TIMESTAMP
-            FROM exploded
-            ON CONFLICT (id) DO UPDATE SET
-              material = EXCLUDED.material,
-              qtd_m2 = EXCLUDED.qtd_m2,
-              valor_unitario = EXCLUDED.valor_unitario,
-              unidade = EXCLUDED.unidade,
-              "updatedAt" = CURRENT_TIMESTAMP
-          `);
-          console.log("[pg Sync] Migração de subestruturas para levantamento_materiais concluída!");
-        } catch (migErr: any) {
-          console.error("Erro ao migrar subestruturas para a tabela levantamento_materiais:", migErr);
-        }
-
-        // Migrar datas de solicitação existentes para o formato brasileiro DD/MM/AAAA de forma robusta
-        try {
-          console.log("[pg Sync] Normalizando formatos de datas de solicitação para brasileiro (DD/MM/AAAA)...");
-          const allLevsRes = await pool.query('SELECT id, "dataSolicitacao", previsao FROM levantamentos');
-          for (const row of allLevsRes.rows) {
-            const convertedDate = convertDateToBR(row.dataSolicitacao);
-            const convertedPrevisao = row.previsao ? convertDateToBR(row.previsao) : null;
-            if (convertedDate !== row.dataSolicitacao || (row.previsao && convertedPrevisao !== row.previsao)) {
-              await pool.query(
-                'UPDATE levantamentos SET "dataSolicitacao" = $1, previsao = $2 WHERE id = $3',
-                [convertedDate, convertedPrevisao, row.id]
-              );
-            }
-          }
-          console.log("[pg Sync] Todas as datas de solicitação normalizadas com sucesso!");
-        } catch (e: any) {
-          console.error("Erro ao normalizar datas de levantamentos:", e);
-        }
-
-        // Migrar dados de Material PC para Material HD de forma definitiva se houver
-        try {
-          console.log("[pg Sync] Migrando dados de Material PC para Material HD...");
-          const allLevsRes = await pool.query('SELECT id, subestruturas, subestruturas_pc FROM levantamentos');
-          for (const row of allLevsRes.rows) {
-            let subListHD: any[] = [];
-            let subListPC: any[] = [];
-            
-            if (row.subestruturas) {
-              try {
-                subListHD = typeof row.subestruturas === "string" ? JSON.parse(row.subestruturas) : row.subestruturas;
-              } catch (e) {
-                subListHD = [];
-              }
-            }
-            if (!Array.isArray(subListHD)) subListHD = [];
-
-            if (row.subestruturas_pc) {
-              try {
-                subListPC = typeof row.subestruturas_pc === "string" ? JSON.parse(row.subestruturas_pc) : row.subestruturas_pc;
-              } catch (e) {
-                subListPC = [];
-              }
-            }
-            if (!Array.isArray(subListPC)) subListPC = [];
-
-            if (subListPC.length > 0) {
-              console.log(`[pg Sync] Migrando ${subListPC.length} itens PC para HD no levantamento ${row.id}...`);
-              // Convert PC items to HD format
-              const convertedPCtoHD = subListPC.map((item: any) => {
-                let rawQty = item.qtdPC !== undefined ? item.qtdPC : (item.qtdM2 || 0);
-                if (typeof rawQty === "string") {
-                  rawQty = rawQty.trim().replace(/\./g, "").replace(",", ".");
-                }
-                const parsedQty = parseFloat(rawQty) || 0;
-
-                let rawVal = item.valorUnitario;
-                if (typeof rawVal === "string") {
-                  rawVal = rawVal.trim().replace(/\./g, "").replace(",", ".");
-                }
-                const parsedVal = parseFloat(rawVal) || 0;
-
-                return {
-                  material: item.material || "Material PC Migrado",
-                  qtdHD: parsedQty,
-                  qtdM2: parsedQty,
-                  valorUnitario: parsedVal
-                };
-              });
-              
-              // Append to HD items
-              const mergedHD = [...subListHD, ...convertedPCtoHD];
-              
-              // Update database
-              await pool.query(
-                'UPDATE levantamentos SET subestruturas = $1, subestruturas_pc = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $3',
-                [JSON.stringify(mergedHD), '[]', row.id]
-              );
-            }
-          }
-          console.log("[pg Sync] Migração de Material PC para Material HD concluída com sucesso!");
-        } catch (e: any) {
-          console.error("Erro na migração de Material PC para Material HD:", e);
-        }
-
-        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS descricao VARCHAR(255) NOT NULL DEFAULT \'\'');
-        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS valor DOUBLE PRECISION NOT NULL DEFAULT 0.0');
-        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS status VARCHAR(255) NOT NULL DEFAULT \'ATIVO\'');
-        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS observacao TEXT');
-        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 0');
-        await pool.query('ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS subitens TEXT NOT NULL DEFAULT \'[]\'');
+        // Removed automatic migrations and ALTER commands as per user request to avoid automatic data updates on startup.
 
         // Seed default categories if they don't exist
         const defaultCategories = [
@@ -930,13 +794,21 @@ function generateId() {
 }
 
 // Helper to convert any input date string to Brazilian format DD/MM/YYYY
-function convertDateToBR(dateStr: string): string {
-  if (!dateStr || typeof dateStr !== "string") return "";
+function convertDateToBR(dateInput: any): string {
+  if (!dateInput) return "";
   
+  if (dateInput instanceof Date) {
+    const day = String(dateInput.getUTCDate()).padStart(2, '0');
+    const month = String(dateInput.getUTCMonth() + 1).padStart(2, '0');
+    const year = dateInput.getUTCFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  const dateStr = String(dateInput);
   const clean = dateStr.trim();
   
   // Try matching standard ISO format YYYY-MM-DD or YYYY/MM/DD
-  const isoMatch = clean.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+  const isoMatch = clean.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
   if (isoMatch) {
     const [_, year, month, day] = isoMatch;
     return `${day}/${month}/${year}`;
@@ -945,40 +817,12 @@ function convertDateToBR(dateStr: string): string {
   // Match DD/MM/YYYY or MM/DD/YYYY formats
   const slashesMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (slashesMatch) {
-    const [_, part1, part2, year] = slashesMatch;
-    const p1 = parseInt(part1, 10);
-    const p2 = parseInt(part2, 10);
-    
-    if (p1 > 12) {
-      // Must be DD/MM/YYYY
-      const day = String(p1).padStart(2, "0");
-      const month = String(p2).padStart(2, "0");
-      return `${day}/${month}/${year}`;
-    } else if (p2 > 12) {
-      // Must be MM/DD/YYYY (American) since month cannot be > 12
-      const day = String(p2).padStart(2, "0");
-      const month = String(p1).padStart(2, "0");
-      return `${day}/${month}/${year}`;
-    } else {
-      // Both are <= 12. Format neatly as DD/MM/YYYY
-      const day = String(p1).padStart(2, "0");
-      const month = String(p2).padStart(2, "0");
-      return `${day}/${month}/${year}`;
-    }
+    const [_, d, m, y] = slashesMatch;
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
   }
   
-  // Try JavaScript Date parser
-  const parsed = new Date(clean);
-  if (!isNaN(parsed.getTime())) {
-    const day = String(parsed.getDate()).padStart(2, "0");
-    const month = String(parsed.getMonth() + 1).padStart(2, "0");
-    const year = parsed.getFullYear();
-    return `${day}/${month}/${year}`;
-  }
-  
-  return clean;
+  return dateStr;
 }
-
 const seedCategories = async (pool: any) => {
   const mandatoryCategories = [
     { nome: 'Materiais', grupoCalculo: 'MATERIAL' },
@@ -1134,7 +978,10 @@ const formatObraWithMetrics = (obra: any) => {
     });
 
   const activeItems = items.filter((i: any) => i.status === "ATIVO");
-  const visaoGeral = activeItems.reduce((sum: number, item: any) => sum + Number(item.valor), 0);
+  const visaoGeral = activeItems.reduce((sum: number, item: any) => {
+    if (item.unidade === "Peças") return sum;
+    return sum + Number(item.valor);
+  }, 0);
   const valorContrato = Number(obra.valorContrato);
   const margemLiquida = valorContrato - visaoGeral;
   const percentualMargem = valorContrato > 0 ? (margemLiquida / valorContrato) * 100 : 0;
@@ -1778,6 +1625,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           );
 
           ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS subitens TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE itens_orcamento ADD COLUMN IF NOT EXISTS unidade VARCHAR(50) NOT NULL DEFAULT 'Metro Quadrado';
 
           CREATE TABLE IF NOT EXISTS usuarios (
             id VARCHAR(255) PRIMARY KEY,
@@ -1861,7 +1709,24 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             deleted_at TIMESTAMP WITH TIME ZONE
           );
+
+          CREATE TABLE IF NOT EXISTS contratos_ativos (
+            id VARCHAR(255) PRIMARY KEY,
+            "obraId" VARCHAR(255) NOT NULL UNIQUE REFERENCES obras(id) ON DELETE CASCADE,
+            cnpj VARCHAR(255),
+            contato VARCHAR(255),
+            endereco TEXT,
+            "enderecoEntrega" TEXT,
+            "condicoesComerciais" TEXT,
+            "freteTipo" VARCHAR(50) DEFAULT 'CIF',
+            entrada DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "saldoReceber" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+            "tipoObra" VARCHAR(255) DEFAULT 'Instalação',
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
         `);
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "tipoObra" VARCHAR(255) DEFAULT \'Instalação\'');
 
         console.log("Populando dados padrão...");
         const defaultCategories = [
@@ -2181,6 +2046,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
               descricao: row.descricao,
               valor: Number(row.valor),
               status: row.status,
+              unidade: row.unidade || "Metro Quadrado",
               observacao: row.observacao,
               ordem: Number(row.ordem),
               obraId: row.obraId,
@@ -2302,6 +2168,116 @@ app.delete("/api/documentos/:id", async (req, res) => {
     await pool.query('DELETE FROM documentos WHERE id = $1', [req.params.id]);
     res.status(204).end();
   } catch (err) { res.status(500).json({ error: "Falha exclusão" }); }
+});
+
+app.get("/api/contratos-ativos", async (req, res) => {
+  try {
+    if (dbConnected && pool) {
+      const result = await pool.query('SELECT * FROM contratos_ativos');
+      res.json(result.rows);
+    } else {
+      res.status(503).json({ error: "Banco de dados inativo" });
+    }
+  } catch (error: any) {
+    console.error("Erro ao obter contratos ativos:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/contratos-ativos/:obraId", async (req, res) => {
+  const { obraId } = req.params;
+  try {
+    if (dbConnected && pool) {
+      const result = await pool.query('SELECT * FROM contratos_ativos WHERE "obraId" = $1 LIMIT 1', [obraId]);
+      if (result.rows.length > 0) {
+        res.json(result.rows[0]);
+      } else {
+        res.json({
+          id: "",
+          obraId,
+          cnpj: "",
+          contato: "",
+          endereco: "",
+          enderecoEntrega: "",
+          condicoesComerciais: "",
+          freteTipo: "CIF",
+          entrada: 0.0,
+          saldoReceber: 0.0
+        });
+      }
+    } else {
+      res.status(503).json({ error: "Banco de dados inativo" });
+    }
+  } catch (error: any) {
+    console.error(`Erro ao obter contrato ativo para obra ${obraId}:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/contratos-ativos", async (req, res) => {
+  const { obraId, cnpj, contato, endereco, enderecoEntrega, condicoesComerciais, freteTipo, entrada, saldoReceber, tipoObra } = req.body;
+  if (!obraId) {
+    return res.status(400).json({ error: "O ID da obra é obrigatório" });
+  }
+  try {
+    if (dbConnected && pool) {
+      const check = await pool.query('SELECT id FROM contratos_ativos WHERE "obraId" = $1 LIMIT 1', [obraId]);
+      
+      const cleanContato = contato ? String(contato).replace(/\D/g, '') : null;
+      const numContato = cleanContato ? cleanContato : null;
+      
+      if (check.rows.length > 0) {
+        // UPDATE
+        await pool.query(`
+          UPDATE contratos_ativos
+          SET cnpj = $1, contato = $2, endereco = $3, "enderecoEntrega" = $4,
+              "condicoesComerciais" = $5, "freteTipo" = $6, entrada = $7, "saldoReceber" = $8,
+              "tipoObra" = $9, "updatedAt" = NOW()
+          WHERE "obraId" = $10
+        `, [
+          cnpj || null,
+          numContato,
+          endereco || null,
+          enderecoEntrega || null,
+          condicoesComerciais || null,
+          freteTipo || 'CIF',
+          entrada !== undefined ? Number(entrada) : 0.0,
+          saldoReceber !== undefined ? Number(saldoReceber) : 0.0,
+          tipoObra || 'Instalação',
+          obraId
+        ]);
+      } else {
+        // INSERT
+        const newId = "ca-" + generateId();
+        await pool.query(`
+          INSERT INTO contratos_ativos (
+            id, "obraId", cnpj, contato, endereco, "enderecoEntrega",
+            "condicoesComerciais", "freteTipo", entrada, "saldoReceber", "tipoObra", "createdAt", "updatedAt"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+        `, [
+          newId,
+          obraId,
+          cnpj || null,
+          numContato,
+          endereco || null,
+          enderecoEntrega || null,
+          condicoesComerciais || null,
+          freteTipo || 'CIF',
+          entrada !== undefined ? Number(entrada) : 0.0,
+          saldoReceber !== undefined ? Number(saldoReceber) : 0.0,
+          tipoObra || 'Instalação'
+        ]);
+      }
+      
+      const updated = await pool.query('SELECT * FROM contratos_ativos WHERE "obraId" = $1 LIMIT 1', [obraId]);
+      res.json(updated.rows[0]);
+    } else {
+      res.status(503).json({ error: "Banco de dados inativo" });
+    }
+  } catch (error: any) {
+    console.error("Erro ao salvar contrato ativo:", error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
@@ -3148,107 +3124,105 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
     }
   });
 
+  // Helper function to resequence REF numbers for a specific month/year
+  const resequenceMonth = async (inputDate: string | Date) => {
+    if (!dbConnected || !pool) return;
+    
+    let month = "";
+    let year = "";
+
+    if (inputDate instanceof Date) {
+      month = String(inputDate.getMonth() + 1).padStart(2, "0");
+      year = String(inputDate.getFullYear());
+    } else if (typeof inputDate === "string") {
+      if (inputDate.includes("/")) {
+        const parts = inputDate.split("/");
+        if (parts.length === 3) {
+          month = parts[1];
+          year = parts[2];
+        }
+      } else if (inputDate.includes("-")) {
+        const parts = inputDate.split("-");
+        if (parts.length === 3) {
+          if (parts[0].length === 4) {
+            year = parts[0];
+            month = parts[1];
+          } else {
+            year = parts[2];
+            month = parts[1];
+          }
+        }
+      }
+    }
+
+    if (!month || !year) return;
+
+    // Fetch all active levantamentos for this month/year, ordered by dataSolicitacao and then creation
+    const res = await pool.query(`
+      SELECT id 
+      FROM levantamentos 
+      WHERE "dataSolicitacao" IS NOT NULL AND "dataSolicitacao" != ''
+        AND EXTRACT(MONTH FROM to_date("dataSolicitacao", 'DD/MM/YYYY')) = $1
+        AND EXTRACT(YEAR FROM to_date("dataSolicitacao", 'DD/MM/YYYY')) = $2
+        AND status NOT IN ('EXCLUIDO', 'EXCLUIDO_PERMANENTE')
+      ORDER BY 
+        to_date("dataSolicitacao", 'DD/MM/YYYY') ASC,
+        "createdAt" ASC,
+        id ASC
+    `, [parseInt(month, 10), parseInt(year, 10)]);
+
+    console.log(`[Sequencing] Resequencing month ${month}/${year} (${res.rows.length} items)...`);
+
+    for (let i = 0; i < res.rows.length; i++) {
+      const row = res.rows[i];
+      const newRef = `LV${String(i + 1).padStart(2, "0")}`;
+      await pool.query('UPDATE levantamentos SET ref = $1 WHERE id = $2', [newRef, row.id]);
+    }
+  };
+
   // POST Criar Levantamento
   app.post("/api/levantamentos", async (req, res) => {
-    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, statusEnvio, origemLeads } = req.body;
-    if (!obra || !dataSolicitacao || !responsavel || !status || !statusEnvio) {
-      return res.status(400).json({ error: "Faltam campos obrigatórios." });
+    const { obra, cliente, dataSolicitacao, abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, origemLeads } = req.body;
+    if (!obra || !responsavel || !status) {
+      return res.status(400).json({ error: "Faltam campos obrigatórios (Obra, Responsável, Status)." });
     }
     try {
       if (dbConnected && pool) {
         const id = "lv-" + generateId().substring(0, 8);
+        const formattedDate = dataSolicitacao ? convertDateToBR(dataSolicitacao) : "";
         
-        // Helper to parse month and year from dataSolicitacao
-        const parseMonthYear = (dateStr: string) => {
-          if (!dateStr || typeof dateStr !== "string") {
-            const d = new Date();
-            return { month: d.getMonth() + 1, year: d.getFullYear() };
-          }
-          const clean = dateStr.trim();
-          if (clean.includes("/")) {
-            const parts = clean.split("/");
-            if (parts.length === 3) {
-              const m = parseInt(parts[1], 10);
-              const y = parseInt(parts[2], 10);
-              if (!isNaN(m) && !isNaN(y)) {
-                return { month: m, year: y };
-              }
-            }
-          }
-          if (clean.includes("-")) {
-            const parts = clean.split("-");
-            if (parts.length === 3) {
-              if (parts[0].length === 4) {
-                const m = parseInt(parts[1], 10);
-                const y = parseInt(parts[0], 10);
-                if (!isNaN(m) && !isNaN(y)) {
-                  return { month: m, year: y };
-                }
-              } else if (parts[2].length === 4) {
-                const m = parseInt(parts[1], 10);
-                const y = parseInt(parts[2], 10);
-                if (!isNaN(m) && !isNaN(y)) {
-                  return { month: m, year: y };
-                }
-              }
-            }
-          }
-          const parsedDate = new Date(clean);
-          if (!isNaN(parsedDate.getTime())) {
-            return { month: parsedDate.getMonth() + 1, year: parsedDate.getFullYear() };
-          }
-          const d = new Date();
-          return { month: d.getMonth() + 1, year: d.getFullYear() };
-        };
-
-        const { month: targetMonth, year: targetYear } = parseMonthYear(dataSolicitacao);
-
-        const allRefsRes = await pool.query("SELECT ref, \"dataSolicitacao\" FROM levantamentos WHERE ref LIKE 'LV%'");
-        let nextNum = 1;
-        const matchingNums: number[] = [];
-
-        for (const row of allRefsRes.rows) {
-          const rowDateStr = row.dataSolicitacao;
-          const { month: rowMonth, year: rowYear } = parseMonthYear(rowDateStr);
-          if (rowMonth === targetMonth && rowYear === targetYear) {
-            const refStr = row.ref || "";
-            const numPart = refStr.replace(/^LV/i, "");
-            const parsed = parseInt(numPart, 10);
-            if (!isNaN(parsed)) {
-              matchingNums.push(parsed);
-            }
-          }
-        }
-
-        if (matchingNums.length > 0) {
-          nextNum = Math.max(...matchingNums) + 1;
-        }
-
-        const ref = `LV${String(nextNum).padStart(2, '0')}`;
+        // Temporarily insert with a placeholder ref
+        const tempRef = `TEMP-${generateId().substring(0, 4)}`;
 
         const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
         const subStrHD = JSON.stringify(subListHD);
 
         await pool.query(`
           INSERT INTO levantamentos (
-            id, ref, obra, cliente, "dataSolicitacao", abc, solicitante, responsavel, status, previsao, "statusEnvio", subestruturas, subestruturas_pc, "origemLeads"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            id, ref, obra, cliente, "dataSolicitacao", abc, solicitante, responsavel, status, previsao, subestruturas, subestruturas_pc, "origemLeads"
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `, [
           id,
-          ref,
+          tempRef,
           obra,
           cliente || "",
-          convertDateToBR(dataSolicitacao),
+          formattedDate,
           abc || "",
           solicitante || "",
           responsavel,
           status,
           previsao ? convertDateToBR(previsao) : "",
-          statusEnvio,
           subStrHD,
           '[]',
           origemLeads || "Projeto Certo"
         ]);
+
+        // Resequence the month to set the correct LVXX ref if date exists, otherwise set a neutral ref
+        if (formattedDate) {
+          await resequenceMonth(formattedDate);
+        } else {
+          await pool.query('UPDATE levantamentos SET ref = $1 WHERE id = $2', ['S/D', id]);
+        }
 
         if (subListHD.length > 0) {
           for (let i = 0; i < subListHD.length; i++) {
@@ -3256,13 +3230,14 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             const matId = `${id}-${i + 1}`;
             const q = mat.qtdHD !== undefined ? mat.qtdHD : (mat.qtdM2 || 0);
             await pool.query(`
-              INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade)
-              VALUES ($1, $2::VARCHAR, $3, $4, $5, $6)
+              INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade, "createdAt", "updatedAt")
+              VALUES ($1, $2::VARCHAR, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT (id) DO UPDATE SET
                 material = EXCLUDED.material,
                 qtd_m2 = EXCLUDED.qtd_m2,
                 valor_unitario = EXCLUDED.valor_unitario,
-                unidade = EXCLUDED.unidade
+                unidade = EXCLUDED.unidade,
+                "updatedAt" = CURRENT_TIMESTAMP
             `, [matId, id, mat.material || "", Number(q) || 0, Number(mat.valorUnitario) || 0, mat.unidade || "Metro Quadrado"]);
           }
         }
@@ -3305,40 +3280,59 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           return res.status(404).json({ error: "Levantamento não encontrado." });
         }
 
+        const oldData = checkRes.rows[0];
+        const oldDate = oldData.dataSolicitacao;
+        
+        // Use provided date (formatted) or keep old one if undefined. Empty string "" clears it.
+        const newDate = dataSolicitacao !== undefined ? (dataSolicitacao ? convertDateToBR(dataSolicitacao) : "") : oldDate;
+
         const subListHD = Array.isArray(subestruturas) ? subestruturas : [];
         const subStrHD = JSON.stringify(subListHD);
+
+        // If date was cleared, reset REF to S/D
+        let refUpdateQuery = "";
+        if (newDate === "" && oldDate && oldDate !== "") {
+          refUpdateQuery = `, ref = 'S/D'`;
+        }
 
         await pool.query(`
           UPDATE levantamentos SET
             obra = COALESCE($1, obra),
             cliente = $2,
-            "dataSolicitacao" = COALESCE($3, "dataSolicitacao"),
+            "dataSolicitacao" = $3,
             abc = COALESCE($4, abc),
             solicitante = $5,
             responsavel = COALESCE($6, responsavel),
             status = COALESCE($7, status),
             previsao = COALESCE($8, previsao),
-            "statusEnvio" = COALESCE($9, "statusEnvio"),
-            subestruturas = $10,
-            subestruturas_pc = $11,
-            "origemLeads" = COALESCE($12, "origemLeads"),
+            subestruturas = $9,
+            subestruturas_pc = $10,
+            "origemLeads" = COALESCE($11, "origemLeads"),
             "updatedAt" = CURRENT_TIMESTAMP
-          WHERE id = $13
+            ${refUpdateQuery}
+          WHERE id = $12
         `, [
           obra || null,
           cliente || "",
-          dataSolicitacao ? convertDateToBR(dataSolicitacao) : null,
+          newDate,
           abc === undefined ? null : abc,
           solicitante || "",
           responsavel || null,
           status || null,
           previsao ? convertDateToBR(previsao) : null,
-          statusEnvio || null,
           subStrHD,
           '[]',
           origemLeads || null,
           id
          ]);
+
+         // If date changed, resequence both old and new months
+         if (newDate) {
+           await resequenceMonth(newDate);
+         }
+         if (oldDate && oldDate !== newDate) {
+           await resequenceMonth(oldDate);
+         }
 
          const existingObraId = checkRes.rows[0].contratoAFecharId || null;
          await pool.query('DELETE FROM levantamento_materiais WHERE levantamento_id = $1', [id]);
@@ -3348,8 +3342,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
              const matId = crypto.randomUUID();
              const q = mat.qtdHD !== undefined ? mat.qtdHD : (mat.qtdM2 || 0);
              await pool.query(`
-               INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade)
-               VALUES ($1, $2::VARCHAR, $3, $4, $5, $6)
+               INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade, "createdAt", "updatedAt")
+               VALUES ($1, $2::VARCHAR, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
              `, [matId, id, mat.material || "", Number(q) || 0, Number(mat.valorUnitario) || 0, mat.unidade || "Metro Quadrado"]);
            }
          }
@@ -3381,37 +3375,29 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
     }
   });
 
-  // PATCH Atualizar apenas o status de envio de um levantamento
-  app.patch("/api/levantamentos/:id/status-envio", async (req, res) => {
-    const { id } = req.params;
-    const { statusEnvio } = req.body;
-    try {
-      if (dbConnected && pool) {
-        await pool.query('UPDATE levantamentos SET "statusEnvio" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $2', [statusEnvio, id]);
-        res.json({ success: true, statusEnvio });
-      } else {
-        res.status(500).json({ error: "Conexão com AWS RDS inativa." });
-      }
-    } catch (error: any) {
-      console.error("Erro no PATCH /api/levantamentos/:id/status-envio:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // DELETE Excluir Levantamento
   app.delete("/api/levantamentos/:id", async (req, res) => {
     const { id } = req.params;
     const { permanent } = req.query;
     try {
       if (dbConnected && pool) {
+        const checkRes = await pool.query('SELECT "dataSolicitacao" FROM levantamentos WHERE id = $1', [id]);
+        if (checkRes.rows.length === 0) {
+          return res.status(404).json({ error: "Levantamento não encontrado." });
+        }
+        const dateStr = checkRes.rows[0].dataSolicitacao;
+
         if (permanent === "true") {
           await pool.query('UPDATE obras SET "levantamentoId" = NULL WHERE "levantamentoId" = $1', [id]);
           await pool.query('DELETE FROM levantamentos WHERE id = $1', [id]);
-          res.json({ success: true, message: "Levantamento excluído permanentemente." });
         } else {
           await pool.query('UPDATE levantamentos SET status = \'EXCLUIDO\' WHERE id = $1', [id]);
-          res.json({ success: true, message: "Levantamento enviado para a Lixeira." });
         }
+
+        // Resequence the month after deletion
+        await resequenceMonth(dateStr);
+        
+        res.json({ success: true, message: permanent === "true" ? "Levantamento excluído permanentemente." : "Levantamento enviado para a Lixeira." });
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
       }
@@ -3434,6 +3420,10 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         // If it was linked to a contract, restored status is Concluído, otherwise Pendente
         const nextStatus = row.contratoAFecharId ? "Concluído" : "Pendente";
         await pool.query('UPDATE levantamentos SET status = $1 WHERE id = $2', [nextStatus, id]);
+        
+        // Resequence the month after restoration
+        await resequenceMonth(row.dataSolicitacao);
+
         res.json({ success: true, message: "Levantamento restaurado com sucesso." });
       } else {
         res.status(500).json({ error: "Conexão com AWS RDS inativa." });
@@ -3733,7 +3723,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   // POST Adicionar Item ao Orçamento de uma Obra
   app.post(["/api/obras/:id/itens", "/api/projetos/:id/itens"], async (req, res) => {
     const { id: obraId } = req.params;
-    const { descricao, categoriaId, valor, status, observacao, subitens } = req.body;
+    const { descricao, categoriaId, valor, status, observacao, subitens, unidade } = req.body;
 
     if (!descricao || !categoriaId || valor === undefined) {
       return res.status(400).json({ error: "Descrição, categoria e valor são obrigatórios" });
@@ -3741,6 +3731,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
     const subitensArray = subitens || [];
     const subitensString = JSON.stringify(subitensArray);
+    const finalUnidade = unidade || "Metro Quadrado";
 
     try {
       let novoItem: any = null;
@@ -3756,15 +3747,16 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
             const itemId = "item-" + generateId();
             await pool.query(`
-              INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, subitens, "obraId", "categoriaId", "createdAt", "updatedAt")
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-            `, [itemId, descricao, Number(valor), status || "ATIVO", observacao || null, currentCount, subitensString, obraId, categoriaId]);
+              INSERT INTO itens_orcamento (id, descricao, valor, status, observacao, ordem, subitens, "obraId", "categoriaId", "unidade", "createdAt", "updatedAt")
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+            `, [itemId, descricao, Number(valor), status || "ATIVO", observacao || null, currentCount, subitensString, obraId, categoriaId, finalUnidade]);
 
             novoItem = {
               id: itemId,
               descricao,
               valor: Number(valor),
               status: status || "ATIVO",
+              unidade: finalUnidade,
               observacao: observacao || null,
               ordem: currentCount,
               subitens: subitensArray,
@@ -3799,7 +3791,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   // PUT Atualizar Item
   app.put("/api/itens/:itemId", async (req, res) => {
     const { itemId } = req.params;
-    const { descricao, categoriaId, valor, status, observacao, subitens } = req.body;
+    const { descricao, categoriaId, valor, status, observacao, subitens, unidade } = req.body;
 
     try {
       let updatedItem: any = null;
@@ -3822,6 +3814,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             const updatedDesc = descricao !== undefined ? descricao : existing.descricao;
             const updatedStatus = status !== undefined ? status : existing.status;
             const updatedObs = observacao !== undefined ? (observacao || null) : existing.observacao;
+            const updatedUnidade = unidade !== undefined ? unidade : (existing.unidade || "Metro Quadrado");
 
             // Recalcula o valor total baseado nos subitens se forem fornecidos ou existentes
             let updatedSubArray: any[] = [];
@@ -3851,7 +3844,10 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
 
             let updatedValor = valor !== undefined ? Number(valor) : Number(existing.valor);
             if (Array.isArray(updatedSubArray) && updatedSubArray.length > 0) {
-              updatedValor = updatedSubArray.reduce((acc, sub) => acc + ((Number(sub.qtd !== undefined ? sub.qtd : 1) * Number(sub.valor)) || 0), 0);
+              updatedValor = updatedSubArray.reduce((acc, sub) => {
+                if (sub.unidade === 'Peças') return acc;
+                return acc + ((Number(sub.qtd !== undefined ? sub.qtd : 1) * Number(sub.valor)) || 0);
+              }, 0);
             }
 
             const updatedSub = JSON.stringify(updatedSubArray);
@@ -3859,9 +3855,9 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             try {
               await pool.query(`
                 UPDATE itens_orcamento SET
-                  descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, "updatedAt" = NOW()
-                WHERE id = $7
-              `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, itemId]);
+                  descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, unidade = $7, "updatedAt" = NOW()
+                WHERE id = $8
+              `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, updatedUnidade, itemId]);
             } catch (queryErr: any) {
               // Auto-reparação: Se a coluna subitens estiver ausente por algum motivo histórico no banco real do cliente
               if (queryErr.message && (queryErr.message.includes("subitens") || queryErr.message.includes("column"))) {
@@ -3871,9 +3867,9 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
                   // Tenta novamente a query original de UPDATE
                   await pool.query(`
                     UPDATE itens_orcamento SET
-                      descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, "updatedAt" = NOW()
-                    WHERE id = $7
-                  `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, itemId]);
+                      descricao = $1, "categoriaId" = $2, valor = $3, status = $4, observacao = $5, subitens = $6, unidade = $7, "updatedAt" = NOW()
+                    WHERE id = $8
+                  `, [updatedDesc, finalCatId, updatedValor, updatedStatus, updatedObs, updatedSub, updatedUnidade, itemId]);
                 } catch (retryErr: any) {
                   throw new Error(`Erro na auto-reparação da coluna e gravação: ${retryErr.message}`);
                 }
@@ -3915,6 +3911,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
               categoriaId: finalCatId,
               valor: updatedValor,
               status: updatedStatus,
+              unidade: updatedUnidade,
               observacao: updatedObs,
               subitens: updatedSubArray,
               ordem: existing.ordem,
@@ -3971,6 +3968,18 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
       res.json({ success: true, message: "Item removido com sucesso" });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Erro ao deletar item do orçamento", details: error.detail, stack: error.stack, table: error.table, hint: error.hint });
+    }
+  });
+
+  app.post("/api/enviar-para-equipe", async (req, res) => {
+    const { contratoNome, detalhes } = req.body;
+    
+    try {
+      await sendEmail({ contratoNome, detalhes });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[API] Erro ao enviar e-mail:", error);
+      res.status(500).json({ error: error.message || "Erro ao enviar e-mail" });
     }
   });
 

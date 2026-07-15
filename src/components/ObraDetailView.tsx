@@ -25,6 +25,7 @@ import {
   ChevronRight,
   ChevronDown,
   PlusCircle,
+  Lock,
 } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 import { Projeto, ItemOrcamento } from "../types";
@@ -206,6 +207,24 @@ export default function ObraDetailView() {
   const [tempSubItemDesc, setTempSubItemDesc] = useState("");
   const [tempSubItemValue, setTempSubItemValue] = useState("");
   const [tempSubItemQtd, setTempSubItemQtd] = useState("1");
+  const [tempSubItemUnidade, setTempSubItemUnidade] = useState<'Peças' | 'Metro Quadrado'>('Metro Quadrado');
+
+  const handleCurrencyInputChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+    let value = e.target.value.replace(/\D/g, "");
+    if (value === "") {
+      setter("");
+      return;
+    }
+    const numericValue = parseInt(value, 10) / 100;
+    setter(numericValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  };
+
+  const parseCurrencyToNumber = (val: string): number => {
+    if (!val) return 0;
+    // Remove dots (thousands separator) and replace comma with dot (decimal separator)
+    const cleaned = val.replace(/\./g, "").replace(",", ".");
+    return parseFloat(cleaned) || 0;
+  };
 
   const toggleExpandItem = (itemId: string) => {
     if (!hasPermission("colunas", "subestruturas")) return;
@@ -416,14 +435,15 @@ export default function ObraDetailView() {
       alert("A descrição do subitem é obrigatória.");
       return;
     }
-    const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
+    const val = parseCurrencyToNumber(tempSubItemValue);
     const qtd = parseFloat(tempSubItemQtd.replace(",", ".")) || 1;
     
     // Optimistic UI Update for memory/DB failure fallback using Zustand
     const updatedItem = addSubItem(item.id, {
       descricao: tempSubItemDesc.trim(),
       valor: val,
-      qtd: qtd
+      qtd: qtd,
+      unidade: tempSubItemUnidade
     });
 
     if (updatedItem) {
@@ -447,14 +467,15 @@ export default function ObraDetailView() {
       alert("A descrição do subitem é obrigatória.");
       return;
     }
-    const val = parseFloat(tempSubItemValue.replace(",", ".")) || 0;
+    const val = parseCurrencyToNumber(tempSubItemValue);
     const qtd = parseFloat(tempSubItemQtd.replace(",", ".")) || 1;
 
     // Optimistic UI Update for memory/DB failure fallback
     const updatedItem = updateSubItem(item.id, subId, {
       descricao: tempSubItemDesc.trim(),
       valor: val,
-      qtd: qtd
+      qtd: qtd,
+      unidade: tempSubItemUnidade
     });
 
     if (updatedItem) {
@@ -681,6 +702,7 @@ export default function ObraDetailView() {
   const activeItems = (project.itens || []).filter((i) => i.status === "ATIVO");
   const costCategoryMap: Record<string, number> = {};
   activeItems.forEach((i) => {
+    if (i.unidade === "Peças") return;
     if (i.categoria) {
       const catName = i.categoria.nome;
       costCategoryMap[catName] = (costCategoryMap[catName] || 0) + Number(i.valor);
@@ -727,9 +749,6 @@ export default function ObraDetailView() {
           </button>
           <div className="space-y-0.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[9px] font-extrabold text-brand-primary bg-brand-primary/5 border border-brand-primary/10 py-0.5 px-2 rounded-md font-mono">
-                REGISTRO DE PROJETO
-              </span>
               {project.cliente && (
                 <span className="text-[9px] font-bold text-brand-text-secondary bg-slate-100 py-0.5 px-2 rounded-md border border-slate-200">
                   Cliente: {project.cliente}
@@ -745,14 +764,39 @@ export default function ObraDetailView() {
 
         <div className="flex items-center flex-wrap gap-2">
           {/* Exportar Excel */}
-          <button
-            onClick={handleExportToExcel}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
-            id="export_excel_btn"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            Exportar para Excel
-          </button>
+          {(() => {
+            const exportPermissionKey = project.statusContrato === "A_FECHAR" ? "exportarExcelOrcamentos" : "exportarExcelContratos";
+            const canViewExport = hasPermission("modulos", exportPermissionKey, "visualizar");
+            const canExecuteExport = hasPermission("modulos", exportPermissionKey, "editar");
+            
+            if (!canViewExport) return null;
+            
+            if (!canExecuteExport) {
+              return (
+                <button
+                  type="button"
+                  onClick={() => alert("Apenas visualização. Você precisa de permissão de edição para exportar para o Excel.")}
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-lg font-bold text-xs flex items-center gap-1.5 cursor-not-allowed opacity-75"
+                  id="export_excel_btn"
+                  title="Permissão de exportação necessária (Edição)"
+                >
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Exportar para Excel (Bloqueado)</span>
+                </button>
+              );
+            }
+
+            return (
+              <button
+                onClick={handleExportToExcel}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                id="export_excel_btn"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                Exportar para Excel
+              </button>
+            );
+          })()}
           <button
             onClick={() => navigateToSteps(project.id)}
             className="px-3 py-1.5 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs"
@@ -975,7 +1019,18 @@ export default function ObraDetailView() {
                                   )
                                 )}
                                 <div className="text-left">
-                                  <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
+                                    {item.unidade && (
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md font-sans border select-none ${
+                                        item.unidade === "Peças"
+                                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                                          : "bg-slate-100 text-slate-600 border-slate-200"
+                                      }`}>
+                                        {item.unidade}
+                                      </span>
+                                    )}
+                                  </div>
                                   {hasPermission("colunas", "subestruturas") && item.subitens && item.subitens.length > 0 && (
                                     <span className="inline-flex items-center gap-1 mt-1 bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider font-mono">
                                       {item.subitens.length} subitens compostos
@@ -1049,6 +1104,8 @@ export default function ObraDetailView() {
                                           setEditingSubItemId(null);
                                           setTempSubItemDesc("");
                                           setTempSubItemValue("");
+                                          setTempSubItemQtd("1");
+                                          setTempSubItemUnidade("Metro Quadrado");
                                           setExpandedItemIds(prev => ({ ...prev, [item.id]: true }));
                                         }}
                                         className="p-1 hover:bg-emerald-50 text-emerald-500 hover:text-emerald-700 rounded transition-colors cursor-pointer"
@@ -1122,15 +1179,23 @@ export default function ObraDetailView() {
                                             className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-all duration-100 border border-slate-100 text-[10px]"
                                           >
                                             {isEditingCurrent ? (
-                                              <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                                              <div className="flex flex-wrap items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
                                                 <input
                                                   type="text"
                                                   value={tempSubItemDesc}
                                                   onChange={(e) => setTempSubItemDesc(e.target.value)}
-                                                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-slate-700 flex-1 focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
+                                                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-slate-700 flex-1 min-w-[150px] focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
                                                   placeholder="Ex: Alvenaria ou Subestrutura Secundária"
                                                   autoFocus
                                                 />
+                                                <select
+                                                  value={tempSubItemUnidade}
+                                                  onChange={(e) => setTempSubItemUnidade(e.target.value as any)}
+                                                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-700 w-24 focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
+                                                >
+                                                  <option value="Metro Quadrado">M²</option>
+                                                  <option value="Peças">Peças</option>
+                                                </select>
                                                 <input
                                                   type="text"
                                                   value={tempSubItemQtd}
@@ -1138,13 +1203,16 @@ export default function ObraDetailView() {
                                                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-mono font-bold text-slate-700 w-16 text-center focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
                                                   placeholder="Qtd"
                                                 />
-                                                <input
-                                                  type="text"
-                                                  value={tempSubItemValue}
-                                                  onChange={(e) => setTempSubItemValue(e.target.value)}
-                                                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[10px] font-mono font-bold text-slate-700 w-24 text-right focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
-                                                  placeholder="Ex: 30"
-                                                />
+                                                <div className="relative flex items-center">
+                                                  <span className="absolute left-2 text-slate-400 font-mono text-[9px] font-bold select-none">R$</span>
+                                                  <input
+                                                    type="text"
+                                                    value={tempSubItemValue}
+                                                    onChange={(e) => handleCurrencyInputChange(e, setTempSubItemValue)}
+                                                    className="bg-white border border-slate-200 rounded-lg pl-6 pr-2 py-1 text-[10px] font-mono font-bold text-slate-700 w-24 text-right focus:ring-1 focus:ring-brand-accent focus:outline-hidden"
+                                                    placeholder="30,00"
+                                                  />
+                                                </div>
                                                 <button
                                                   onClick={() => handleSaveEditSubItem(item, sub.id)}
                                                   className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg transition-colors cursor-pointer"
@@ -1162,15 +1230,20 @@ export default function ObraDetailView() {
                                               <>
                                                 <div className="flex items-center gap-2 truncate">
                                                   <span className="text-slate-300 font-extrabold select-none shrink-0">•</span>
-                                                  <span className="font-bold text-brand-text-primary capitalize truncate max-w-sm">
-                                                    {sub.descricao}
-                                                  </span>
+                                                  <div className="flex flex-col">
+                                                    <span className="font-bold text-brand-text-primary capitalize truncate max-w-sm">
+                                                      {sub.descricao}
+                                                    </span>
+                                                    <span className="text-[8px] font-black uppercase text-brand-accent/70 tracking-widest">
+                                                      Unidade: {sub.unidade || "Metro Quadrado"}
+                                                    </span>
+                                                  </div>
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0">
                                                   <span className="text-[10px] text-slate-400 font-mono font-medium">
                                                     {Number(sub.qtd || 1)} x {hasPermission("colunas", "valorItens") ? formatBRL(Number(sub.valor || 0)) : "••••••"} =
                                                   </span>
-                                                  <span className="font-mono font-black text-brand-text-primary text-right w-24">
+                                                  <span className={`font-mono font-black text-right w-24 ${sub.unidade === 'Peças' ? 'text-slate-300 line-through decoration-brand-error/40' : 'text-brand-text-primary'}`}>
                                                     {hasPermission("colunas", "valorItens") ? formatBRL(Number(sub.qtd || 1) * Number(sub.valor || 0)) : "••••••"}
                                                   </span>
                                                   <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
@@ -1181,8 +1254,9 @@ export default function ObraDetailView() {
                                                             setEditingSubItemId(sub.id);
                                                             setAddingSubItemForId(null);
                                                             setTempSubItemDesc(sub.descricao);
-                                                            setTempSubItemValue(sub ? (sub.valor || 0).toString() : "0");
+                                                            setTempSubItemValue((sub.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                                                             setTempSubItemQtd(sub ? ((sub.qtd || 1) || 1).toString() : "1");
+                                                            setTempSubItemUnidade(sub.unidade || "Metro Quadrado");
                                                           }}
                                                           className="p-1 hover:bg-slate-150 text-slate-400 hover:text-brand-primary rounded transition-colors cursor-pointer"
                                                           title="Editar subitem"
@@ -1214,15 +1288,23 @@ export default function ObraDetailView() {
 
                                   {/* Inline form to append a new sub-item compositively */}
                                   {addingSubItemForId === item.id ? (
-                                    <div className="flex items-center gap-2 max-w-xl bg-white border border-[#D9A441]/40 p-2 rounded-xl shadow-md animate-in slide-in-from-top-1 duration-150" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex flex-wrap items-center gap-2 max-w-2xl bg-white border border-[#D9A441]/40 p-2 rounded-xl shadow-md animate-in slide-in-from-top-1 duration-150" onClick={(e) => e.stopPropagation()}>
                                       <input
                                         type="text"
                                         placeholder="Nova Descrição do Subitem (ex: Mão de Obra do pilar)"
                                         value={tempSubItemDesc}
                                         onChange={(e) => setTempSubItemDesc(e.target.value)}
-                                        className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 flex-1 font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-brand-accent"
+                                        className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 flex-1 min-w-[150px] font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-brand-accent"
                                         autoFocus
                                       />
+                                      <select
+                                        value={tempSubItemUnidade}
+                                        onChange={(e) => setTempSubItemUnidade(e.target.value as any)}
+                                        className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 w-24 font-bold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-brand-accent"
+                                      >
+                                        <option value="Metro Quadrado">M²</option>
+                                        <option value="Peças">Peças</option>
+                                      </select>
                                       <input
                                         type="text"
                                         placeholder="Qtd"
@@ -1230,15 +1312,15 @@ export default function ObraDetailView() {
                                         onChange={(e) => setTempSubItemQtd(e.target.value)}
                                         className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 w-16 font-mono font-extrabold text-slate-750 focus:outline-hidden focus:ring-1 focus:ring-brand-accent text-center"
                                       />
-                                      <div className="relative">
+                                      <div className="relative flex items-center">
+                                        <span className="absolute left-2 text-slate-400 font-mono text-[9px] font-bold select-none">R$</span>
                                         <input
                                           type="text"
-                                          placeholder="Valor R$ (ex: 30)"
+                                          placeholder="30,00"
                                           value={tempSubItemValue}
-                                          onChange={(e) => setTempSubItemValue(e.target.value)}
-                                          className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 w-24 font-mono font-extrabold pr-4 text-slate-750 focus:outline-hidden focus:ring-1 focus:ring-brand-accent text-right"
+                                          onChange={(e) => handleCurrencyInputChange(e, setTempSubItemValue)}
+                                          className="text-[10px] bg-white border border-slate-200 rounded-lg p-1.5 pl-6 pr-2 w-24 font-mono font-extrabold text-slate-750 focus:outline-hidden focus:ring-1 focus:ring-brand-accent text-right"
                                         />
-                                        <span className="absolute right-1 text-slate-400 font-mono text-[9px] top-1/2 -translate-y-1/2">R$</span>
                                       </div>
                                       <button
                                         onClick={() => handleAddSubItem(item)}
@@ -1263,6 +1345,7 @@ export default function ObraDetailView() {
                                             setTempSubItemDesc("");
                                             setTempSubItemValue("");
                                             setTempSubItemQtd("1");
+                                            setTempSubItemUnidade("Metro Quadrado");
                                           }}
                                           className="inline-flex items-center gap-1.5 text-[10px] text-emerald-600 hover:text-emerald-700 transition-colors font-extrabold px-3 py-1.5 border border-dashed border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-50/10 rounded-lg cursor-pointer uppercase tracking-wider"
                                         >
@@ -2048,7 +2131,10 @@ export default function ObraDetailView() {
                       const chosenItems = project?.itens?.filter(
                         (item) => item.status === "ATIVO" && selectedBudgetItems[item.id] !== false
                       ) || [];
-                      const totBudget = chosenItems.reduce((acc, item) => acc + (item.valor || 0), 0);
+                      const totBudget = chosenItems.reduce((acc, item) => {
+                        if (item.unidade === "Peças") return acc;
+                        return acc + (item.valor || 0);
+                      }, 0);
 
                       if (chosenItems.length > 0) {
                         return (
