@@ -192,7 +192,12 @@ export interface ContratoAtivo {
   obraId: string;
   cnpj: string | null;
   contato: string | null;
-  endereco: string | null;
+  endereco: string | null; // Keeping it for compatibility but will hide in UI
+  municipio?: string | null;
+  uf?: string | null;
+  bairro?: string | null;
+  complemento?: string | null;
+  itensInstalacao?: string | null;
   enderecoEntrega: string | null;
   condicoesComerciais: string | null;
   freteTipo: 'CIF' | 'FOB';

@@ -142,21 +142,25 @@ const BUCKET_NAME = process.env.AWS_S3_BUCKET;
 
 function initializeS3Client() {
   const REQUIRED_AWS_VARS = ["AWS_REGION", "AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
+  const missingVars = REQUIRED_AWS_VARS.filter(varName => !process.env[varName]);
   
-  for (const varName of REQUIRED_AWS_VARS) {
-    if (!process.env[varName]) {
-      throw new Error(`[ERROR] Variável de ambiente ${varName} ausente.`);
-    }
+  if (missingVars.length > 0) {
+    console.warn(`[WARN] S3 Client não inicializado. Variáveis ausentes: ${missingVars.join(", ")}`);
+    return;
   }
 
-  s3Client = new S3Client({
-    region: process.env.AWS_REGION!,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-  });
-  console.log(`[BOOT] S3 Client inicializado com sucesso no bucket ${BUCKET_NAME}`);
+  try {
+    s3Client = new S3Client({
+      region: process.env.AWS_REGION!,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+    });
+    console.log(`[BOOT] S3 Client inicializado com sucesso no bucket ${BUCKET_NAME}`);
+  } catch (err: any) {
+    console.error(`[ERROR] Falha ao inicializar S3 Client: ${err.message}`);
+  }
 }
 
 // Local storage setup
@@ -346,7 +350,7 @@ const pool = {
     }
     return await rdsPoolNative.connect();
   }
-} as pg.Pool;
+} as any;
 
 // Dynamic pool client recreation
 function recreateDbClient() {
@@ -357,7 +361,10 @@ function recreateDbClient() {
   if (urlRds && (urlRds.startsWith("postgres://") || urlRds.startsWith("postgresql://")) && !checkHasPlaceholder(urlRds)) {
     try {
       if (rdsPoolNative) rdsPoolNative.end().catch(() => {});
-      const cleanUrl = urlRds.replace(/sslmode=[^&]+/g, "").replace(/\?&/g, "?").replace(/&&/g, "&");
+      let cleanUrl = urlRds.replace(/sslmode=[^&]+/g, "").replace(/\?&/g, "?").replace(/&&/g, "&");
+      if (cleanUrl.endsWith("?")) {
+        cleanUrl = cleanUrl.slice(0, -1);
+      }
       rdsPoolNative = new Pool({
         connectionString: cleanUrl,
         ssl: { rejectUnauthorized: false },
@@ -742,6 +749,11 @@ async function checkDbConnection() {
             cnpj VARCHAR(255),
             contato VARCHAR(255),
             endereco TEXT,
+            municipio VARCHAR(255),
+            uf VARCHAR(50),
+            bairro VARCHAR(255),
+            complemento VARCHAR(255),
+            itens_instalacao TEXT,
             "enderecoEntrega" TEXT,
             "condicoesComerciais" TEXT,
             "freteTipo" VARCHAR(50) DEFAULT 'CIF',
@@ -753,6 +765,11 @@ async function checkDbConnection() {
           )
         `);
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "tipoObra" VARCHAR(255) DEFAULT \'Instalação\'');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS municipio VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS uf VARCHAR(50)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS bairro VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS complemento VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS itens_instalacao TEXT');
 
         // Removed automatic migrations and ALTER commands as per user request to avoid automatic data updates on startup.
 
@@ -1044,8 +1061,7 @@ async function bootstrap() {
   try {
     initializeS3Client();
   } catch (err: any) {
-    console.error(err.message);
-    process.exit(1);
+    console.error("[BOOT] Erro não-fatal ao tentar inicializar S3:", err.message);
   }
   const app = express();
   app.use(express.json({ limit: "150mb" }));
@@ -2190,7 +2206,11 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
     if (dbConnected && pool) {
       const result = await pool.query('SELECT * FROM contratos_ativos WHERE "obraId" = $1 LIMIT 1', [obraId]);
       if (result.rows.length > 0) {
-        res.json(result.rows[0]);
+        const data = result.rows[0];
+        res.json({
+          ...data,
+          itensInstalacao: data.itens_instalacao
+        });
       } else {
         res.json({
           id: "",
@@ -2198,6 +2218,11 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
           cnpj: "",
           contato: "",
           endereco: "",
+          municipio: "",
+          uf: "",
+          bairro: "",
+          complemento: "",
+          itensInstalacao: "",
           enderecoEntrega: "",
           condicoesComerciais: "",
           freteTipo: "CIF",
@@ -2215,7 +2240,12 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
 });
 
 app.post("/api/contratos-ativos", async (req, res) => {
-  const { obraId, cnpj, contato, endereco, enderecoEntrega, condicoesComerciais, freteTipo, entrada, saldoReceber, tipoObra } = req.body;
+  const { 
+    obraId, cnpj, contato, endereco, municipio, uf, bairro, complemento, 
+    itensInstalacao, enderecoEntrega, condicoesComerciais, freteTipo, 
+    entrada, saldoReceber, tipoObra 
+  } = req.body;
+  
   if (!obraId) {
     return res.status(400).json({ error: "O ID da obra é obrigatório" });
   }
@@ -2228,16 +2258,23 @@ app.post("/api/contratos-ativos", async (req, res) => {
       
       if (check.rows.length > 0) {
         // UPDATE
-        await pool.query(`
+        const result = await pool.query(`
           UPDATE contratos_ativos
-          SET cnpj = $1, contato = $2, endereco = $3, "enderecoEntrega" = $4,
-              "condicoesComerciais" = $5, "freteTipo" = $6, entrada = $7, "saldoReceber" = $8,
-              "tipoObra" = $9, "updatedAt" = NOW()
-          WHERE "obraId" = $10
+          SET cnpj = $1, contato = $2, endereco = $3, municipio = $4, uf = $5, 
+              bairro = $6, complemento = $7, itens_instalacao = $8,
+              "enderecoEntrega" = $9, "condicoesComerciais" = $10, "freteTipo" = $11, 
+              entrada = $12, "saldoReceber" = $13, "tipoObra" = $14, "updatedAt" = NOW()
+          WHERE "obraId" = $15
+          RETURNING *
         `, [
           cnpj || null,
           numContato,
           endereco || null,
+          municipio || null,
+          uf || null,
+          bairro || null,
+          complemento || null,
+          itensInstalacao || null,
           enderecoEntrega || null,
           condicoesComerciais || null,
           freteTipo || 'CIF',
@@ -2246,20 +2283,32 @@ app.post("/api/contratos-ativos", async (req, res) => {
           tipoObra || 'Instalação',
           obraId
         ]);
+        res.json({
+          ...result.rows[0],
+          itensInstalacao: result.rows[0].itens_instalacao
+        });
       } else {
         // INSERT
-        const newId = "ca-" + generateId();
-        await pool.query(`
+        const newId = "ca-" + Math.random().toString(36).substring(2, 11);
+        const result = await pool.query(`
           INSERT INTO contratos_ativos (
-            id, "obraId", cnpj, contato, endereco, "enderecoEntrega",
-            "condicoesComerciais", "freteTipo", entrada, "saldoReceber", "tipoObra", "createdAt", "updatedAt"
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+            id, "obraId", cnpj, contato, endereco, municipio, uf, bairro, complemento, 
+            itens_instalacao, "enderecoEntrega", "condicoesComerciais", "freteTipo", 
+            entrada, "saldoReceber", "tipoObra", "createdAt", "updatedAt"
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+          RETURNING *
         `, [
           newId,
           obraId,
           cnpj || null,
           numContato,
           endereco || null,
+          municipio || null,
+          uf || null,
+          bairro || null,
+          complemento || null,
+          itensInstalacao || null,
           enderecoEntrega || null,
           condicoesComerciais || null,
           freteTipo || 'CIF',
@@ -2267,10 +2316,11 @@ app.post("/api/contratos-ativos", async (req, res) => {
           saldoReceber !== undefined ? Number(saldoReceber) : 0.0,
           tipoObra || 'Instalação'
         ]);
+        res.status(201).json({
+          ...result.rows[0],
+          itensInstalacao: result.rows[0].itens_instalacao
+        });
       }
-      
-      const updated = await pool.query('SELECT * FROM contratos_ativos WHERE "obraId" = $1 LIMIT 1', [obraId]);
-      res.json(updated.rows[0]);
     } else {
       res.status(503).json({ error: "Banco de dados inativo" });
     }
@@ -3972,10 +4022,17 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   });
 
   app.post("/api/enviar-para-equipe", async (req, res) => {
-    const { contratoNome, detalhes } = req.body;
+    const { contratoNome, nomeCliente, detalhes, pdfBase64, valorContrato, materiais } = req.body;
     
     try {
-      await sendEmail({ contratoNome, detalhes });
+      await sendEmail({ 
+        contratoNome, 
+        nomeCliente,
+        detalhes, 
+        pdfBase64,
+        valorContrato,
+        materiais
+      });
       res.json({ success: true });
     } catch (error: any) {
       console.error("[API] Erro ao enviar e-mail:", error);

@@ -75,6 +75,11 @@ export default function ContratosAtivosView() {
   const [cnpj, setCnpj] = useState("");
   const [contato, setContato] = useState("");
   const [endereco, setEndereco] = useState("");
+  const [municipio, setMunicipio] = useState("");
+  const [uf, setUf] = useState("");
+  const [bairro, setBairro] = useState("");
+  const [complemento, setComplemento] = useState("");
+  const [itensInstalacao, setItensInstalacao] = useState("");
   const [enderecoEntrega, setEnderecoEntrega] = useState("");
   const [condicoesComerciais, setCondicoesComerciais] = useState("");
   const [freteTipo, setFreteTipo] = useState<'CIF' | 'FOB'>("CIF");
@@ -153,6 +158,11 @@ export default function ContratosAtivosView() {
     setCnpj("");
     setContato("");
     setEndereco("");
+    setMunicipio("");
+    setUf("");
+    setBairro("");
+    setComplemento("");
+    setItensInstalacao("");
     setEnderecoEntrega("");
     setCondicoesComerciais("");
     setFreteTipo("CIF");
@@ -182,6 +192,11 @@ export default function ContratosAtivosView() {
         setCnpj(data.cnpj ? formatCNPJ(data.cnpj) : "");
         setContato(data.contato ? formatPhone(data.contato) : "");
         setEndereco(data.endereco || "");
+        setMunicipio(data.municipio || "");
+        setUf(data.uf || "");
+        setBairro(data.bairro || "");
+        setComplemento(data.complemento || "");
+        setItensInstalacao(data.itensInstalacao || "");
         setEnderecoEntrega(data.enderecoEntrega || "");
         setCondicoesComerciais(data.condicoesComerciais || "");
         setFreteTipo(data.freteTipo || "CIF");
@@ -194,9 +209,130 @@ export default function ContratosAtivosView() {
     }
   };
 
+  // Auto-calculate Saldo a Receber
+  useEffect(() => {
+    const valContrato = selectedObra?.valorContrato || 0;
+    const valEntrada = typeof entrada === 'string' ? parseFloat(entrada) || 0 : entrada;
+    setSaldoReceber(valContrato - valEntrada);
+  }, [entrada, selectedObra]);
+
   const handleBackToList = () => {
     setSelectedObra(null);
     loadData(); // reload to refresh active contracts cache
+  };
+
+  const handleEnviarEquipe = async () => {
+    if (!selectedObra) return;
+    
+    setIsSaving(true);
+    try {
+      // First ensure everything is saved if editing
+      if (isEditing) {
+        const cleanCnpj = cnpj.replace(/\D/g, "");
+        const cleanContato = contato.replace(/\D/g, "");
+
+        const payload = {
+          obraId: selectedObra.id,
+          cnpj: cleanCnpj || null,
+          contato: cleanContato || null,
+          endereco: endereco || null,
+          municipio: municipio || null,
+          uf: uf || null,
+          bairro: bairro || null,
+          complemento: complemento || null,
+          itensInstalacao: itensInstalacao || null,
+          enderecoEntrega: enderecoEntrega || null,
+          condicoesComerciais: condicoesComerciais || null,
+          freteTipo,
+          entrada: entrada === "" ? 0.0 : Number(entrada),
+          saldoReceber: Number(saldoReceber),
+          tipoObra
+        };
+
+        await fetch("/api/contratos-ativos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        
+        await fetch(`/api/obras/${selectedObra.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome: contratoNome, cliente: clienteNome })
+        });
+      }
+
+      // Generate PDF as base64
+      const styleElements = Array.from(document.querySelectorAll("style"));
+      const originalStyleContents: string[] = [];
+      const elementsWithStyle = Array.from(pdfContentRef.current?.querySelectorAll("*") || []).filter(el => (el as HTMLElement).style);
+
+      styleElements.forEach((el) => {
+        originalStyleContents.push(el.textContent || "");
+        let css = el.textContent || "";
+        if (css.includes("oklch") || css.includes("oklab")) {
+          css = css.replace(/oklch\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
+          css = css.replace(/oklab\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
+          el.textContent = css;
+        }
+      });
+      
+      elementsWithStyle.forEach(el => {
+        const hEl = el as HTMLElement;
+        (hEl as any).__originalStyle = hEl.getAttribute("style");
+        let style = hEl.getAttribute("style") || "";
+        if (style.includes("oklch") || style.includes("oklab")) {
+          style = style.replace(/oklch\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
+          style = style.replace(/oklab\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
+          hEl.setAttribute("style", style);
+        }
+      });
+
+      const element = pdfContentRef.current;
+      if (!element) throw new Error("Elemento de pré-visualização não encontrado");
+
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL("image/jpeg", 0.9);
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const imgHeightInMm = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, imgHeightInMm);
+      
+      const pdfBase64 = pdf.output('datauristring');
+
+      // Restore styles
+      styleElements.forEach((el, index) => { el.textContent = originalStyleContents[index]; });
+      elementsWithStyle.forEach(el => {
+        const hEl = el as HTMLElement;
+        if ((hEl as any).__originalStyle !== undefined) {
+          hEl.setAttribute("style", (hEl as any).__originalStyle);
+          delete (hEl as any).__originalStyle;
+        }
+      });
+
+      const res = await fetch("/api/enviar-para-equipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contratoNome: contratoNome,
+          nomeCliente: clienteNome,
+          detalhes: `Contrato fechado para a obra ${contratoNome}.`,
+          pdfBase64: pdfBase64,
+          valorContrato: selectedObra.valorContrato,
+          materiais: itensInstalacao || itensMateriais.join(", ")
+        })
+      });
+
+      if (!res.ok) throw new Error("Falha ao enviar e-mail");
+      
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      setIsEditing(false);
+    } catch (err: any) {
+      setSaveError("Erro ao enviar para equipe: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // PDF Export and Print logic
@@ -482,8 +618,10 @@ export default function ContratosAtivosView() {
       if (data.erro) {
         setCepError("CEP não encontrado.");
       } else {
-        const addressString = `${data.logradouro}${data.complemento ? ", " + data.complemento : ""}, ${data.bairro}, ${data.localidade} - ${data.uf}`;
-        setEnderecoEntrega(addressString);
+        setMunicipio(data.localidade || "");
+        setUf(data.uf || "");
+        setBairro(data.bairro || "");
+        setEnderecoEntrega(`${data.logradouro || ""}${data.complemento ? ", " + data.complemento : ""}`);
         setCep(""); // Clear CEP on success
       }
     } catch (err) {
@@ -530,6 +668,11 @@ export default function ContratosAtivosView() {
         cnpj: cleanCnpj || null,
         contato: cleanContato || null,
         endereco: endereco || null,
+        municipio: municipio || null,
+        uf: uf || null,
+        bairro: bairro || null,
+        complemento: complemento || null,
+        itensInstalacao: itensInstalacao || null,
         enderecoEntrega: enderecoEntrega || null,
         condicoesComerciais: condicoesComerciais || null,
         freteTipo,
@@ -582,6 +725,11 @@ export default function ContratosAtivosView() {
         cnpj: cleanCnpj || null,
         contato: cleanContato || null,
         endereco: endereco || null,
+        municipio: municipio || null,
+        uf: uf || null,
+        bairro: bairro || null,
+        complemento: complemento || null,
+        itensInstalacao: itensInstalacao || null,
         enderecoEntrega: enderecoEntrega || null,
         condicoesComerciais: condicoesComerciais || null,
         freteTipo,
@@ -634,10 +782,24 @@ export default function ContratosAtivosView() {
               </div>
 
               {/* Mini counters cards */}
-              <div className="pt-2">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-3 inline-block">
-                  <p className="text-[9px] font-bold text-white/50 uppercase tracking-wider leading-none">Obras Consolidadas</p>
-                  <p className="text-lg font-black text-white mt-1.5">{obras.length}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 max-w-4xl">
+                <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Obras Consolidadas</p>
+                  <p className="text-lg font-black text-white mt-2">{obras.length}</p>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Total Contratos Ativos</p>
+                  <p className="text-lg font-black text-white mt-2">
+                    {formatCurrency(filteredObras.reduce((sum, o) => sum + (o.valorContrato || 0), 0))}
+                  </p>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Total Saldo a Receber</p>
+                  <p className="text-lg font-black text-white mt-2">
+                    {formatCurrency(filteredObras.reduce((sum, o) => sum + (activeContracts[o.id]?.saldoReceber || 0), 0))}
+                  </p>
                 </div>
               </div>
             </div>
@@ -680,10 +842,9 @@ export default function ContratosAtivosView() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
-                    <th className="py-4 px-6">Nome Cliente</th>
-                    <th className="py-4 px-6">Nome Contrato</th>
+                    <th className="py-4 px-6">Cliente</th>
+                    <th className="py-4 px-6">Obra</th>
                     <th className="py-4 px-6 text-right">Valor do Contrato</th>
-                    <th className="py-4 px-6 text-center">Cadastro Comercial</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 text-xs">
@@ -704,17 +865,6 @@ export default function ContratosAtivosView() {
                         </td>
                         <td className="py-4 px-6 text-right font-bold text-brand-text-primary">
                           {formatCurrency(obra.valorContrato)}
-                        </td>
-                        <td className="py-4 px-6 text-center">
-                          {isConfigured ? (
-                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
-                              <Check className="w-3 h-3" /> Preenchido
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
-                              Pendente
-                            </span>
-                          )}
                         </td>
                       </tr>
                     );
@@ -738,6 +888,16 @@ export default function ContratosAtivosView() {
             </button>
             
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleEnviarEquipe}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm hover:shadow transition-all disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Enviar para Equipe
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowPdfPreview(true)}
@@ -839,20 +999,17 @@ export default function ContratosAtivosView() {
               </div>
 
               {/* Saldo a Receber input Card */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-inner relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-inner relative transition-all">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none block">
                   Saldo a Receber (R$)
                 </label>
                 <div className="flex items-center gap-1.5 mt-1">
                   <span className="text-xs font-bold text-slate-400">R$</span>
                   <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0,00"
-                    disabled={!isEditing || !isWritable}
-                    value={saldoReceber}
-                    onChange={e => setSaldoReceber(e.target.value)}
-                    className="w-full bg-transparent border-none text-lg font-black text-slate-800 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    type="text"
+                    disabled={true}
+                    value={formatCurrency(Number(saldoReceber)).replace('R$', '').trim()}
+                    className="w-full bg-transparent border-none text-lg font-black text-slate-800 focus:outline-none"
                   />
                 </div>
                 <div className="absolute right-4 bottom-4 text-[#D9A441]">
@@ -919,7 +1076,7 @@ export default function ContratosAtivosView() {
               {/* CNPJ Field */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  CNPJ da Empresa
+                  CNPJ da Obra
                 </label>
                 <div className="relative">
                   <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -938,7 +1095,7 @@ export default function ContratosAtivosView() {
               {/* Contato (Telefone) Field */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Contato Comercial (Telefone)
+                  Contato (Telefone)
                 </label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -959,98 +1116,119 @@ export default function ContratosAtivosView() {
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   Itens a serem instalados
                 </label>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1">
-                  {itensMateriais.length === 0 ? (
-                    <span className="text-slate-400 font-semibold text-xs italic">Nenhum material cadastrado neste contrato.</span>
-                  ) : (
-                    itensMateriais.map((itemDesc, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs font-semibold text-slate-700 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100">
-                        <span className="w-1.5 h-1.5 rounded-full bg-brand-secondary"></span>
-                        {itemDesc}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Endereço Principal string */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Endereço Principal
-                </label>
                 <textarea
-                  placeholder="Endereço cadastral da empresa (Rua, Número, Bairro, Cidade - UF)"
-                  rows={2}
+                  placeholder="Liste aqui os itens que serão instalados..."
+                  rows={4}
                   disabled={!isEditing || !isWritable}
-                  value={endereco}
-                  onChange={e => setEndereco(e.target.value)}
+                  value={itensInstalacao}
+                  onChange={e => setItensInstalacao(e.target.value)}
                   className="w-full p-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
                 />
               </div>
 
-              {/* Endereço de Entrega with CEP Search & Google Maps Hook */}
-              <div className="space-y-3.5 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-brand-secondary" /> Endereço de Entrega (CEP Autocomplete)
-                  </label>
-                </div>
-
-                {/* CEP Input Row */}
-                {isWritable && (
-                  <div className="space-y-1.5">
-                    <div className="flex gap-2">
+              {/* Endereço da Obra with CEP Search */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Endereço da Obra
+                </label>
+                <div className="space-y-3.5 bg-slate-100/50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    {cepError && (
+                      <span className="text-[9px] font-bold text-red-500 uppercase animate-pulse">{cepError}</span>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <div className="relative w-[110px]">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                       <input
                         type="text"
                         maxLength={9}
-                        placeholder="CEP (ex: 01001-000)"
+                        placeholder="01001-001"
+                        disabled={!isEditing || !isWritable || cepLoading}
                         value={cep}
                         onChange={e => setCep(formatCEP(e.target.value))}
-                        className="w-36 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-brand-secondary focus:ring-1 focus:ring-brand-secondary"
+                        className="w-full pl-9 pr-2 py-2 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
                       />
-                      <button
-                        type="button"
-                        onClick={handleCepSearch}
-                        disabled={cepLoading || cep.length < 8}
-                        className="bg-brand-secondary hover:bg-opacity-90 disabled:opacity-40 text-white font-extrabold text-[11px] px-3.5 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1 shrink-0 shadow-sm"
-                      >
-                        {cepLoading ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          "Buscar CEP"
-                        )}
-                      </button>
                     </div>
-                    {cepError && (
-                      <p className="text-[10px] text-red-500 font-semibold">{cepError}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Delivery Address text value */}
-                <textarea
-                  placeholder="Selecione um local a partir do CEP ou digite o endereço completo de entrega aqui..."
-                  rows={2}
-                  disabled={!isEditing || !isWritable}
-                  value={enderecoEntrega}
-                  onChange={e => setEnderecoEntrega(e.target.value)}
-                  className="w-full p-3 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
-                />
-
-                {/* Real Places/Google Maps anchor */}
-                {enderecoEntrega && (
-                  <div className="flex justify-end pt-1">
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoEntrega)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-brand-secondary hover:text-opacity-80 uppercase tracking-wider"
+                    <button
+                      type="button"
+                      onClick={handleCepSearch}
+                      disabled={!isEditing || !isWritable || cepLoading || cep.length < 8}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white text-[10px] font-extrabold rounded-xl transition-all flex items-center gap-2 uppercase tracking-wider"
                     >
-                      <Map className="w-3.5 h-3.5" /> Ver no Google Maps <ExternalLink className="w-3 h-3" />
-                    </a>
+                      {cepLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Map className="w-3 h-3" />}
+                      {cepLoading ? "Buscando..." : "BUSCAR CEP"}
+                    </button>
                   </div>
-                )}
+
+                  <textarea
+                    placeholder="Endereço"
+                    rows={2}
+                    disabled={!isEditing || !isWritable}
+                    value={enderecoEntrega}
+                    onChange={e => setEnderecoEntrega(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
+                  />
+                </div>
               </div>
+
+              {/* Novos campos de endereço */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Município
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isEditing || !isWritable}
+                    value={municipio}
+                    onChange={e => setMunicipio(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    UF
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    disabled={!isEditing || !isWritable}
+                    value={uf}
+                    onChange={e => setUf(e.target.value.toUpperCase())}
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Bairro
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isEditing || !isWritable}
+                    value={bairro}
+                    onChange={e => setBairro(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Complemento
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isEditing || !isWritable}
+                    value={complemento}
+                    onChange={e => setComplemento(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  />
+                </div>
+              </div>
+
             </div>
 
             {/* COLUMN 2: CONDIÇÕES COMERCIAIS */}
@@ -1112,27 +1290,6 @@ export default function ContratosAtivosView() {
               </div>
             </div>
           </div>
-          
-          {/* Bottom Save Action Bar */}
-          {isWritable && (
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-secondary hover:bg-opacity-90 text-white text-xs font-extrabold px-8 py-3 rounded-xl cursor-pointer shadow-sm hover:shadow transition-all disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Salvando Informações...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" /> Salvar Informações do Contrato
-                  </>
-                )}
-              </button>
-            </div>
-          )}
         </form>
       )}
 
@@ -1214,9 +1371,9 @@ export default function ContratosAtivosView() {
                       <div className="flex items-start gap-2">
                         <MapPin className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
                         <div className="space-y-0.5">
-                          <p className="text-[8px] font-bold text-slate-400 uppercase">LOCALIZAÇÃO</p>
-                          <p className="text-[10px] font-extrabold text-slate-700 truncate max-w-[120px]" title={enderecoEntrega || endereco || "Goiânia - GO"}>
-                            {enderecoEntrega || endereco || "Não informado"}
+                          <p className="text-[8px] font-bold text-slate-400 uppercase">LOCALIZAÇÃO (OBRA)</p>
+                          <p className="text-[10px] font-extrabold text-slate-700 leading-tight" title={`${municipio || ""} - ${uf || ""}`}>
+                            {municipio ? `${municipio} - ${uf}` : (enderecoEntrega || "Não informado")}
                           </p>
                         </div>
                       </div>
@@ -1287,7 +1444,7 @@ export default function ContratosAtivosView() {
                         <span className="font-extrabold text-slate-800">{cnpj ? formatCNPJ(cnpj) : "Não Informado"}</span>
                       </div>
                       <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Contato Comercial:</span>
+                        <span className="font-bold text-slate-400">Contato:</span>
                         <span className="font-extrabold text-slate-800">{contato ? formatPhone(contato) : "Não Informado"}</span>
                       </div>
                     </div>
@@ -1330,21 +1487,12 @@ export default function ContratosAtivosView() {
                       </p>
                     </div>
 
-                    <div className="space-y-2 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Itens a serem instalados</h4>
-                      <div className="max-h-48 overflow-y-auto space-y-1">
-                        {itensMateriais.length === 0 ? (
-                          <p className="text-slate-400 font-semibold text-xs italic">Nenhum material cadastrado neste contrato.</p>
-                        ) : (
-                          itensMateriais.map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-xs font-semibold text-slate-700 bg-white px-2 py-1 rounded border border-slate-100/80">
-                              <span className="w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
-                              {item}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                  <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                    <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Itens a serem instalados</h4>
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line mt-1">
+                      {itensInstalacao || itensMateriais.join(", ") || "Nenhum material cadastrado neste contrato."}
+                    </p>
+                  </div>
                   </div>
                 </div>
 
@@ -1357,14 +1505,29 @@ export default function ContratosAtivosView() {
                     <h3 className="text-[10px] font-black text-brand-accent uppercase tracking-widest">ENDEREÇOS</h3>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 space-y-1">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Endereço Principal</p>
-                      <p className="text-[11px] font-semibold text-slate-700">{endereco || "Não Informado"}</p>
-                    </div>
-                    <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 space-y-1">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Endereço de Entrega</p>
-                      <p className="text-[11px] font-semibold text-slate-700">{enderecoEntrega || "Não Informado"}</p>
+                  <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                    <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Endereço de Entrega / Instalação</h4>
+                    <div className="mt-2 space-y-1 text-xs text-slate-700">
+                      <div className="flex justify-between border-b border-slate-200/50 py-1">
+                        <span className="font-bold text-slate-400">Município:</span>
+                        <span className="font-extrabold">{municipio || "Não informado"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200/50 py-1">
+                        <span className="font-bold text-slate-400">UF:</span>
+                        <span className="font-extrabold">{uf || "Não informado"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200/50 py-1">
+                        <span className="font-bold text-slate-400">Bairro:</span>
+                        <span className="font-extrabold">{bairro || "Não informado"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200/50 py-1">
+                        <span className="font-bold text-slate-400">Complemento:</span>
+                        <span className="font-extrabold">{complemento || "Não informado"}</span>
+                      </div>
+                      <div className="flex justify-between py-1">
+                        <span className="font-bold text-slate-400">Logradouro:</span>
+                        <span className="font-extrabold">{enderecoEntrega || "Não informado"}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
