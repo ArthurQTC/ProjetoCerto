@@ -1,7 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-
 export async function sendEmail({
   contratoNome,
   detalhes
@@ -9,9 +7,16 @@ export async function sendEmail({
   contratoNome: string;
   detalhes: string;
 }) {
-  if (!resend) {
+  console.log("[EmailService] RESEND_API_KEY:", !!process.env.RESEND_API_KEY);
+  console.log("[EmailService] SMTP_FROM:", process.env.SMTP_FROM);
+  console.log("[EmailService] EMAIL_TO_LIST:", process.env.EMAIL_TO_LIST);
+
+  if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY não configurada.");
   }
+
+  console.log("[EmailService] Criando cliente Resend...");
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   const from = process.env.SMTP_FROM;
   if (!from) {
@@ -60,14 +65,14 @@ export async function sendEmail({
     });
 
     if (error) {
-      console.error("[EmailService] Erro Resend:", error);
+      console.error("[EmailService] Erro:", error);
       throw error;
     }
 
-    console.log("[EmailService] Sucesso:", data);
+    console.log("[EmailService] Email enviado com sucesso.");
     return data;
   } catch (error) {
-    console.error("[EmailService] Erro fatal:", error);
+    console.error("[EmailService] Erro:", error);
     throw error;
   }
 }
