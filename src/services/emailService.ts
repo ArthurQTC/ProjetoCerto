@@ -39,24 +39,58 @@ export async function sendEmail({
 
   console.log(`[EmailService] Enviando para: ${recipients.join(', ')}`);
 
-  const subject = `Contrato Fechado ${nomeCliente || 'Cliente'} - ${contratoNome}`;
+  const subject = `🎉 Novo Contrato Fechado: ${nomeCliente || 'Cliente'} - ${contratoNome}`;
+
+  let materiaisHtml = 'Não informado';
+
+  if (materiais) {
+    try {
+      if (materiais.startsWith('[')) {
+        const itens = JSON.parse(materiais);
+        if (Array.isArray(itens) && itens.length > 0) {
+          materiaisHtml = `<ul style="margin: 0; padding-left: 20px;">${itens.map((it: any) => `
+            <li style="margin-bottom: 6px;">
+              <span style="color: #4a5568;">${it.material}:</span> 
+              <strong style="color: #2d3748;">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(it.valor || 0)}</strong>
+            </li>
+          `).join('')}</ul>`;
+        }
+      } else {
+        materiaisHtml = materiais;
+      }
+    } catch (e) {
+      materiaisHtml = materiais;
+    }
+  }
 
   const htmlContent = `
     <div style="font-family: sans-serif; max-width: 600px; margin: auto; color: #333; line-height: 1.6;">
-      <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">Novo Contrato Fechado</h2>
-      <p>Olá equipe,</p>
-      <p>Segue os dados do novo contrato fechado para seguirmos com o processo:</p>
+      <h2 style="color: #1a365d; margin-bottom: 20px;">🎉 Parabéns a todos envolvidos!</h2>
+      <p>Neste momento iniciamos uma nova jornada.</p>
       
-      <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0;">
-        <p style="margin: 5px 0;"><strong>Nome do Cliente:</strong> ${nomeCliente || 'Não informado'}</p>
-        <p style="margin: 5px 0;"><strong>Nome da Obra:</strong> ${contratoNome}</p>
-        <p style="margin: 5px 0;"><strong>Valor do Contrato:</strong> ${valorContrato ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorContrato) : 'Não informado'}</p>
-        <p style="margin: 15px 0 5px 0;"><strong>Materiais:</strong></p>
-        <div style="background-color: #fff; border: 1px solid #edf2f7; padding: 10px; border-radius: 4px; white-space: pre-wrap;">${materiais || 'Não informado'}</div>
+      <p style="font-style: italic; color: #4a5568; margin: 20px 0;">
+        Cada contrato fechado será como um carro de Fórmula 1 entrando no boxe para sua parada estratégica.<br>
+        A partir desse momento, nossa equipe entra em ação sincronizada, onde cada integrante desempenha seu papel com precisão e comprometimento, 
+        contribuindo para alcançar a excelência, superar expectativas e garantir a satisfação do cliente.
+      </p>
+
+      <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="color: #2d3748; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Informações do Contrato</h3>
+        
+        <p style="margin: 8px 0;"><strong>Nome do Cliente:</strong> ${nomeCliente && nomeCliente.trim() !== '' ? nomeCliente : 'Não informado'}</p>
+        <p style="margin: 8px 0;"><strong>Nome da Obra:</strong> ${contratoNome}</p>
+        <p style="margin: 8px 0;"><strong>Valor do Contrato:</strong> ${(valorContrato !== undefined && valorContrato !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorContrato) : 'Não informado'}</p>
+        
+        <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; pt: 16px;">
+          <p style="margin: 16px 0 8px 0;"><strong>Itens a serem instalados:</strong></p>
+          <div style="background-color: #fff; border: 1px solid #edf2f7; padding: 16px; border-radius: 8px;">${materiaisHtml}</div>
+        </div>
       </div>
 
       <p>O contrato em PDF está em anexo a este e-mail.</p>
-      <p style="margin-top: 30px; font-size: 12px; color: #718096;">Este e-mail foi gerado automaticamente pelo sistema de Gestão de Obras.</p>
+      <p style="margin-top: 40px; font-size: 11px; color: #a0aec0; border-top: 1px solid #edf2f7; padding-top: 16px;">
+        Este e-mail foi gerado automaticamente pelo sistema de Gestão de Obras.
+      </p>
     </div>
   `;
 

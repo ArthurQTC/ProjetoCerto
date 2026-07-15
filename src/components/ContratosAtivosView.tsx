@@ -25,7 +25,9 @@ import {
   Layers,
   FileText,
   CheckCircle,
-  ChevronRight
+  ChevronRight,
+  Plus,
+  Trash2
 } from "lucide-react";
 import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
@@ -61,6 +63,11 @@ const formatCurrency = (val: number) => {
   }).format(val);
 };
 
+interface ItemInstalacao {
+  material: string;
+  valor: number;
+}
+
 export default function ContratosAtivosView() {
   const { hasPermission } = useAuthStore();
   const isWritable = hasPermission("modulos", "contratosAtivos", "editar");
@@ -79,7 +86,7 @@ export default function ContratosAtivosView() {
   const [uf, setUf] = useState("");
   const [bairro, setBairro] = useState("");
   const [complemento, setComplemento] = useState("");
-  const [itensInstalacao, setItensInstalacao] = useState("");
+  const [itensInstalacao, setItensInstalacao] = useState<ItemInstalacao[]>([]);
   const [enderecoEntrega, setEnderecoEntrega] = useState("");
   const [condicoesComerciais, setCondicoesComerciais] = useState("");
   const [freteTipo, setFreteTipo] = useState<'CIF' | 'FOB'>("CIF");
@@ -162,7 +169,7 @@ export default function ContratosAtivosView() {
     setUf("");
     setBairro("");
     setComplemento("");
-    setItensInstalacao("");
+    setItensInstalacao([]);
     setEnderecoEntrega("");
     setCondicoesComerciais("");
     setFreteTipo("CIF");
@@ -196,7 +203,17 @@ export default function ContratosAtivosView() {
         setUf(data.uf || "");
         setBairro(data.bairro || "");
         setComplemento(data.complemento || "");
-        setItensInstalacao(data.itensInstalacao || "");
+        
+        try {
+          if (data.itensInstalacao && data.itensInstalacao.startsWith("[")) {
+            setItensInstalacao(JSON.parse(data.itensInstalacao));
+          } else {
+            setItensInstalacao(data.itensInstalacao ? [{ material: data.itensInstalacao, valor: 0 }] : []);
+          }
+        } catch (e) {
+          setItensInstalacao(data.itensInstalacao ? [{ material: data.itensInstalacao, valor: 0 }] : []);
+        }
+
         setEnderecoEntrega(data.enderecoEntrega || "");
         setCondicoesComerciais(data.condicoesComerciais || "");
         setFreteTipo(data.freteTipo || "CIF");
@@ -221,10 +238,20 @@ export default function ContratosAtivosView() {
     loadData(); // reload to refresh active contracts cache
   };
 
+  const formatCurrencyLive = (value: string) => {
+    const cleanValue = value.replace(/\D/g, "");
+    const numberValue = Number(cleanValue) / 100;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(numberValue);
+  };
+
   const handleEnviarEquipe = async () => {
     if (!selectedObra) return;
     
     setIsSaving(true);
+    
     try {
       // First ensure everything is saved if editing
       if (isEditing) {
@@ -240,7 +267,7 @@ export default function ContratosAtivosView() {
           uf: uf || null,
           bairro: bairro || null,
           complemento: complemento || null,
-          itensInstalacao: itensInstalacao || null,
+          itensInstalacao: JSON.stringify(itensInstalacao),
           enderecoEntrega: enderecoEntrega || null,
           condicoesComerciais: condicoesComerciais || null,
           freteTipo,
@@ -262,36 +289,60 @@ export default function ContratosAtivosView() {
         });
       }
 
-      // Generate PDF as base64
-      const styleElements = Array.from(document.querySelectorAll("style"));
-      const originalStyleContents: string[] = [];
-      const elementsWithStyle = Array.from(pdfContentRef.current?.querySelectorAll("*") || []).filter(el => (el as HTMLElement).style);
-
-      styleElements.forEach((el) => {
-        originalStyleContents.push(el.textContent || "");
-        let css = el.textContent || "";
-        if (css.includes("oklch") || css.includes("oklab")) {
-          css = css.replace(/oklch\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
-          css = css.replace(/oklab\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
-          el.textContent = css;
-        }
-      });
-      
-      elementsWithStyle.forEach(el => {
-        const hEl = el as HTMLElement;
-        (hEl as any).__originalStyle = hEl.getAttribute("style");
-        let style = hEl.getAttribute("style") || "";
-        if (style.includes("oklch") || style.includes("oklab")) {
-          style = style.replace(/oklch\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
-          style = style.replace(/oklab\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
-          hEl.setAttribute("style", style);
-        }
-      });
-
       const element = pdfContentRef.current;
-      if (!element) throw new Error("Elemento de pré-visualização não encontrado");
+      if (!element) {
+        // Se não encontrou o elemento, pode ser que o DOM ainda não tenha atualizado
+        // Vamos tentar forçar um pequeno delay ou buscar pelo ID como fallback
+        const fallbackElement = document.getElementById("ficha-cadastral-pdf-content");
+        if (!fallbackElement) throw new Error("Elemento de pré-visualização não encontrado no DOM");
+        // Se encontrou pelo ID, usamos ele
+      }
 
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+      const targetElement = element || document.getElementById("ficha-cadastral-pdf-content");
+      if (!targetElement) throw new Error("Elemento de pré-visualização não encontrado");
+
+      const canvas = await html2canvas(targetElement, { 
+        scale: 2, 
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Garante que o elemento clonado esteja visível para o html2canvas
+          const clonedElement = clonedDoc.getElementById("ficha-cadastral-pdf-content");
+          if (clonedElement) {
+            clonedElement.style.position = "static";
+            clonedElement.style.margin = "0";
+            clonedElement.style.left = "0";
+            clonedElement.style.top = "0";
+          }
+
+          // Backup e limpeza radical de estilos oklch/oklab no documento clonado
+          const styles = Array.from(clonedDoc.querySelectorAll("style"));
+          styles.forEach((el) => {
+            let css = el.textContent || "";
+            if (css.includes("oklch") || css.includes("oklab") || css.includes("color-mix")) {
+              // Substitui color-mix e gradientes que usam oklch/oklab por srgb
+              css = css.replace(/in\s+(oklch|oklab)/gi, "in srgb");
+              
+              // Regex para capturar funções de cor e substituir por um fallback seguro
+              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
+              css = css.replace(colorRegex, "rgba(100, 100, 100, 1)");
+              el.textContent = css;
+            }
+          });
+          
+          const styledElements = Array.from(clonedDoc.querySelectorAll("*")).filter(el => (el as HTMLElement).getAttribute("style"));
+          styledElements.forEach(el => {
+            const hEl = el as HTMLElement;
+            let style = hEl.getAttribute("style") || "";
+            if (style.includes("oklch") || style.includes("oklab") || style.includes("color-mix")) {
+              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
+              style = style.replace(colorRegex, "rgba(100, 100, 100, 1)");
+              hEl.setAttribute("style", style);
+            }
+          });
+        }
+      });
       const imgData = canvas.toDataURL("image/jpeg", 0.9);
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -300,35 +351,32 @@ export default function ContratosAtivosView() {
       
       const pdfBase64 = pdf.output('datauristring');
 
-      // Restore styles
-      styleElements.forEach((el, index) => { el.textContent = originalStyleContents[index]; });
-      elementsWithStyle.forEach(el => {
-        const hEl = el as HTMLElement;
-        if ((hEl as any).__originalStyle !== undefined) {
-          hEl.setAttribute("style", (hEl as any).__originalStyle);
-          delete (hEl as any).__originalStyle;
-        }
-      });
-
       const res = await fetch("/api/enviar-para-equipe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contratoNome: contratoNome,
-          nomeCliente: clienteNome,
-          detalhes: `Contrato fechado para a obra ${contratoNome}.`,
+          nomeCliente: clienteNome || selectedObra.cliente || "Não informado",
+          detalhes: `Contrato fechado para a obra ${contratoNome || selectedObra.nome}.`,
           pdfBase64: pdfBase64,
           valorContrato: selectedObra.valorContrato,
-          materiais: itensInstalacao || itensMateriais.join(", ")
+          materiais: JSON.stringify(itensInstalacao)
         })
       });
 
-      if (!res.ok) throw new Error("Falha ao enviar e-mail");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        if (errorData.error && errorData.error.includes("RESEND_API_KEY")) {
+          throw new Error("API Key do Resend não configurada. Por favor, configure a variável RESEND_API_KEY nas configurações do sistema.");
+        }
+        throw new Error(errorData.error || "Falha ao enviar e-mail");
+      }
       
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       setIsEditing(false);
     } catch (err: any) {
+      console.error("Erro ao enviar para equipe:", err);
       setSaveError("Erro ao enviar para equipe: " + err.message);
     } finally {
       setIsSaving(false);
@@ -341,83 +389,40 @@ export default function ContratosAtivosView() {
     
     setIsExportingPdf(true);
     
-    // Backup and temporarily strip oklch/oklab colors from all stylesheets to prevent html2canvas from crashing
-    const styleElements = Array.from(document.querySelectorAll("style"));
-    const originalStyleContents: string[] = [];
-    
-    // Also backup inline styles
-    const elementsWithStyle = Array.from(pdfContentRef.current?.querySelectorAll("*") || []).filter(el => (el as HTMLElement).style);
-
     try {
-      styleElements.forEach((el) => {
-        originalStyleContents.push(el.textContent || "");
-        let css = el.textContent || "";
-        if (css.includes("oklch") || css.includes("oklab")) {
-          // Replace oklch with rgba
-          css = css.replace(/oklch\s*\(\s*([0-9.%]+)\s+([0-9.%]+)\s+([0-9.%]+)(?:\s*[\s/]\s*([0-9.%]+))?\s*\)/gi, (match, lStr, cStr, hStr, aStr) => {
-            let l = parseFloat(lStr);
-            if (lStr.includes("%")) l = l / 100;
-            let c = parseFloat(cStr);
-            if (cStr.includes("%")) c = c / 100;
-            const h = parseFloat(hStr);
-            let alpha = 1;
-            if (aStr) {
-              alpha = parseFloat(aStr);
-              if (aStr.includes("%")) alpha = alpha / 100;
-            }
-
-            // High chroma, orange/amber hue region
-            if (c > 0.05 && h >= 20 && h <= 95) {
-              return `rgba(249, 115, 22, ${alpha})`;
-            }
-            // Emerald/green hue region
-            if (c > 0.05 && h >= 110 && h <= 180) {
-              return `rgba(16, 185, 129, ${alpha})`;
-            }
-            // Standard grayscale fallback based on lightness
-            const gray = Math.round(l * 255);
-            return `rgba(${gray}, ${gray}, ${gray}, ${alpha})`;
-          });
-
-          // Replace oklab with rgba, using a more permissive regex
-          css = css.replace(/oklab\s*\([^)]*\)/gi, (match) => {
-            // Extract L if possible to guess lightness, fallback to 0.5
-            const lMatch = match.match(/oklab\s*\(\s*([0-9.%]+)/i);
-            let l = 0.5;
-            if (lMatch && lMatch[1]) {
-                l = parseFloat(lMatch[1]);
-                if (lMatch[1].includes("%")) l = l / 100;
-            }
-            const gray = Math.round(l * 255);
-            return `rgba(${gray}, ${gray}, ${gray}, 1)`;
-          });
-
-          el.textContent = css;
-        }
-      });
-      
-      // Also clean inline styles
-      elementsWithStyle.forEach(el => {
-        const hEl = el as HTMLElement;
-        (hEl as any).__originalStyle = hEl.getAttribute("style");
-        let style = hEl.getAttribute("style") || "";
-        if (style.includes("oklch") || style.includes("oklab")) {
-            // Very simple replacement for inline styles
-            style = style.replace(/oklch\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
-            style = style.replace(/oklab\s*\([^)]*\)/gi, "rgba(100, 100, 100, 1)");
-            hEl.setAttribute("style", style);
-        }
-      });
-
       const element = pdfContentRef.current;
       if (!element) throw new Error("Elemento de pré-visualização não encontrado");
 
       const canvas = await html2canvas(element, {
-        scale: 2, // High resolution crisp rendering
+        scale: 2, 
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
-        logging: false
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Strip oklch/oklab from the cloned document styles ONLY to prevent crashing without affecting the main page
+          const styles = Array.from(clonedDoc.querySelectorAll("style"));
+          styles.forEach((el) => {
+            let css = el.textContent || "";
+            if (css.includes("oklch") || css.includes("oklab") || css.includes("color-mix")) {
+              css = css.replace(/in\s+(oklch|oklab)/gi, "in srgb");
+              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
+              css = css.replace(colorRegex, "rgba(100, 100, 100, 1)");
+              el.textContent = css;
+            }
+          });
+          
+          const styledElements = Array.from(clonedDoc.querySelectorAll("*")).filter(el => (el as HTMLElement).getAttribute("style"));
+          styledElements.forEach(el => {
+            const hEl = el as HTMLElement;
+            let style = hEl.getAttribute("style") || "";
+            if (style.includes("oklch") || style.includes("oklab") || style.includes("color-mix")) {
+              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
+              style = style.replace(colorRegex, "rgba(100, 100, 100, 1)");
+              hEl.setAttribute("style", style);
+            }
+          });
+        }
       });
 
       const imgData = canvas.toDataURL("image/jpeg", 0.98);
@@ -454,22 +459,6 @@ export default function ContratosAtivosView() {
     } catch (error) {
       console.error("Erro ao exportar PDF:", error);
     } finally {
-      // Restore original stylesheets instantly so the page UI returns to its native high-quality state
-      styleElements.forEach((el, index) => {
-        if (originalStyleContents[index] !== undefined) {
-          el.textContent = originalStyleContents[index];
-        }
-      });
-      
-      // Restore original inline styles
-      elementsWithStyle.forEach(el => {
-        const hEl = el as HTMLElement;
-        if ((hEl as any).__originalStyle !== undefined) {
-          hEl.setAttribute("style", (hEl as any).__originalStyle);
-          delete (hEl as any).__originalStyle;
-        }
-      });
-      
       setIsExportingPdf(false);
     }
   };
@@ -672,7 +661,7 @@ export default function ContratosAtivosView() {
         uf: uf || null,
         bairro: bairro || null,
         complemento: complemento || null,
-        itensInstalacao: itensInstalacao || null,
+        itensInstalacao: JSON.stringify(itensInstalacao),
         enderecoEntrega: enderecoEntrega || null,
         condicoesComerciais: condicoesComerciais || null,
         freteTipo,
@@ -1112,18 +1101,73 @@ export default function ContratosAtivosView() {
               </div>
 
               {/* Itens a serem instalados Field */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Itens a serem instalados
-                </label>
-                <textarea
-                  placeholder="Liste aqui os itens que serão instalados..."
-                  rows={4}
-                  disabled={!isEditing || !isWritable}
-                  value={itensInstalacao}
-                  onChange={e => setItensInstalacao(e.target.value)}
-                  className="w-full p-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
-                />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Itens a serem instalados
+                  </label>
+                  {isEditing && isWritable && (
+                    <button
+                      type="button"
+                      onClick={() => setItensInstalacao([...itensInstalacao, { material: "", valor: 0 }])}
+                      className="text-[10px] font-bold text-brand-accent hover:text-orange-600 transition-colors uppercase tracking-widest flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Adicionar Item
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {itensInstalacao.length === 0 ? (
+                    <div className="p-4 border-2 border-dashed border-slate-100 rounded-xl text-center">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Nenhum item adicionado</p>
+                    </div>
+                  ) : (
+                    itensInstalacao.map((item, index) => (
+                      <div key={index} className="flex gap-2 items-start bg-slate-50 p-2 rounded-xl border border-slate-100 group">
+                        <div className="flex-1 space-y-1">
+                          <input
+                            type="text"
+                            placeholder="Material"
+                            disabled={!isEditing || !isWritable}
+                            value={item.material}
+                            onChange={(e) => {
+                              const newItens = [...itensInstalacao];
+                              newItens[index].material = e.target.value;
+                              setItensInstalacao(newItens);
+                            }}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-brand-secondary rounded-lg text-xs font-semibold focus:outline-none transition-all"
+                          />
+                        </div>
+                        <div className="w-40 space-y-1">
+                          <input
+                            type="text"
+                            placeholder="Valor R$"
+                            disabled={!isEditing || !isWritable}
+                            value={formatCurrencyLive((item.valor * 100).toFixed(0))}
+                            onChange={(e) => {
+                              const cleanValue = e.target.value.replace(/\D/g, "");
+                              const numValue = Number(cleanValue) / 100;
+                              const newItens = [...itensInstalacao];
+                              newItens[index].valor = numValue;
+                              setItensInstalacao(newItens);
+                            }}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-brand-secondary rounded-lg text-xs font-semibold focus:outline-none transition-all"
+                          />
+                        </div>
+                        {isEditing && isWritable && (
+                          <button
+                            type="button"
+                            onClick={() => setItensInstalacao(itensInstalacao.filter((_, i) => i !== index))}
+                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
 
               {/* Endereço da Obra with CEP Search */}
@@ -1294,11 +1338,14 @@ export default function ContratosAtivosView() {
       )}
 
       {/* PDF PREVIEW AND EXPORT MODAL */}
-      {showPdfPreview && selectedObra && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+      {selectedObra && (
+        <div 
+          className={showPdfPreview ? "fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-[100] flex items-center justify-center p-4 overflow-y-auto" : "fixed -left-[10000px] -top-[10000px] pointer-events-none"}
+          style={{ visibility: 'visible' }}
+        >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={showPdfPreview ? { opacity: 0, scale: 0.95 } : false}
+            animate={showPdfPreview ? { opacity: 1, scale: 1 } : false}
             className="bg-slate-900 rounded-3xl shadow-2xl max-w-6xl w-full border border-slate-800 text-white flex flex-col md:flex-row h-[90vh] overflow-hidden"
           >
             {/* LEFT / MAIN COLUMN: THE PDF SHEET PREVIEW CANVAS */}
@@ -1489,9 +1536,18 @@ export default function ContratosAtivosView() {
 
                   <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
                     <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Itens a serem instalados</h4>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line mt-1">
-                      {itensInstalacao || itensMateriais.join(", ") || "Nenhum material cadastrado neste contrato."}
-                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      {itensInstalacao.length > 0 ? (
+                        itensInstalacao.map((it, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-700 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                            <span>{it.material}</span>
+                            <span className="text-brand-accent whitespace-nowrap">{formatCurrency(it.valor)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">Nenhum item cadastrado.</p>
+                      )}
+                    </div>
                   </div>
                   </div>
                 </div>
