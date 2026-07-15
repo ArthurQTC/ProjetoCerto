@@ -14,8 +14,7 @@ import {
   Trash2,
   FileSpreadsheet,
   RotateCcw,
-  Lock,
-  Send
+  Lock
 } from "lucide-react";
 import { useUIStore, useAuthStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
@@ -45,7 +44,6 @@ export default function ProjectsListView() {
   const [restoreConfirmationName, setRestoreConfirmationName] = useState<string>("");
   const [permanentDeleteConfirmationId, setPermanentDeleteConfirmationId] = useState<string | null>(null);
   const [permanentDeleteConfirmationName, setPermanentDeleteConfirmationName] = useState<string>("");
-  const [isSendingId, setIsSendingId] = useState<string | null>(null);
 
   // Auto-reset trash view on tab change
   useEffect(() => {
@@ -458,7 +456,6 @@ export default function ProjectsListView() {
                     {hasPermission("colunas", "valorContrato") ? "Margem Líquida" : "Margem (Restrita)"}
                   </th>
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Margem (%)</th>
-                  {!showLixeira && projectFilter !== "A_FECHAR" && <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Enviar Para Equipe</th>}
                   <th className="py-3 px-5 text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider text-center">Ações</th>
                 </tr>
               </thead>
@@ -521,36 +518,6 @@ export default function ProjectsListView() {
                           {hasPermission("colunas", "margemLiquida") ? `${p.percentualMargem.toFixed(2)}%` : "••••••"}
                         </span>
                       </td>
-                      {!showLixeira && projectFilter !== "A_FECHAR" && (
-                        <td className="py-3.5 px-5 text-center">
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setIsSendingId(p.id);
-                              try {
-                                const res = await fetch("/api/enviar-para-equipe", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ contratoNome: p.nome, detalhes: `Valor: ${p.valorContrato}, Margem: ${p.percentualMargem.toFixed(2)}%` })
-                                });
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.error || "Erro ao enviar e-mail");
-                                alert("E-mail enviado com sucesso!");
-                              } catch (err: any) {
-                                alert(err.message);
-                              } finally {
-                                setIsSendingId(null);
-                              }
-                            }}
-                            disabled={isSendingId === p.id}
-                            className="p-1 px-2 hover:bg-slate-100 text-brand-text-secondary hover:text-brand-primary font-bold border border-slate-200/65 rounded-md transition-colors inline-flex items-center gap-1 text-[10px] disabled:opacity-50"
-                            title="Enviar para Equipe"
-                          >
-                            <Send className={`w-3 h-3 ${isSendingId === p.id ? 'animate-spin' : ''}`} />
-                            {isSendingId === p.id ? 'Enviando...' : 'Enviar'}
-                          </button>
-                        </td>
-                      )}
                       <td className="py-3.5 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           {showLixeira ? (
