@@ -113,6 +113,7 @@ export interface Material {
 }
 
 export interface LevantamentoSubestrutura {
+  id?: string;
   material?: string;
   materialId?: string;
   qtdHD?: number;

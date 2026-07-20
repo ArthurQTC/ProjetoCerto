@@ -178,7 +178,7 @@ export default function LevantamentosView() {
   const [formOrigemLeads, setFormOrigemLeads] = useState<"Hunter Douglas" | "Projeto Certo">("Projeto Certo");
   
   // Dynamic list of multiple materials / subestruturas
-  const [formSubestruturas, setFormSubestruturas] = useState<{ material: string; qtdHD: string; valorUnitario: string; unidade?: 'Peças' | 'Metro Quadrado' }[]>([]);
+  const [formSubestruturas, setFormSubestruturas] = useState<{ id?: string; material: string; qtdHD: string; valorUnitario: string; unidade?: 'Peças' | 'Metro Quadrado' }[]>([]);
   const [formSubestruturasPC, setFormSubestruturasPC] = useState<{ material: string; qtdPC: string; valorUnitario: string }[]>([]);
 
   // Selection state for levantamentos list
@@ -584,6 +584,7 @@ export default function LevantamentosView() {
     
     if (survey.subestruturas && survey.subestruturas.length > 0) {
       setFormSubestruturas(survey.subestruturas.map(s => ({
+        id: s.id || undefined,
         material: typeof s.material === 'object' && s.material !== null ? (s.material as any).descricao : (s.material || ""),
         qtdHD: formatInputVal(s.qtdHD !== undefined ? s.qtdHD : (s.qtdM2 || "")),
         valorUnitario: formatInputVal(s.valorUnitario || "0"),
@@ -650,6 +651,7 @@ export default function LevantamentosView() {
       const v = rawVal ? parseFloat(rawVal) : 0;
 
       return {
+        id: item.id || undefined,
         material: item.material || "",
         qtdHD: isNaN(q) ? 0 : q,
         qtdM2: isNaN(q) ? 0 : q, // backward compatibility fallback

@@ -128,10 +128,16 @@ export default function ContratosAtivosView() {
         fetch("/api/contratos-ativos")
       ]);
 
-      if (!resObras.ok) throw new Error("Erro ao buscar obras");
+      if (!resObras.ok) {
+        const errorData = await resObras.json().catch(() => ({ error: "Erro desconhecido ao buscar obras" }));
+        throw new Error(errorData.error || "Erro ao buscar obras");
+      }
       const obrasData: Obra[] = await resObras.json();
       
-      const caData: ContratoAtivo[] = resCA.ok ? await resCA.json() : [];
+      let caData: ContratoAtivo[] = [];
+      if (resCA.ok) {
+        caData = await resCA.json().catch(() => []);
+      }
 
       // Filter only CONSOLIDADO for this module
       const consolidadas = obrasData.filter(o => o.statusContrato === "CONSOLIDADO");
@@ -180,13 +186,19 @@ export default function ContratosAtivosView() {
     try {
       const resObra = await fetch(`/api/obras/${obra.id}`);
       if (resObra.ok) {
-        const fullObra = await resObra.json();
-        if (fullObra.itens) {
+        const fullObra = await resObra.json().catch((e) => {
+          console.error("Erro ao processar JSON de obra:", e);
+          return null;
+        });
+        if (fullObra && fullObra.itens) {
           const materials = fullObra.itens
             .map((it: any) => it.descricao)
             .filter((desc: string) => desc && desc !== "Custo ADM" && desc !== "Imposto Fixo");
           setItensMateriais(materials);
         }
+      } else {
+        const errorData = await resObra.json().catch(() => ({ error: "Erro ao carregar detalhes do projeto" }));
+        console.error("Erro na resposta de obra:", errorData);
       }
     } catch (err) {
       console.error("Erro ao carregar itens do projeto:", err);
@@ -195,7 +207,13 @@ export default function ContratosAtivosView() {
     try {
       const res = await fetch(`/api/contratos-ativos/${obra.id}`);
       if (res.ok) {
-        const data: ContratoAtivo = await res.json();
+        const data: ContratoAtivo = await res.json().catch((e) => {
+          console.error("Erro ao processar JSON de contrato ativo:", e);
+          return null;
+        });
+        
+        if (!data) return;
+
         setCnpj(data.cnpj ? formatCNPJ(data.cnpj) : "");
         setContato(data.contato ? formatPhone(data.contato) : "");
         setEndereco(data.endereco || "");
@@ -220,6 +238,9 @@ export default function ContratosAtivosView() {
         setEntrada(data.entrada !== undefined ? data.entrada : "");
         setSaldoReceber(data.saldoReceber !== undefined ? data.saldoReceber : "");
         setTipoObra(data.tipoObra || "Instalação");
+      } else {
+        const errorData = await res.json().catch(() => ({ error: "Erro ao carregar dados do contrato" }));
+        console.error("Erro na resposta de contrato ativo:", errorData);
       }
     } catch (err) {
       console.error("Erro ao carregar dados do contrato:", err);

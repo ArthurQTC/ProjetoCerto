@@ -3082,6 +3082,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
             matsMap[lId] = [];
           }
           matsMap[lId].push({
+            id: mat.id,
             material: mat.material,
             qtdHD: Number(mat.qtd_m2),
             qtdM2: Number(mat.qtd_m2),
@@ -3277,7 +3278,8 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
         if (subListHD.length > 0) {
           for (let i = 0; i < subListHD.length; i++) {
             const mat = subListHD[i];
-            const matId = `${id}-${i + 1}`;
+            const isValidUUID = mat.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mat.id);
+            const matId = isValidUUID ? mat.id : crypto.randomUUID();
             const q = mat.qtdHD !== undefined ? mat.qtdHD : (mat.qtdM2 || 0);
             await pool.query(`
               INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade, "createdAt", "updatedAt")
@@ -3385,17 +3387,67 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
          }
 
          const existingObraId = checkRes.rows[0].contratoAFecharId || null;
-         await pool.query('DELETE FROM levantamento_materiais WHERE levantamento_id = $1', [id]);
+         
+         // Query existing material IDs for this levantamento
+         const existingMatsRes = await pool.query('SELECT id FROM levantamento_materiais WHERE levantamento_id = $1', [id]);
+         const existingIds = existingMatsRes.rows.map(row => row.id);
+         const incomingIds: string[] = [];
+
          if (subListHD.length > 0) {
            for (let i = 0; i < subListHD.length; i++) {
              const mat = subListHD[i];
-             const matId = crypto.randomUUID();
              const q = mat.qtdHD !== undefined ? mat.qtdHD : (mat.qtdM2 || 0);
-             await pool.query(`
-               INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade, "createdAt", "updatedAt")
-               VALUES ($1, $2::VARCHAR, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             `, [matId, id, mat.material || "", Number(q) || 0, Number(mat.valorUnitario) || 0, mat.unidade || "Metro Quadrado"]);
+             
+             const isValidUUID = mat.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mat.id);
+             
+             if (isValidUUID && existingIds.includes(mat.id)) {
+               // Update existing material
+               incomingIds.push(mat.id);
+               await pool.query(`
+                 UPDATE levantamento_materiais SET
+                   material = $1,
+                   qtd_m2 = $2,
+                   valor_unitario = $3,
+                   unidade = $4,
+                   "updatedAt" = CURRENT_TIMESTAMP
+                 WHERE id = $5 AND levantamento_id = $6
+               `, [
+                 mat.material || "",
+                 Number(q) || 0,
+                 Number(mat.valorUnitario) || 0,
+                 mat.unidade || "Metro Quadrado",
+                 mat.id,
+                 id
+               ]);
+             } else {
+               // Insert new material
+               const newMatId = isValidUUID ? mat.id : crypto.randomUUID();
+               incomingIds.push(newMatId);
+               await pool.query(`
+                 INSERT INTO levantamento_materiais (id, levantamento_id, material, qtd_m2, valor_unitario, unidade, "createdAt", "updatedAt")
+                 VALUES ($1, $2::VARCHAR, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 ON CONFLICT (id) DO UPDATE SET
+                   material = EXCLUDED.material,
+                   qtd_m2 = EXCLUDED.qtd_m2,
+                   valor_unitario = EXCLUDED.valor_unitario,
+                   unidade = EXCLUDED.unidade,
+                   "updatedAt" = CURRENT_TIMESTAMP
+               `, [
+                 newMatId,
+                 id,
+                 mat.material || "",
+                 Number(q) || 0,
+                 Number(mat.valorUnitario) || 0,
+                 mat.unidade || "Metro Quadrado"
+               ]);
+             }
            }
+         }
+
+         // Delete materials that were removed (exist in DB but not in incomingIds)
+         const idsToDelete = existingIds.filter(dbId => !incomingIds.includes(dbId));
+         if (idsToDelete.length > 0) {
+           await pool.query('DELETE FROM levantamento_materiais WHERE levantamento_id = $1 AND id = ANY($2::uuid[])', [id, idsToDelete]);
          }
 
          const query = `
@@ -4038,6 +4090,21 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
       console.error("[API] Erro ao enviar e-mail:", error);
       res.status(500).json({ error: error.message || "Erro ao enviar e-mail" });
     }
+  });
+
+  // Global Error Handler for /api
+  app.use("/api", (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error(`[GLOBAL API ERROR] ${req.method} ${req.url}:`, err);
+    res.status(500).json({ 
+      error: err.message || "Erro interno no servidor",
+      details: err.detail || err.message,
+      stack: process.env.NODE_ENV !== "production" ? err.stack : undefined
+    });
+  });
+
+  // 404 for API
+  app.use("/api", (req, res) => {
+    res.status(404).json({ error: `Rota API não encontrada: ${req.method} ${req.originalUrl}` });
   });
 
   /* ==============================================
