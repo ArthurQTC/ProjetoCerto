@@ -130,3 +130,68 @@ export async function sendEmail({
     throw error;
   }
 }
+
+export async function sendVerificationCodeEmail({
+  email,
+  code,
+  usuarioNome
+}: {
+  email: string;
+  code: string;
+  usuarioNome: string;
+}) {
+  console.log("[EmailService] Enviando código para:", email);
+
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("\n==================================================");
+    console.warn(`[DEVELOPMENT MODE] RESEND_API_KEY não configurada.`);
+    console.warn(`CÓDIGO DE VERIFICAÇÃO PARA ${email}: ${code}`);
+    console.warn("==================================================\n");
+    return { mock: true, code };
+  }
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+
+  const from = process.env.SMTP_FROM || "onboarding@resend.dev";
+
+  const subject = `🔑 Seu código de verificação para alteração de senha: ${code}`;
+
+  const htmlContent = `
+    <div style="font-family: sans-serif; max-width: 500px; margin: auto; color: #333; line-height: 1.6; border: 1px solid #edf2f7; border-radius: 12px; padding: 32px; background-color: #ffffff;">
+      <h2 style="color: #1a365d; margin-top: 0; margin-bottom: 24px; text-align: center; font-size: 22px;">Alteração de Senha</h2>
+      <p>Olá, <strong>${usuarioNome}</strong>!</p>
+      <p>Recebemos uma solicitação para alterar a senha da sua conta no sistema <strong>Projeto Certo</strong>.</p>
+      <p>Utilize o código de verificação abaixo para confirmar sua identidade e concluir a alteração. Este código expira em 10 minutos.</p>
+      
+      <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; text-align: center; margin: 28px 0;">
+        <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1a365d;">${code}</span>
+      </div>
+
+      <p style="font-size: 13px; color: #718096; text-align: center;">Se você não solicitou essa alteração, pode ignorar este e-mail com segurança.</p>
+      
+      <div style="margin-top: 32px; font-size: 11px; color: #a0aec0; border-top: 1px solid #edf2f7; padding-top: 16px; text-align: center;">
+        Este é um e-mail automático gerado pelo sistema de Gestão de Obras. Por favor, não responda.
+      </div>
+    </div>
+  `;
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: from,
+      to: [email],
+      subject: subject,
+      html: htmlContent,
+    });
+
+    if (error) {
+      console.error("[EmailService] Erro Resend ao enviar código:", error);
+      throw error;
+    }
+
+    console.log("[EmailService] Código enviado com sucesso para:", email);
+    return data;
+  } catch (error) {
+    console.error("[EmailService] Exceção ao enviar código:", error);
+    throw error;
+  }
+}

@@ -163,12 +163,13 @@ export interface Usuario {
   nome: string;
   nome_usuario: string;
   email: string;
-  nivel: 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR' | 'ARQUITETO';
+  nivel: 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'LEITOR' | 'ARQUITETO' | 'EDITOR_CA';
   permissoes: {
     modulos: {
       dashboard: boolean | 'visualizar' | 'editar' | 'nenhum';
       contratosConsolidados: boolean | 'visualizar' | 'editar' | 'nenhum';
       contratosAtivos?: boolean | 'visualizar' | 'editar' | 'nenhum';
+      enviarEquipe?: boolean | 'visualizar' | 'editar' | 'nenhum';
       orcamentosAFechar: boolean | 'visualizar' | 'editar' | 'nenhum';
       etapasContrato: boolean | 'visualizar' | 'editar' | 'nenhum';
       levantamentosOrcamentos: boolean | 'visualizar' | 'editar' | 'nenhum';

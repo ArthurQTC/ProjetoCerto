@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   GitFork,
   ChevronDown,
+  Key,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useUIStore, useAuthStore } from "./store";
@@ -99,6 +100,17 @@ function AppContent() {
   const [logoFailed, setLogoFailed] = useState(false);
   const [maintenanceModule, setMaintenanceModule] = useState<string | null>(null);
 
+  // Estados de alteração de senha própria
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [changePasswordStep, setChangePasswordStep] = useState<1 | 2>(1);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [passwordSuccessMessage, setPasswordSuccessMessage] = useState("");
+  const [passwordErrorMessage, setPasswordErrorMessage] = useState("");
+
   // Check auth status on boot
   useEffect(() => {
     const tokenInStorage = localStorage.getItem("auth_token");
@@ -120,6 +132,99 @@ function AppContent() {
         useAuthStore.setState({ user: null, isAuthenticated: false, isChecking: false });
       });
   }, []);
+
+  const handleSendVerificationCode = async () => {
+    setIsSendingCode(true);
+    setPasswordErrorMessage("");
+    setPasswordSuccessMessage("");
+    try {
+      const res = await fetch("/api/perfil/enviar-codigo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao enviar código.");
+      }
+      setPasswordSuccessMessage(data.message || "Código enviado com sucesso!");
+      setChangePasswordStep(2);
+    } catch (err: any) {
+      setPasswordErrorMessage(err.message || "Erro de conexão ao enviar código.");
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationCode || !newPassword || !confirmPassword) {
+      setPasswordErrorMessage("Todos os campos são obrigatórios.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordErrorMessage("A nova senha e a confirmação não conferem.");
+      return;
+    }
+    if (newPassword.length < 4) {
+      setPasswordErrorMessage("A nova senha deve ter pelo menos 4 caracteres.");
+      return;
+    }
+
+    setIsSubmittingPassword(true);
+    setPasswordErrorMessage("");
+    setPasswordSuccessMessage("");
+    try {
+      const res = await fetch("/api/perfil/alterar-senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          codigo: verificationCode,
+          novaSenha: newPassword
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao alterar a senha.");
+      }
+      setPasswordSuccessMessage("Sua senha foi alterada com sucesso!");
+      setVerificationCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setChangePasswordStep(1);
+        setPasswordSuccessMessage("");
+      }, 2000);
+    } catch (err: any) {
+      setPasswordErrorMessage(err.message || "Erro de conexão ao alterar senha.");
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  };
+
+  const handleClosePasswordModal = () => {
+    setShowChangePasswordModal(false);
+    setChangePasswordStep(1);
+    setVerificationCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordErrorMessage("");
+    setPasswordSuccessMessage("");
+  };
+
+  const maskEmail = (emailStr: string) => {
+    if (!emailStr) return "";
+    const [local, domain] = emailStr.split("@");
+    if (!domain) return emailStr;
+    const maskedLocal = local.length > 2 
+      ? local[0] + "***" + local[local.length - 1] 
+      : local[0] + "***";
+    const [domainName, domainExt] = domain.split(".");
+    const maskedDomain = domainName.length > 2
+      ? domainName[0] + "***" + domainName[domainName.length - 1]
+      : domainName[0] + "***";
+    return `${maskedLocal}@${maskedDomain}.${domainExt}`;
+  };
 
   // Redirect to first available view if they don't have access to current one
   useEffect(() => {
@@ -507,6 +612,20 @@ function AppContent() {
                   <span>Controle de Acessos</span>
                 </button>
               )}
+
+              {/* Alterar Senha - Ocultado por enquanto
+              <button
+                onClick={() => {
+                  setShowChangePasswordModal(true);
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                id="sidebar_nav_alterar_senha"
+              >
+                <Key className="w-4 h-4 text-brand-accent" />
+                <span>Alterar Senha</span>
+              </button>
+              */}
             </nav>
           </div>
         </div>
@@ -564,6 +683,15 @@ function AppContent() {
                 <p className="text-[11px] font-bold text-brand-text-primary truncate leading-none">{user?.nome}</p>
                 <p className="text-[9px] font-bold text-[#D9A441] uppercase tracking-wider mt-1 leading-none">{user?.nivel}</p>
               </div>
+              {/* Alterar Senha - Ocultado por enquanto
+              <button
+                onClick={() => setShowChangePasswordModal(true)}
+                className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 transition-all cursor-pointer mr-1"
+                title="Alterar Senha"
+              >
+                <Key className="w-3.5 h-3.5" />
+              </button>
+              */}
               <button
                 onClick={() => logout()}
                 className="p-1.5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg border border-slate-200 hover:border-red-200 transition-all cursor-pointer"
@@ -873,6 +1001,180 @@ function AppContent() {
           </motion.div>
         </div>
       )}
+
+      {/* MODAL DE ALTERAÇÃO DE SENHA */}
+      <AnimatePresence>
+        {showChangePasswordModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-white rounded-2xl border border-slate-100 shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="bg-brand-primary text-white p-6 relative">
+                <button
+                  onClick={handleClosePasswordModal}
+                  className="absolute right-4 top-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-lg transition-all cursor-pointer"
+                  title="Fechar"
+                >
+                  <span className="text-sm">✕</span>
+                </button>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                    <Key className="w-5 h-5 text-brand-accent" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight uppercase leading-tight">Alterar Senha</h3>
+                    <p className="text-[10px] text-white/70 font-mono uppercase tracking-widest mt-0.5">Segurança da Conta</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar / Steps */}
+              <div className="flex border-b border-slate-100 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <div className={`flex-1 py-3 text-center border-r border-slate-100 ${changePasswordStep === 1 ? 'text-brand-primary bg-white font-extrabold border-b-2 border-brand-accent' : ''}`}>
+                  1. Solicitar Código
+                </div>
+                <div className={`flex-1 py-3 text-center ${changePasswordStep === 2 ? 'text-brand-primary bg-white font-extrabold border-b-2 border-brand-accent' : ''}`}>
+                  2. Validar & Alterar
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6">
+                {passwordErrorMessage && (
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <span className="text-sm">⚠️</span>
+                    <span>{passwordErrorMessage}</span>
+                  </div>
+                )}
+                
+                {passwordSuccessMessage && (
+                  <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
+                    <span className="text-sm">✅</span>
+                    <span>{passwordSuccessMessage}</span>
+                  </div>
+                )}
+
+                {changePasswordStep === 1 ? (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Para alterar sua senha, precisamos enviar um código de segurança de 6 dígitos para o e-mail registrado na sua conta.
+                    </p>
+
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-200/50 flex items-center justify-center">
+                        <span className="text-base">📧</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">E-mail Cadastrado</p>
+                        <p className="text-xs font-bold text-slate-700 mt-1 truncate font-mono">{user?.email ? maskEmail(user.email) : "..."}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleSendVerificationCode}
+                      disabled={isSendingCode}
+                      className="w-full py-3 px-4 bg-brand-primary hover:bg-brand-secondary disabled:bg-slate-300 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isSendingCode ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-b-transparent rounded-full animate-spin"></div>
+                          <span>Enviando Código...</span>
+                        </>
+                      ) : (
+                        <span>Enviar Código de Segurança</span>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Insira o código de 6 dígitos enviado para seu e-mail e defina sua nova senha.
+                    </p>
+
+                    {/* Código de Verificação */}
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Código de 6 dígitos</label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-3.5 top-3 text-sm">🔑</span>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={verificationCode}
+                          onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Digite o código"
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-brand-primary rounded-xl text-sm font-bold tracking-widest text-center focus:outline-none transition-all font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Nova Senha */}
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Nova Senha</label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-3.5 top-3 text-sm">🔒</span>
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Mínimo 4 caracteres"
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-brand-primary rounded-xl text-xs font-bold focus:outline-none transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Confirmar Nova Senha */}
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Confirmar Nova Senha</label>
+                      <div className="relative mt-1">
+                        <span className="absolute left-3.5 top-3 text-sm">🔒</span>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Repita a nova senha"
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-brand-primary rounded-xl text-xs font-bold focus:outline-none transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Submit */}
+                    <div className="pt-2 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setChangePasswordStep(1)}
+                        className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                      >
+                        Voltar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingPassword}
+                        className="flex-2 py-3 px-4 bg-brand-primary hover:bg-brand-secondary disabled:bg-slate-300 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {isSubmittingPassword ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-b-transparent rounded-full animate-spin"></div>
+                            <span>Alterando...</span>
+                          </>
+                        ) : (
+                          <span>Alterar Senha</span>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

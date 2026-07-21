@@ -753,9 +753,6 @@ export default function LevantamentosView() {
             <div className="text-3xl font-black text-brand-primary tracking-tight font-sans">
               {totalMetrosQuadrados.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²
             </div>
-            <p className="text-sm font-extrabold text-slate-800 font-mono">
-              Valor Total Estimado: R$ {totalValueSum.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
           </div>
           <div className="w-12 h-12 bg-[#D9A441]/10 rounded-full flex items-center justify-center">
             <Layers className="w-5 h-5 text-[#D9A441]" />

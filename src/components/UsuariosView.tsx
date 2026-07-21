@@ -26,9 +26,10 @@ import { useAuthStore, Usuario } from "../store";
 const ROLES = [
   { value: "ADMIN", label: "Administrador", desc: "Acesso total irrestrito ao sistema." },
   { value: "GESTOR", label: "Gestor", desc: "Gerencia contratos, levantamentos e visualiza todos os indicadores." },
-  { value: "OPERADOR", label: "Operador", desc: "Acesso operacional para criar e editar levantamentos e orçamentos." },
+  { value: "OPERADOR", label: "Operador", desc: "Permissão de edição e leitura exclusivamente do módulo de Contratos Ativos." },
   { value: "LEITOR", label: "Leitor", desc: "Acesso exclusivo de leitura aos módulos selecionados." },
-  { value: "ARQUITETO", label: "Arquiteto", desc: "Acesso focado em visualização e edição de Levantamentos/Orçamentos." }
+  { value: "ARQUITETO", label: "Arquiteto", desc: "Acesso focado em visualização e edição de Levantamentos/Orçamentos." },
+  { value: "EDITOR_CA", label: "Editor CA", desc: "Permissão de edição e leitura exclusivamente do módulo de Contratos Ativos." }
 ];
 
 const MODULE_OPTIONS = [
@@ -76,6 +77,7 @@ const DEFAULT_PERMISSIONS = {
     dashboard: "editar",
     contratosConsolidados: "editar",
     contratosAtivos: "editar",
+    enviarEquipe: "editar",
     orcamentosAFechar: "editar",
     exportarExcelContratos: "editar",
     exportarExcelOrcamentos: "editar",
@@ -141,7 +143,9 @@ const PERMISSION_HIERARCHY = [
             category: "modulos", 
             label: "Contratos Ativos", 
             tooltip: "Acesso à lista e preenchimento de Dados do Contrato (CNPJ, Endereço, CIF/FOB, Entrada e Saldo).",
-            rlsFields: []
+            rlsFields: [
+              { key: "enviarEquipe", category: "modulos", label: "Botão: Enviar para Equipe", tooltip: "Permite ao usuário visualizar e/ou acionar o envio de dados do contrato para a equipe." }
+            ]
           },
           { 
             key: "orcamentosAFechar", 
@@ -544,6 +548,22 @@ export default function UsuariosView() {
 
   const renderPermissionPreview = (key: string, tooltipText?: string) => {
     switch (key) {
+      case "enviarEquipe":
+        return (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-extrabold text-slate-800">Enviar para Equipe</span>
+              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-sm uppercase">RECURSO</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1.5">
+              <div className="flex justify-between items-center bg-white p-1.5 rounded border border-slate-100 text-[10px]">
+                <span className="font-bold text-slate-700">Ação de Disparar Notificação</span>
+                <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 rounded-sm font-semibold">Botão</span>
+              </div>
+            </div>
+            {tooltipText && <span className="text-[9px] text-slate-400 block mt-1.5 leading-snug">{tooltipText}</span>}
+          </div>
+        );
       case "contratosAtivos":
         return (
           <div className="space-y-2 text-xs">
@@ -1329,35 +1349,13 @@ export default function UsuariosView() {
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'editar';
     } else if (role === "OPERADOR") {
-      updated.modulos.dashboard = 'visualizar';
-      updated.modulos.contratosConsolidados = 'nenhum';
-      updated.modulos.orcamentosAFechar = 'editar';
-      updated.modulos.etapasContrato = 'nenhum';
-      updated.modulos.levantamentosOrcamentos = 'editar';
-      updated.modulos.usuarios = 'nenhum';
-      updated.modulos.fluxoOperacional = 'editar';
-      updated.modulos.fluxoOperacionalTradicional = 'editar';
-      updated.modulos.fluxoOperacionalExecutivo = 'visualizar';
-      updated.modulos.fluxoOperacionalPainel = 'editar';
-      updated.modulos.fluxoOperacionalWorkflow = 'editar';
-      updated.modulos.fluxoOperacionalHistorico = 'visualizar';
-      updated.modulos.fluxoOperacionalDashboard = 'visualizar';
-
-      updated.indicadores.totalContratos = 'nenhum';
-      updated.indicadores.totalVisaoGeral = 'nenhum';
-      updated.indicadores.totalMargem = 'nenhum';
-      updated.indicadores.percentualMedio = 'nenhum';
-      updated.indicadores.totalAdm = 'nenhum';
-      updated.indicadores.kpiProjecao = 'visualizar';
-      updated.indicadores.kpiAdm = 'nenhum';
-      updated.indicadores.graficoCustos = 'nenhum';
-
-      updated.colunas.valorContrato = 'nenhum';
-      updated.colunas.margemLiquida = 'nenhum';
-      updated.colunas.custoAdm = 'nenhum';
-      updated.colunas.valorItens = 'editar';
-      updated.colunas.subestruturas = 'editar';
-
+      Object.keys(updated).forEach(cat => {
+        Object.keys(updated[cat as keyof typeof DEFAULT_PERMISSIONS]).forEach(k => {
+          (updated[cat as keyof typeof DEFAULT_PERMISSIONS] as any)[k] = 'nenhum';
+        });
+      });
+      updated.modulos.contratosAtivos = 'editar';
+      updated.modulos.enviarEquipe = 'editar';
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'editar';
     } else if (role === "LEITOR") {
@@ -1422,6 +1420,16 @@ export default function UsuariosView() {
       updated.colunas.valorItens = 'editar';
       updated.colunas.subestruturas = 'editar';
 
+      updated.acoes.visualizar = 'visualizar';
+      updated.acoes.editar = 'editar';
+    } else if (role === "EDITOR_CA") {
+      Object.keys(updated).forEach(cat => {
+        Object.keys(updated[cat as keyof typeof DEFAULT_PERMISSIONS]).forEach(k => {
+          (updated[cat as keyof typeof DEFAULT_PERMISSIONS] as any)[k] = 'nenhum';
+        });
+      });
+      updated.modulos.contratosAtivos = 'editar';
+      updated.modulos.enviarEquipe = 'editar';
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'editar';
     }

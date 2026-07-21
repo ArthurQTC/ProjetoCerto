@@ -131,7 +131,7 @@ async function runBootDiagnostics() {
 runBootDiagnostics().catch(e => console.error("Erro rodando boot diagnostics:", e));
 
 import express from "express";
-import { sendEmail } from "./src/services/emailService";
+import { sendEmail, sendVerificationCodeEmail } from "./src/services/emailService";
 import multer from "multer";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -584,6 +584,16 @@ async function checkDbConnection() {
           CREATE TABLE IF NOT EXISTS sessoes (
             id VARCHAR(255) PRIMARY KEY,
             "usuarioId" VARCHAR(255) NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            expiracao TIMESTAMP WITH TIME ZONE NOT NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        // Create table codigos_verificacao
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS codigos_verificacao (
+            email VARCHAR(255) PRIMARY KEY,
+            codigo VARCHAR(6) NOT NULL,
             expiracao TIMESTAMP WITH TIME ZONE NOT NULL,
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           )
@@ -1201,7 +1211,7 @@ async function bootstrap() {
   app.use("/api", (req, res, next) => {
     // /health and /login are defined before this middleware, so they won't even hit it, 
     // but we add them here for safety.
-    const publicRoutes = ["/health", "/login", "/db/status", "/db/sync"];
+    const publicRoutes = ["/health", "/login", "/db/status", "/db/sync", "/public/enviar-codigo", "/public/alterar-senha"];
     if (publicRoutes.includes(req.path)) {
       return next();
     }
@@ -1225,6 +1235,195 @@ async function bootstrap() {
     } catch (err: any) {
       console.error("Erro no logout:", err);
       res.status(500).json({ error: "Erro ao realizar logout." });
+    }
+  });
+
+  // POST /api/perfil/enviar-codigo
+  app.post("/api/perfil/enviar-codigo", requireAuth, async (req, res) => {
+    try {
+      const userEmail = (req as any).user.email;
+      const userRes = await pool.query('SELECT nome FROM usuarios WHERE email = $1', [userEmail]);
+      if (userRes.rowCount === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado." });
+      }
+      const user = userRes.rows[0];
+
+      // Generate 6-digit code
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store in codigos_verificacao (expires in 10 minutes)
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await pool.query(`
+        INSERT INTO codigos_verificacao (email, codigo, expiracao)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (email) DO UPDATE SET codigo = EXCLUDED.codigo, expiracao = EXCLUDED.expiracao
+      `, [userEmail, code, expiresAt]);
+
+      // Send code email
+      const emailResult = await sendVerificationCodeEmail({
+        email: userEmail,
+        code,
+        usuarioNome: user.nome
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Código de verificação enviado com sucesso!",
+        mock: emailResult && (emailResult as any).mock ? true : false,
+        code: emailResult && (emailResult as any).mock ? code : undefined
+      });
+    } catch (err: any) {
+      console.error("[API] Erro ao enviar código de verificação:", err);
+      res.status(500).json({ error: err.message || "Erro ao gerar código de verificação." });
+    }
+  });
+
+  // POST /api/perfil/alterar-senha
+  app.post("/api/perfil/alterar-senha", requireAuth, async (req, res) => {
+    try {
+      const userEmail = (req as any).user.email;
+      const { codigo, novaSenha } = req.body;
+
+      if (!codigo || !novaSenha) {
+        return res.status(400).json({ error: "Código e nova senha são obrigatórios." });
+      }
+
+      // Check verification code
+      const codeRes = await pool.query('SELECT codigo, expiracao FROM codigos_verificacao WHERE email = $1', [userEmail]);
+      if (codeRes.rowCount === 0) {
+        return res.status(400).json({ error: "Código de verificação não encontrado ou expirado. Por favor, solicite um novo." });
+      }
+
+      const { codigo: dbCodigo, expiracao } = codeRes.rows[0];
+
+      if (new Date(expiracao) < new Date()) {
+        await pool.query('DELETE FROM codigos_verificacao WHERE email = $1', [userEmail]);
+        return res.status(400).json({ error: "O código de verificação expirou. Por favor, solicite um novo." });
+      }
+
+      if (dbCodigo.trim() !== codigo.trim()) {
+        return res.status(400).json({ error: "Código de verificação incorreto." });
+      }
+
+      // Password hashing
+      const hashed = hashPassword(novaSenha);
+
+      // Update user password
+      await pool.query('UPDATE usuarios SET senha = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE email = $2', [hashed, userEmail]);
+
+      // Delete used code
+      await pool.query('DELETE FROM codigos_verificacao WHERE email = $1', [userEmail]);
+
+      res.json({ success: true, message: "Senha alterada com sucesso!" });
+    } catch (err: any) {
+      console.error("[API] Erro ao alterar senha:", err);
+      res.status(500).json({ error: err.message || "Erro ao alterar senha." });
+    }
+  });
+
+  // POST /api/public/enviar-codigo (PUBLIC - FORGOT PASSWORD)
+  app.post("/api/public/enviar-codigo", async (req, res) => {
+    try {
+      const { emailOrUsername } = req.body;
+      if (!emailOrUsername) {
+        return res.status(400).json({ error: "E-mail ou nome de usuário é obrigatório." });
+      }
+
+      const input = emailOrUsername.trim().toLowerCase();
+      const userRes = await pool.query(
+        'SELECT email, nome FROM usuarios WHERE LOWER(email) = $1 OR LOWER(nome_usuario) = $1',
+        [input]
+      );
+
+      if (userRes.rowCount === 0) {
+        return res.status(404).json({ error: "Nenhum usuário encontrado com este e-mail ou nome de usuário." });
+      }
+
+      const user = userRes.rows[0];
+      const userEmail = user.email;
+
+      // Generate 6-digit code
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store in codigos_verificacao (expires in 10 minutes)
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await pool.query(`
+        INSERT INTO codigos_verificacao (email, codigo, expiracao)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (email) DO UPDATE SET codigo = EXCLUDED.codigo, expiracao = EXCLUDED.expiracao
+      `, [userEmail, code, expiresAt]);
+
+      // Send code email
+      const emailResult = await sendVerificationCodeEmail({
+        email: userEmail,
+        code,
+        usuarioNome: user.nome
+      });
+
+      res.json({ 
+        success: true, 
+        email: userEmail, 
+        message: "Código de verificação enviado com sucesso!",
+        mock: emailResult && (emailResult as any).mock ? true : false,
+        code: emailResult && (emailResult as any).mock ? code : undefined
+      });
+    } catch (err: any) {
+      console.error("[API] Erro ao enviar código público:", err);
+      res.status(500).json({ error: err.message || "Erro ao gerar código de verificação." });
+    }
+  });
+
+  // POST /api/public/alterar-senha (PUBLIC - FORGOT PASSWORD)
+  app.post("/api/public/alterar-senha", async (req, res) => {
+    try {
+      const { emailOrUsername, codigo, novaSenha } = req.body;
+
+      if (!emailOrUsername || !codigo || !novaSenha) {
+        return res.status(400).json({ error: "E-mail/usuário, código e nova senha são obrigatórios." });
+      }
+
+      const input = emailOrUsername.trim().toLowerCase();
+      const userRes = await pool.query(
+        'SELECT email FROM usuarios WHERE LOWER(email) = $1 OR LOWER(nome_usuario) = $1',
+        [input]
+      );
+
+      if (userRes.rowCount === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado." });
+      }
+
+      const userEmail = userRes.rows[0].email;
+
+      // Check verification code
+      const codeRes = await pool.query('SELECT codigo, expiracao FROM codigos_verificacao WHERE email = $1', [userEmail]);
+      if (codeRes.rowCount === 0) {
+        return res.status(400).json({ error: "Código de verificação não encontrado ou expirado. Por favor, solicite um novo." });
+      }
+
+      const { codigo: dbCodigo, expiracao } = codeRes.rows[0];
+
+      if (new Date(expiracao) < new Date()) {
+        await pool.query('DELETE FROM codigos_verificacao WHERE email = $1', [userEmail]);
+        return res.status(400).json({ error: "O código de verificação expirou. Por favor, solicite um novo." });
+      }
+
+      if (dbCodigo.trim() !== codigo.trim()) {
+        return res.status(400).json({ error: "Código de verificação incorreto." });
+      }
+
+      // Password hashing
+      const hashed = hashPassword(novaSenha);
+
+      // Update user password
+      await pool.query('UPDATE usuarios SET senha = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE email = $2', [hashed, userEmail]);
+
+      // Delete used code
+      await pool.query('DELETE FROM codigos_verificacao WHERE email = $1', [userEmail]);
+
+      res.json({ success: true, message: "Senha alterada com sucesso!" });
+    } catch (err: any) {
+      console.error("[API] Erro ao alterar senha pública:", err);
+      res.status(500).json({ error: err.message || "Erro ao alterar senha." });
     }
   });
 
@@ -1660,6 +1859,13 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           CREATE TABLE IF NOT EXISTS sessoes (
             id VARCHAR(255) PRIMARY KEY,
             "usuarioId" VARCHAR(255) NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            expiracao TIMESTAMP WITH TIME ZONE NOT NULL,
+            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS codigos_verificacao (
+            email VARCHAR(255) PRIMARY KEY,
+            codigo VARCHAR(6) NOT NULL,
             expiracao TIMESTAMP WITH TIME ZONE NOT NULL,
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
@@ -2190,7 +2396,20 @@ app.get("/api/contratos-ativos", async (req, res) => {
   try {
     if (dbConnected && pool) {
       const result = await pool.query('SELECT * FROM contratos_ativos');
-      res.json(result.rows);
+      const mapped = result.rows.map(data => ({
+        ...data,
+        obraId: data.obraId || data.obra_id,
+        itensInstalacao: data.itensInstalacao || data.itens_instalacao || "",
+        enderecoEntrega: data.enderecoEntrega || data.endereco_entrega || "",
+        condicoesComerciais: data.condicoesComerciais || data.condicoes_comerciais || "",
+        freteTipo: data.freteTipo || data.frete_tipo || "CIF",
+        entrada: data.entrada !== undefined && data.entrada !== null ? Number(data.entrada) : 0,
+        saldoReceber: data.saldoReceber !== undefined && data.saldoReceber !== null 
+          ? Number(data.saldoReceber) 
+          : (data.saldo_receber !== undefined && data.saldo_receber !== null ? Number(data.saldo_receber) : 0),
+        tipoObra: data.tipoObra || data.tipo_obra || "Instalação"
+      }));
+      res.json(mapped);
     } else {
       res.status(503).json({ error: "Banco de dados inativo" });
     }
@@ -2209,7 +2428,16 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
         const data = result.rows[0];
         res.json({
           ...data,
-          itensInstalacao: data.itens_instalacao
+          obraId: data.obraId || data.obra_id || obraId,
+          itensInstalacao: data.itensInstalacao || data.itens_instalacao || "",
+          enderecoEntrega: data.enderecoEntrega || data.endereco_entrega || "",
+          condicoesComerciais: data.condicoesComerciais || data.condicoes_comerciais || "",
+          freteTipo: data.freteTipo || data.frete_tipo || "CIF",
+          entrada: data.entrada !== undefined && data.entrada !== null ? Number(data.entrada) : 0,
+          saldoReceber: data.saldoReceber !== undefined && data.saldoReceber !== null 
+            ? Number(data.saldoReceber) 
+            : (data.saldo_receber !== undefined && data.saldo_receber !== null ? Number(data.saldo_receber) : 0),
+          tipoObra: data.tipoObra || data.tipo_obra || "Instalação"
         });
       } else {
         res.json({

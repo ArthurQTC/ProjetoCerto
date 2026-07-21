@@ -27,7 +27,8 @@ import {
   CheckCircle,
   ChevronRight,
   Plus,
-  Trash2
+  Trash2,
+  Lock
 } from "lucide-react";
 import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
@@ -68,14 +69,20 @@ interface ItemInstalacao {
   valor: number;
 }
 
+// Global module-level cache for instant rendering
+let globalObrasCache: Obra[] | null = null;
+let globalContratosAtivosCache: Record<string, ContratoAtivo> | null = null;
+
 export default function ContratosAtivosView() {
   const { hasPermission } = useAuthStore();
   const isWritable = hasPermission("modulos", "contratosAtivos", "editar");
+  const canSeeSend = hasPermission("modulos", "enviarEquipe", "visualizar");
+  const canExecuteSend = hasPermission("modulos", "enviarEquipe", "editar");
 
-  const [obras, setObras] = useState<Obra[]>([]);
-  const [activeContracts, setActiveContracts] = useState<Record<string, ContratoAtivo>>({});
+  const [obras, setObras] = useState<Obra[]>(() => globalObrasCache || []);
+  const [activeContracts, setActiveContracts] = useState<Record<string, ContratoAtivo>>(() => globalContratosAtivosCache || {});
   const [selectedObra, setSelectedObra] = useState<Obra | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !globalObrasCache);
   const [search, setSearch] = useState("");
 
   // Current edit state
@@ -117,11 +124,13 @@ export default function ContratosAtivosView() {
 
   // Load all projects and contracts active records
   useEffect(() => {
-    loadData();
+    loadData(!!globalObrasCache);
   }, []);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent && !globalObrasCache) {
+      setIsLoading(true);
+    }
     try {
       const [resObras, resCA] = await Promise.all([
         fetch("/api/obras"),
@@ -141,19 +150,59 @@ export default function ContratosAtivosView() {
 
       // Filter only CONSOLIDADO for this module
       const consolidadas = obrasData.filter(o => o.statusContrato === "CONSOLIDADO");
-      setObras(consolidadas);
-
+      
       // Create mapping by obraId
       const mapping: Record<string, ContratoAtivo> = {};
       caData.forEach(item => {
-        mapping[item.obraId] = item;
+        const oId = item.obraId || (item as any).obra_id;
+        if (oId) {
+          mapping[oId] = {
+            ...item,
+            obraId: oId,
+            saldoReceber: item.saldoReceber !== undefined && item.saldoReceber !== null ? Number(item.saldoReceber) : ((item as any).saldo_receber !== undefined ? Number((item as any).saldo_receber) : 0),
+            entrada: item.entrada !== undefined && item.entrada !== null ? Number(item.entrada) : 0
+          };
+        }
       });
+
+      globalObrasCache = consolidadas;
+      globalContratosAtivosCache = mapping;
+
+      setObras(consolidadas);
       setActiveContracts(mapping);
     } catch (err) {
-      console.error(err);
+      console.error("Erro ao carregar dados de contratos ativos:", err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper to populate form fields instantly from contract record
+  const populateFormFromContract = (data: ContratoAtivo) => {
+    setCnpj(data.cnpj ? formatCNPJ(data.cnpj) : "");
+    setContato(data.contato ? formatPhone(data.contato) : "");
+    setEndereco(data.endereco || "");
+    setMunicipio(data.municipio || "");
+    setUf(data.uf || "");
+    setBairro(data.bairro || "");
+    setComplemento(data.complemento || "");
+    
+    try {
+      if (data.itensInstalacao && data.itensInstalacao.startsWith("[")) {
+        setItensInstalacao(JSON.parse(data.itensInstalacao));
+      } else {
+        setItensInstalacao(data.itensInstalacao ? [{ material: data.itensInstalacao, valor: 0 }] : []);
+      }
+    } catch (e) {
+      setItensInstalacao(data.itensInstalacao ? [{ material: data.itensInstalacao, valor: 0 }] : []);
+    }
+
+    setEnderecoEntrega(data.enderecoEntrega || "");
+    setCondicoesComerciais(data.condicoesComerciais || "");
+    setFreteTipo(data.freteTipo || "CIF");
+    setEntrada(data.entrada !== undefined ? data.entrada : "");
+    setSaldoReceber(data.saldoReceber !== undefined ? data.saldoReceber : "");
+    setTipoObra(data.tipoObra || "Instalação");
   };
 
   // When selected obra changes, load its form state
@@ -166,84 +215,63 @@ export default function ContratosAtivosView() {
     setCepError("");
     setSaveSuccess(false);
     setSaveError("");
-    
-    // Reset form fields
-    setCnpj("");
-    setContato("");
-    setEndereco("");
-    setMunicipio("");
-    setUf("");
-    setBairro("");
-    setComplemento("");
-    setItensInstalacao([]);
-    setEnderecoEntrega("");
-    setCondicoesComerciais("");
-    setFreteTipo("CIF");
-    setEntrada("");
-    setSaldoReceber("");
-    setTipoObra("Instalação");
 
+    // 1. Instantly populate form state if cached in activeContracts mapping
+    const cachedItem = activeContracts[obra.id];
+    if (cachedItem) {
+      populateFormFromContract(cachedItem);
+    } else {
+      // Reset form fields only if no cached record exists
+      setCnpj("");
+      setContato("");
+      setEndereco("");
+      setMunicipio("");
+      setUf("");
+      setBairro("");
+      setComplemento("");
+      setItensInstalacao([]);
+      setEnderecoEntrega("");
+      setCondicoesComerciais("");
+      setFreteTipo("CIF");
+      setEntrada("");
+      setSaldoReceber("");
+      setTipoObra("Instalação");
+    }
+
+    // 2. Refresh details concurrently in background
     try {
-      const resObra = await fetch(`/api/obras/${obra.id}`);
+      const [resObra, resCA] = await Promise.all([
+        fetch(`/api/obras/${obra.id}`),
+        fetch(`/api/contratos-ativos/${obra.id}`)
+      ]);
+
       if (resObra.ok) {
-        const fullObra = await resObra.json().catch((e) => {
-          console.error("Erro ao processar JSON de obra:", e);
-          return null;
-        });
+        const fullObra = await resObra.json().catch(() => null);
         if (fullObra && fullObra.itens) {
           const materials = fullObra.itens
             .map((it: any) => it.descricao)
             .filter((desc: string) => desc && desc !== "Custo ADM" && desc !== "Imposto Fixo");
           setItensMateriais(materials);
         }
-      } else {
-        const errorData = await resObra.json().catch(() => ({ error: "Erro ao carregar detalhes do projeto" }));
-        console.error("Erro na resposta de obra:", errorData);
       }
-    } catch (err) {
-      console.error("Erro ao carregar itens do projeto:", err);
-    }
 
-    try {
-      const res = await fetch(`/api/contratos-ativos/${obra.id}`);
-      if (res.ok) {
-        const data: ContratoAtivo = await res.json().catch((e) => {
-          console.error("Erro ao processar JSON de contrato ativo:", e);
-          return null;
-        });
-        
-        if (!data) return;
+      if (resCA.ok) {
+        const data: ContratoAtivo = await resCA.json().catch(() => null);
+        if (data) {
+          populateFormFromContract(data);
 
-        setCnpj(data.cnpj ? formatCNPJ(data.cnpj) : "");
-        setContato(data.contato ? formatPhone(data.contato) : "");
-        setEndereco(data.endereco || "");
-        setMunicipio(data.municipio || "");
-        setUf(data.uf || "");
-        setBairro(data.bairro || "");
-        setComplemento(data.complemento || "");
-        
-        try {
-          if (data.itensInstalacao && data.itensInstalacao.startsWith("[")) {
-            setItensInstalacao(JSON.parse(data.itensInstalacao));
-          } else {
-            setItensInstalacao(data.itensInstalacao ? [{ material: data.itensInstalacao, valor: 0 }] : []);
+          // Update memory mapping
+          setActiveContracts(prev => ({
+            ...prev,
+            [obra.id]: data
+          }));
+          if (globalContratosAtivosCache) {
+            globalContratosAtivosCache[obra.id] = data;
           }
-        } catch (e) {
-          setItensInstalacao(data.itensInstalacao ? [{ material: data.itensInstalacao, valor: 0 }] : []);
         }
-
-        setEnderecoEntrega(data.enderecoEntrega || "");
-        setCondicoesComerciais(data.condicoesComerciais || "");
-        setFreteTipo(data.freteTipo || "CIF");
-        setEntrada(data.entrada !== undefined ? data.entrada : "");
-        setSaldoReceber(data.saldoReceber !== undefined ? data.saldoReceber : "");
-        setTipoObra(data.tipoObra || "Instalação");
-      } else {
-        const errorData = await res.json().catch(() => ({ error: "Erro ao carregar dados do contrato" }));
-        console.error("Erro na resposta de contrato ativo:", errorData);
       }
     } catch (err) {
-      console.error("Erro ao carregar dados do contrato:", err);
+      console.error("Erro ao carregar detalhes em segundo plano:", err);
     }
   };
 
@@ -795,21 +823,33 @@ export default function ContratosAtivosView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 max-w-4xl">
                 <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
                   <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Obras Consolidadas</p>
-                  <p className="text-lg font-black text-white mt-2">{obras.length}</p>
+                  {isLoading ? (
+                    <div className="h-6 w-12 bg-white/20 animate-pulse rounded mt-2" />
+                  ) : (
+                    <p className="text-lg font-black text-white mt-2">{obras.length}</p>
+                  )}
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
                   <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Total Contratos Ativos</p>
-                  <p className="text-lg font-black text-white mt-2">
-                    {formatCurrency(filteredObras.reduce((sum, o) => sum + (o.valorContrato || 0), 0))}
-                  </p>
+                  {isLoading ? (
+                    <div className="h-6 w-28 bg-white/20 animate-pulse rounded mt-2" />
+                  ) : (
+                    <p className="text-lg font-black text-white mt-2">
+                      {formatCurrency(filteredObras.reduce((sum, o) => sum + (o.valorContrato || 0), 0))}
+                    </p>
+                  )}
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
                   <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Total Saldo a Receber</p>
-                  <p className="text-lg font-black text-white mt-2">
-                    {formatCurrency(filteredObras.reduce((sum, o) => sum + (activeContracts[o.id]?.saldoReceber || 0), 0))}
-                  </p>
+                  {isLoading ? (
+                    <div className="h-6 w-28 bg-white/20 animate-pulse rounded mt-2" />
+                  ) : (
+                    <p className="text-lg font-black text-white mt-2">
+                      {formatCurrency(filteredObras.reduce((sum, o) => sum + (activeContracts[o.id]?.saldoReceber || 0), 0))}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -898,15 +938,23 @@ export default function ContratosAtivosView() {
             </button>
             
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleEnviarEquipe}
-                disabled={isSaving}
-                className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm hover:shadow transition-all disabled:opacity-50"
-              >
-                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                Enviar para Equipe
-              </button>
+              {canSeeSend && (
+                <button
+                  type="button"
+                  onClick={handleEnviarEquipe}
+                  disabled={isSaving || !canExecuteSend}
+                  className={`inline-flex items-center justify-center gap-2 text-xs font-extrabold px-5 py-2.5 rounded-xl shadow-sm transition-all disabled:opacity-50 ${
+                    !canExecuteSend
+                      ? "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer hover:shadow"
+                  }`}
+                  title={!canExecuteSend ? "Você não possui permissão para acionar o envio para a equipe." : "Enviar dados para a equipe"}
+                >
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  {!canExecuteSend && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                  Enviar para Equipe
+                </button>
+              )}
 
               <button
                 type="button"
