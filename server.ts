@@ -4361,7 +4361,7 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
           }
         }
         if (targetObraId) {
-          const caRes = await pool.query('SELECT * FROM contratos_ativos WHERE obra_id = $1 LIMIT 1', [targetObraId]);
+          const caRes = await pool.query('SELECT * FROM contratos_ativos WHERE "obraId" = $1 LIMIT 1', [targetObraId]);
           if (caRes.rows.length > 0) {
             const row = caRes.rows[0];
             if (!municipio) municipio = row.municipio;
