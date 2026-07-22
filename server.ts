@@ -579,6 +579,25 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome_usuario VARCHAR(255) UNIQUE');
         await pool.query("UPDATE usuarios SET nome_usuario = LOWER(SPLIT_PART(email, '@', 1)) WHERE nome_usuario IS NULL");
 
+        // Ensure enviarEquipe permission is present for GESTOR and ADMIN users in database
+        try {
+          const gestorRows = await pool.query("SELECT id, nivel, permissoes FROM usuarios WHERE nivel IN ('ADMIN', 'GESTOR')");
+          for (const uRow of gestorRows.rows) {
+            try {
+              let parsedPerms = typeof uRow.permissoes === 'string' ? JSON.parse(uRow.permissoes) : uRow.permissoes;
+              if (parsedPerms && parsedPerms.modulos && (!parsedPerms.modulos.enviarEquipe || parsedPerms.modulos.enviarEquipe === 'nenhum')) {
+                parsedPerms.modulos.enviarEquipe = 'editar';
+                await pool.query('UPDATE usuarios SET permissoes = $1 WHERE id = $2', [JSON.stringify(parsedPerms), uRow.id]);
+                console.log(`[pg Sync] Granted enviarEquipe permission to ${uRow.nivel} user ${uRow.id}`);
+              }
+            } catch (e) {
+              console.error(`[pg Sync] Error updating enviarEquipe permission for user ${uRow.id}:`, e);
+            }
+          }
+        } catch (errSync) {
+          console.error("[pg Sync] Error syncing enviarEquipe permission:", errSync);
+        }
+
         // Create table sessoes
         await pool.query(`
           CREATE TABLE IF NOT EXISTS sessoes (

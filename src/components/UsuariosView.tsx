@@ -28,7 +28,7 @@ const ROLES = [
   { value: "GESTOR", label: "Gestor", desc: "Gerencia contratos, levantamentos e visualiza todos os indicadores." },
   { value: "OPERADOR", label: "Operador", desc: "Permissão de edição e leitura exclusivamente do módulo de Contratos Ativos." },
   { value: "LEITOR", label: "Leitor", desc: "Acesso exclusivo de leitura aos módulos selecionados." },
-  { value: "ARQUITETO", label: "Arquiteto", desc: "Acesso focado em visualização e edição de Levantamentos/Orçamentos." },
+  { value: "ARQUITETO", label: "Arquiteto", desc: "Permissão de edição e leitura dos módulos Levantamentos/Orçamentos e Contratos Ativos." },
   { value: "EDITOR_CA", label: "Editor CA", desc: "Permissão de edição e leitura exclusivamente do módulo de Contratos Ativos." }
 ];
 
@@ -135,6 +135,7 @@ const PERMISSION_HIERARCHY = [
               { key: "valorContrato", category: "colunas", label: "Coluna: Valor Contratado (Fechado)", tooltip: "Controla a visibilidade e edição do valor de faturamento do contrato nas tabelas e detalhes." },
               { key: "margemLiquida", category: "colunas", label: "Coluna: Margem Líquida da Obra", tooltip: "Controla se o cálculo da margem de lucro (R$ e %) é exibido ou ocultado nas tabelas." },
               { key: "custoAdm", category: "colunas", label: "Coluna: Custo Administrativo", tooltip: "Controla a visibilidade e edição do valor do custo administrativo alocado à obra." },
+              { key: "enviarEquipe", category: "modulos", label: "Botão: Enviar para Equipe", tooltip: "Permite ao usuário visualizar e/ou acionar o envio de dados do contrato para a equipe." },
               { key: "exportarExcelContratos", category: "modulos", label: "Função: Exportar para Excel (XLS)", tooltip: "Permite que o usuário exporte os dados financeiros e cadastrais de obras para planilhas excel." }
             ]
           },
@@ -142,10 +143,7 @@ const PERMISSION_HIERARCHY = [
             key: "contratosAtivos", 
             category: "modulos", 
             label: "Contratos Ativos", 
-            tooltip: "Acesso à lista e preenchimento de Dados do Contrato (CNPJ, Endereço, CIF/FOB, Entrada e Saldo).",
-            rlsFields: [
-              { key: "enviarEquipe", category: "modulos", label: "Botão: Enviar para Equipe", tooltip: "Permite ao usuário visualizar e/ou acionar o envio de dados do contrato para a equipe." }
-            ]
+            tooltip: "Acesso à lista e preenchimento de Dados do Contrato (CNPJ, Endereço, CIF/FOB, Entrada e Saldo)."
           },
           { 
             key: "orcamentosAFechar", 
@@ -1319,6 +1317,7 @@ export default function UsuariosView() {
     } else if (role === "GESTOR") {
       updated.modulos.dashboard = 'editar';
       updated.modulos.contratosConsolidados = 'editar';
+      updated.modulos.enviarEquipe = 'editar';
       updated.modulos.orcamentosAFechar = 'editar';
       updated.modulos.etapasContrato = 'editar';
       updated.modulos.levantamentosOrcamentos = 'editar';
@@ -1355,7 +1354,6 @@ export default function UsuariosView() {
         });
       });
       updated.modulos.contratosAtivos = 'editar';
-      updated.modulos.enviarEquipe = 'editar';
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'editar';
     } else if (role === "LEITOR") {
@@ -1391,19 +1389,11 @@ export default function UsuariosView() {
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'nenhum';
     } else if (role === "ARQUITETO") {
-      updated.modulos.dashboard = 'visualizar';
-      updated.modulos.contratosConsolidados = 'nenhum';
-      updated.modulos.orcamentosAFechar = 'nenhum';
-      updated.modulos.etapasContrato = 'nenhum';
+      Object.keys(updated.modulos).forEach(k => {
+        (updated.modulos as any)[k] = 'nenhum';
+      });
+      updated.modulos.contratosAtivos = 'editar';
       updated.modulos.levantamentosOrcamentos = 'editar';
-      updated.modulos.usuarios = 'nenhum';
-      updated.modulos.fluxoOperacional = 'visualizar';
-      updated.modulos.fluxoOperacionalTradicional = 'visualizar';
-      updated.modulos.fluxoOperacionalExecutivo = 'visualizar';
-      updated.modulos.fluxoOperacionalPainel = 'visualizar';
-      updated.modulos.fluxoOperacionalWorkflow = 'visualizar';
-      updated.modulos.fluxoOperacionalHistorico = 'visualizar';
-      updated.modulos.fluxoOperacionalDashboard = 'visualizar';
 
       updated.indicadores.totalContratos = 'nenhum';
       updated.indicadores.totalVisaoGeral = 'nenhum';
@@ -1429,7 +1419,6 @@ export default function UsuariosView() {
         });
       });
       updated.modulos.contratosAtivos = 'editar';
-      updated.modulos.enviarEquipe = 'editar';
       updated.acoes.visualizar = 'visualizar';
       updated.acoes.editar = 'editar';
     }

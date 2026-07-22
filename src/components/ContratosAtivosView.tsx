@@ -28,7 +28,8 @@ import {
   ChevronRight,
   Plus,
   Trash2,
-  Lock
+  Lock,
+  Send
 } from "lucide-react";
 import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
@@ -1345,10 +1346,10 @@ export default function ContratosAtivosView() {
               <div className="space-y-1.5">
                 <textarea
                   rows={8}
-                  disabled={!isWritable}
+                  disabled={!isEditing || !isWritable}
                   value={condicoesComerciais}
                   onChange={e => setCondicoesComerciais(e.target.value)}
-                  className="w-full p-4 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[160px]"
+                  className="w-full p-4 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[160px] disabled:bg-slate-100/60"
                 />
               </div>
 
@@ -1698,6 +1699,23 @@ export default function ContratosAtivosView() {
               </div>
 
               <div className="space-y-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleEnviarEquipe}
+                  disabled={isSaving}
+                  className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold py-3 rounded-xl cursor-pointer shadow transition-all disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 text-white" /> Enviar para Equipe
+                    </>
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={exportToPDF}
