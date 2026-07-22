@@ -205,6 +205,8 @@ export interface ContratoAtivo {
   entrada: number;
   saldoReceber: number;
   tipoObra?: string;
+  metragemAInstalar?: string | null;
+  observacoesGerais?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -64,6 +64,30 @@ const formatCurrency = (val: number) => {
   }).format(val);
 };
 
+const formatMetragemValue = (val: string | number | null | undefined): string => {
+  if (val === null || val === undefined || val === "") return "";
+  const str = val.toString().replace(/m²/gi, '').trim();
+  if (!str) return "";
+  let cleaned = str;
+  if (str.includes(',')) {
+    cleaned = str.replace(/\./g, '').replace(',', '.');
+  } else {
+    cleaned = str.replace(/[^\d.]/g, '');
+  }
+  const num = parseFloat(cleaned);
+  if (isNaN(num)) return str;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatMetragemLive = (val: string): string => {
+  if (!val) return "";
+  const clean = val.replace(/m²/gi, '').trim();
+  const digits = clean.replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 interface ItemInstalacao {
   material: string;
   valor: number;
@@ -76,8 +100,6 @@ let globalContratosAtivosCache: Record<string, ContratoAtivo> | null = null;
 export default function ContratosAtivosView() {
   const { hasPermission } = useAuthStore();
   const isWritable = hasPermission("modulos", "contratosAtivos", "editar");
-  const canSeeSend = hasPermission("modulos", "enviarEquipe", "visualizar");
-  const canExecuteSend = hasPermission("modulos", "enviarEquipe", "editar");
 
   const [obras, setObras] = useState<Obra[]>(() => globalObrasCache || []);
   const [activeContracts, setActiveContracts] = useState<Record<string, ContratoAtivo>>(() => globalContratosAtivosCache || {});
@@ -100,6 +122,8 @@ export default function ContratosAtivosView() {
   const [entrada, setEntrada] = useState<number | string>("");
   const [saldoReceber, setSaldoReceber] = useState<number | string>("");
   const [tipoObra, setTipoObra] = useState("Instalação");
+  const [metragemAInstalar, setMetragemAInstalar] = useState("");
+  const [observacoesGerais, setObservacoesGerais] = useState("");
 
   // Edit fields for name of client and name of contract
   const [clienteNome, setClienteNome] = useState("");
@@ -203,6 +227,9 @@ export default function ContratosAtivosView() {
     setEntrada(data.entrada !== undefined ? data.entrada : "");
     setSaldoReceber(data.saldoReceber !== undefined ? data.saldoReceber : "");
     setTipoObra(data.tipoObra || "Instalação");
+    const rawMetragem = data.metragemAInstalar || (data as any).metragem_a_instalar || "";
+    setMetragemAInstalar(rawMetragem ? formatMetragemValue(rawMetragem) : "");
+    setObservacoesGerais(data.observacoesGerais || (data as any).observacoes_gerais || "");
   };
 
   // When selected obra changes, load its form state
@@ -236,6 +263,8 @@ export default function ContratosAtivosView() {
       setEntrada("");
       setSaldoReceber("");
       setTipoObra("Instalação");
+      setMetragemAInstalar("");
+      setObservacoesGerais("");
     }
 
     // 2. Refresh details concurrently in background
@@ -716,7 +745,9 @@ export default function ContratosAtivosView() {
         freteTipo,
         entrada: entrada === "" ? 0.0 : Number(entrada),
         saldoReceber: saldoReceber === "" ? 0.0 : Number(saldoReceber),
-        tipoObra
+        tipoObra,
+        metragemAInstalar: metragemAInstalar ? metragemAInstalar.replace(/m²/gi, '').trim() : null,
+        observacoesGerais: observacoesGerais || null
       };
 
       const response = await fetch("/api/contratos-ativos", {
@@ -820,7 +851,7 @@ export default function ContratosAtivosView() {
               </div>
 
               {/* Mini counters cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 max-w-4xl">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 max-w-2xl">
                 <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
                   <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Obras Consolidadas</p>
                   {isLoading ? (
@@ -831,23 +862,18 @@ export default function ContratosAtivosView() {
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
-                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Total Contratos Ativos</p>
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Metragem a Instalar Total</p>
                   {isLoading ? (
                     <div className="h-6 w-28 bg-white/20 animate-pulse rounded mt-2" />
                   ) : (
                     <p className="text-lg font-black text-white mt-2">
-                      {formatCurrency(filteredObras.reduce((sum, o) => sum + (o.valorContrato || 0), 0))}
-                    </p>
-                  )}
-                </div>
-
-                <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3.5 shadow-sm">
-                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider leading-none">Total Saldo a Receber</p>
-                  {isLoading ? (
-                    <div className="h-6 w-28 bg-white/20 animate-pulse rounded mt-2" />
-                  ) : (
-                    <p className="text-lg font-black text-white mt-2">
-                      {formatCurrency(filteredObras.reduce((sum, o) => sum + (activeContracts[o.id]?.saldoReceber || 0), 0))}
+                      {filteredObras.reduce((sum, o) => {
+                        const valStr = activeContracts[o.id]?.metragemAInstalar;
+                        if (!valStr) return sum;
+                        const cleaned = valStr.toString().replace(',', '.').replace(/[^\d.]/g, '');
+                        const num = parseFloat(cleaned);
+                        return sum + (isNaN(num) ? 0 : num);
+                      }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M²
                     </p>
                   )}
                 </div>
@@ -938,24 +964,6 @@ export default function ContratosAtivosView() {
             </button>
             
             <div className="flex items-center gap-3">
-              {canSeeSend && (
-                <button
-                  type="button"
-                  onClick={handleEnviarEquipe}
-                  disabled={isSaving || !canExecuteSend}
-                  className={`inline-flex items-center justify-center gap-2 text-xs font-extrabold px-5 py-2.5 rounded-xl shadow-sm transition-all disabled:opacity-50 ${
-                    !canExecuteSend
-                      ? "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
-                      : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer hover:shadow"
-                  }`}
-                  title={!canExecuteSend ? "Você não possui permissão para acionar o envio para a equipe." : "Enviar dados para a equipe"}
-                >
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  {!canExecuteSend && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                  Enviar para Equipe
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={() => setShowPdfPreview(true)}
@@ -1019,59 +1027,39 @@ export default function ContratosAtivosView() {
               </div>
             </div>
 
-            {/* Indicator Blocks Grid: Valor Contrato, Entrada, Saldo a Receber */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Valor do Contrato Indicator (Read-only) */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">Valor do Contrato</p>
-                  <p className="text-lg font-black text-slate-700 mt-2">
-                    {formatCurrency(selectedObra.valorContrato)}
-                  </p>
-                </div>
-                <div className="w-10 h-10 bg-slate-200/50 rounded-xl flex items-center justify-center text-slate-500">
-                  <Briefcase className="w-5 h-5" />
-                </div>
-              </div>
-
-              {/* Entrada input Card */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-inner relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none block">
-                  Valor de Entrada (R$)
-                </label>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-xs font-bold text-slate-400">R$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0,00"
-                    disabled={!isEditing || !isWritable}
-                    value={entrada}
-                    onChange={e => setEntrada(e.target.value)}
-                    className="w-full bg-transparent border-none text-lg font-black text-slate-800 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                </div>
-                <div className="absolute right-4 bottom-4 text-emerald-500">
-                  <DollarSign className="w-4 h-4" />
-                </div>
-              </div>
-
-              {/* Saldo a Receber input Card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-inner relative transition-all">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none block">
-                  Saldo a Receber (R$)
-                </label>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-xs font-bold text-slate-400">R$</span>
+            {/* Indicator Block: Metragem a Instalar */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all max-w-md">
+              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                METRAGEM A INSTALAR
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
                   <input
                     type="text"
-                    disabled={true}
-                    value={formatCurrency(Number(saldoReceber)).replace('R$', '').trim()}
-                    className="w-full bg-transparent border-none text-lg font-black text-slate-800 focus:outline-none"
+                    placeholder="Ex: 250 M²"
+                    disabled={!isEditing || !isWritable}
+                    value={metragemAInstalar}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setMetragemAInstalar("");
+                        return;
+                      }
+                      setMetragemAInstalar(formatMetragemLive(val));
+                    }}
+                    onBlur={() => {
+                      if (metragemAInstalar) {
+                        setMetragemAInstalar(formatMetragemValue(metragemAInstalar));
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-brand-secondary rounded-lg pl-3 pr-12 py-2 text-base font-black text-slate-800 focus:outline-none transition-all disabled:bg-slate-100/60"
                   />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded border border-slate-300/40 select-none pointer-events-none">
+                    M²
+                  </span>
                 </div>
-                <div className="absolute right-4 bottom-4 text-[#D9A441]">
-                  <DollarSign className="w-4 h-4" />
+                <div className="w-10 h-10 bg-orange-50 border border-orange-100 rounded-xl flex items-center justify-center text-brand-accent shrink-0">
+                  <Layers className="w-5 h-5" />
                 </div>
               </div>
             </div>
@@ -1372,25 +1360,25 @@ export default function ContratosAtivosView() {
                 <div className="flex p-1 bg-slate-200/60 rounded-xl max-w-xs">
                   <button
                     type="button"
-                    disabled={!isWritable}
-                    onClick={() => setFreteTipo("CIF")}
+                    disabled={!isEditing || !isWritable}
+                    onClick={() => (isEditing && isWritable) && setFreteTipo("CIF")}
                     className={`flex-1 py-2 text-center text-xs font-black rounded-lg transition-all ${
                       freteTipo === "CIF"
                         ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600 cursor-pointer"
-                    }`}
+                        : "text-slate-400 hover:text-slate-600"
+                    } ${(!isEditing || !isWritable) ? "cursor-not-allowed opacity-80" : "cursor-pointer"}`}
                   >
                     CIF
                   </button>
                   <button
                     type="button"
-                    disabled={!isWritable}
-                    onClick={() => setFreteTipo("FOB")}
+                    disabled={!isEditing || !isWritable}
+                    onClick={() => (isEditing && isWritable) && setFreteTipo("FOB")}
                     className={`flex-1 py-2 text-center text-xs font-black rounded-lg transition-all ${
                       freteTipo === "FOB"
                         ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600 cursor-pointer"
-                    }`}
+                        : "text-slate-400 hover:text-slate-600"
+                    } ${(!isEditing || !isWritable) ? "cursor-not-allowed opacity-80" : "cursor-pointer"}`}
                   >
                     FOB
                   </button>
@@ -1400,6 +1388,21 @@ export default function ContratosAtivosView() {
                     ? "CIF (Cost, Insurance and Freight): Frete sob responsabilidade de nossa empresa (vendedor). Incluído no custo geral."
                     : "FOB (Free on Board): Frete pago pelo cliente (comprador). O material deve estar disponível para retirada em nossa fábrica."}
                 </p>
+              </div>
+
+              {/* Observações Gerais Field */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                  OBSERVAÇÕES GERAIS:
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Preencher informações / observações gerais..."
+                  disabled={!isEditing || !isWritable}
+                  value={observacoesGerais}
+                  onChange={e => setObservacoesGerais(e.target.value)}
+                  className="w-full p-3.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[100px] disabled:bg-slate-100/60"
+                />
               </div>
             </div>
           </div>
@@ -1567,16 +1570,8 @@ export default function ContratosAtivosView() {
 
                     <div className="space-y-1">
                       <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Valor do Contrato:</span>
-                        <span className="font-extrabold text-slate-800">{formatCurrency(selectedObra.valorContrato || 0)}</span>
-                      </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Valor de Entrada:</span>
-                        <span className="font-extrabold text-slate-800">{entrada !== "" ? formatCurrency(Number(entrada)) : formatCurrency(0)}</span>
-                      </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Saldo a Receber:</span>
-                        <span className="font-extrabold text-slate-800">{saldoReceber !== "" ? formatCurrency(Number(saldoReceber)) : formatCurrency(0)}</span>
+                        <span className="font-bold text-slate-400">Metragem a Instalar:</span>
+                        <span className="font-extrabold text-slate-800">{metragemAInstalar ? `${formatMetragemValue(metragemAInstalar)} M²` : "Não informada"}</span>
                       </div>
                       <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
                         <span className="font-bold text-slate-400">Frete Tipo:</span>
@@ -1603,6 +1598,14 @@ export default function ContratosAtivosView() {
                       </p>
                     </div>
 
+                    <div className="space-y-2 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                      <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Observações Gerais</h4>
+                      <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line">
+                        {observacoesGerais || "Sem observações gerais."}
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
                     <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Itens a serem instalados</h4>
                     <div className="mt-2 space-y-1.5">
@@ -1617,7 +1620,6 @@ export default function ContratosAtivosView() {
                         <p className="text-xs text-slate-400 italic">Nenhum item cadastrado.</p>
                       )}
                     </div>
-                  </div>
                   </div>
                 </div>
 

@@ -14,7 +14,9 @@ import {
   Trash2,
   FileSpreadsheet,
   RotateCcw,
-  Lock
+  Lock,
+  Send,
+  Loader2
 } from "lucide-react";
 import { useUIStore, useAuthStore } from "../store";
 import { DashboardStats, Projeto } from "../types";
@@ -59,6 +61,39 @@ export default function ProjectsListView() {
   const [selectedProjectForAdm, setSelectedProjectForAdm] = useState<any | null>(null);
   const [individualCostValue, setIndividualCostValue] = useState("");
   const [isIndividualModalOpen, setIsIndividualModalOpen] = useState(false);
+
+  // ENVIAR PARA EQUIPE STATE & HANDLER
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+
+  const handleEnviarEquipeProject = async (p: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!hasPermission("modulos", "enviarEquipe", "editar")) {
+      alert("Você não possui permissão para acionar o envio para a equipe.");
+      return;
+    }
+    setSendingEmailId(p.id);
+    try {
+      const res = await fetch("/api/enviar-para-equipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contratoNome: p.nome,
+          nomeCliente: p.cliente || "Não informado",
+          detalhes: `Contrato da obra "${p.nome}" enviado diretamente do módulo Contratos Consolidados.`,
+          valorContrato: p.valorContrato || 0,
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Falha ao enviar e-mail para a equipe");
+      }
+      alert(`E-mail enviado com sucesso para a equipe referente ao contrato "${p.nome}"!`);
+    } catch (err: any) {
+      alert(`Erro ao enviar e-mail: ${err.message}`);
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
 
   const queryClient = useQueryClient();
 
@@ -545,6 +580,21 @@ export default function ProjectsListView() {
                             </>
                           ) : (
                             <>
+                              {projectFilter === "CONSOLIDADO" && hasPermission("modulos", "enviarEquipe", "visualizar") && (
+                                <button
+                                  onClick={(e) => handleEnviarEquipeProject(p, e)}
+                                  disabled={sendingEmailId === p.id}
+                                  className="p-1 px-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-md transition-colors inline-flex items-center gap-1 text-[10px] cursor-pointer"
+                                  title="Enviar dados do contrato para a equipe"
+                                >
+                                  {sendingEmailId === p.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Send className="w-3 h-3 text-white" />
+                                  )}
+                                  Enviar para Equipe
+                                </button>
+                              )}
                               {hasPermission("acoes", "editar") && (
                                 <button
                                   onClick={(e) => handleEditProjectClick(p, e)}
