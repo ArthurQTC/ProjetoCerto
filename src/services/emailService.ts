@@ -6,7 +6,10 @@ export async function sendEmail({
   detalhes,
   pdfBase64,
   valorContrato,
-  materiais
+  materiais,
+  metragemAInstalar,
+  municipio,
+  uf
 }: {
   contratoNome: string;
   nomeCliente?: string;
@@ -14,6 +17,9 @@ export async function sendEmail({
   pdfBase64?: string;
   valorContrato?: number;
   materiais?: string;
+  metragemAInstalar?: string;
+  municipio?: string;
+  uf?: string;
 }) {
   console.log("[EmailService] RESEND_API_KEY:", !!process.env.RESEND_API_KEY);
   console.log("[EmailService] SMTP_FROM:", process.env.SMTP_FROM);
@@ -45,22 +51,42 @@ export async function sendEmail({
 
   if (materiais) {
     try {
-      if (materiais.startsWith('[')) {
+      if (typeof materiais === 'string' && materiais.startsWith('[')) {
         const itens = JSON.parse(materiais);
         if (Array.isArray(itens) && itens.length > 0) {
-          materiaisHtml = `<ul style="margin: 0; padding-left: 20px;">${itens.map((it: any) => `
-            <li style="margin-bottom: 6px;">
-              <span style="color: #4a5568;">${it.material}:</span> 
-              <strong style="color: #2d3748;">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(it.valor || 0)}</strong>
-            </li>
-          `).join('')}</ul>`;
+          const validItens = itens.filter((it: any) => it && (typeof it === 'string' ? it.trim() : it.material?.trim()));
+          if (validItens.length > 0) {
+            materiaisHtml = `<ul style="margin: 0; padding-left: 20px;">${validItens.map((it: any) => {
+              const name = typeof it === 'string' ? it : it.material;
+              return `
+                <li style="margin-bottom: 6px; color: #2d3748; font-weight: 600;">
+                  ${name}
+                </li>
+              `;
+            }).join('')}</ul>`;
+          }
         }
-      } else {
+      } else if (typeof materiais === 'string') {
         materiaisHtml = materiais;
       }
     } catch (e) {
-      materiaisHtml = materiais;
+      materiaisHtml = String(materiais);
     }
+  }
+
+  let cidadeDisplay = 'Não informada';
+  if (municipio && uf) {
+    cidadeDisplay = `${municipio} / ${uf}`;
+  } else if (municipio) {
+    cidadeDisplay = municipio;
+  } else if (uf) {
+    cidadeDisplay = uf;
+  }
+
+  let metragemDisplay = 'Não informada';
+  if (metragemAInstalar && metragemAInstalar.trim() !== '') {
+    const rawVal = metragemAInstalar.trim();
+    metragemDisplay = rawVal.toLowerCase().includes('m²') || rawVal.toLowerCase().includes('m2') ? rawVal : `${rawVal} m²`;
   }
 
   const htmlContent = `
@@ -79,7 +105,8 @@ export async function sendEmail({
         
         <p style="margin: 8px 0;"><strong>Nome do Cliente:</strong> ${nomeCliente && nomeCliente.trim() !== '' ? nomeCliente : 'Não informado'}</p>
         <p style="margin: 8px 0;"><strong>Nome da Obra:</strong> ${contratoNome}</p>
-        <p style="margin: 8px 0;"><strong>Valor do Contrato:</strong> ${(valorContrato !== undefined && valorContrato !== null) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorContrato) : 'Não informado'}</p>
+        <p style="margin: 8px 0;"><strong>Cidade:</strong> ${cidadeDisplay}</p>
+        <p style="margin: 8px 0;"><strong>Metragem do Contrato:</strong> ${metragemDisplay}</p>
         
         <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; pt: 16px;">
           <p style="margin: 16px 0 8px 0;"><strong>Itens a serem instalados:</strong></p>

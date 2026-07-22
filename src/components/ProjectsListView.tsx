@@ -64,19 +64,27 @@ export default function ProjectsListView() {
 
   // ENVIAR PARA EQUIPE STATE & HANDLER
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+  const [confirmSendEquipeProject, setConfirmSendEquipeProject] = useState<any | null>(null);
 
-  const handleEnviarEquipeProject = async (p: any, e: React.MouseEvent) => {
+  const handleOpenEnviarEquipeModal = (p: any, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!hasPermission("modulos", "enviarEquipe", "editar")) {
       alert("Você não possui permissão para acionar o envio para a equipe.");
       return;
     }
+    setConfirmSendEquipeProject(p);
+  };
+
+  const executeEnviarEquipeProject = async (p: any) => {
+    if (!p) return;
     setSendingEmailId(p.id);
+    setConfirmSendEquipeProject(null);
     try {
       const res = await fetch("/api/enviar-para-equipe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          obraId: p.id,
           contratoNome: p.nome,
           nomeCliente: p.cliente || "Não informado",
           detalhes: `Contrato da obra "${p.nome}" enviado diretamente do módulo Contratos Consolidados.`,
@@ -238,7 +246,7 @@ export default function ProjectsListView() {
         XLSX.utils.book_append_sheet(workbook, worksheetDados, sheetName);
       });
 
-      XLSX.writeFile(workbook, `Contratos_${projectFilter === "A_FECHAR" ? "Orcamentos" : "Consolidados"}_Export-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(workbook, `Contratos_${projectFilter === "A_FECHAR" ? "Orcamentos" : projectFilter === "ENTREGUE" ? "Entregues" : "Consolidados"}_Export-${new Date().toISOString().split('T')[0]}.xlsx`);
     });
   };
 
@@ -293,7 +301,11 @@ export default function ProjectsListView() {
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-brand-text-primary flex items-center gap-2">
             <Folder className="w-6 h-6 text-brand-accent animate-pulse" />
-            {projectFilter === "A_FECHAR" ? "Gestão de Orçamentos a Fechar" : "Gestão de Contratos"}
+            {projectFilter === "A_FECHAR" 
+              ? "Gestão de Orçamentos a Fechar" 
+              : projectFilter === "ENTREGUE" 
+                ? "Gestão de Contratos Entregues" 
+                : "Gestão de Contratos"}
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -367,7 +379,11 @@ export default function ProjectsListView() {
               id="projects_list_new_project_btn"
             >
               <Plus className="w-4 h-4 text-white" />
-              {projectFilter === "A_FECHAR" ? "Novo Orçamento" : "Novo Contrato"}
+              {projectFilter === "A_FECHAR" 
+                ? "Novo Orçamento" 
+                : projectFilter === "ENTREGUE" 
+                  ? "Novo Contrato Entregue" 
+                  : "Novo Contrato"}
             </button>
           )}
         </div>
@@ -580,9 +596,9 @@ export default function ProjectsListView() {
                             </>
                           ) : (
                             <>
-                              {projectFilter === "CONSOLIDADO" && hasPermission("modulos", "enviarEquipe", "visualizar") && (
+                              {(projectFilter === "CONSOLIDADO" || projectFilter === "ENTREGUE") && hasPermission("modulos", "enviarEquipe", "visualizar") && (
                                 <button
-                                  onClick={(e) => handleEnviarEquipeProject(p, e)}
+                                  onClick={(e) => handleOpenEnviarEquipeModal(p, e)}
                                   disabled={sendingEmailId === p.id}
                                   className="p-1 px-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-md transition-colors inline-flex items-center gap-1 text-[10px] cursor-pointer"
                                   title="Enviar dados do contrato para a equipe"
@@ -686,7 +702,11 @@ export default function ProjectsListView() {
                         Atualizar Custo ADM Global
                       </h3>
                       <p className="text-[10px] font-bold text-brand-text-secondary uppercase">
-                        {projectFilter === "A_FECHAR" ? "Módulo: Orçamentos a Fechar" : "Módulo: Contratos Consolidados"}
+                        {projectFilter === "A_FECHAR" 
+                          ? "Módulo: Orçamentos a Fechar" 
+                          : projectFilter === "ENTREGUE" 
+                            ? "Módulo: Contratos Entregues" 
+                            : "Módulo: Contratos Consolidados"}
                       </p>
                     </div>
                   </div>
@@ -971,6 +991,44 @@ export default function ProjectsListView() {
                   }}
                 >
                   Excluir Permanentemente
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: ENVIAR PARA EQUIPE CONFIRMATION */}
+      <AnimatePresence>
+        {confirmSendEquipeProject && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-slate-100 overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                <Send className="w-4 h-4 text-emerald-600" />
+                Enviar para Equipe
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                Deseja enviar e-mail informando toda equipe?
+              </p>
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmSendEquipeProject(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-colors"
+                  onClick={() => executeEnviarEquipeProject(confirmSendEquipeProject)}
+                >
+                  Confirmar e Enviar
                 </button>
               </div>
             </motion.div>

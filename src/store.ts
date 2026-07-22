@@ -6,12 +6,12 @@ interface UIState {
   activeView: "dashboard" | "projects" | "project-detail" | "steps" | "supabase" | "levantamentos" | "usuarios" | "fluxo-operacional" | "contratos-ativos";
   fluxoSubView: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico";
   fluxoMenuExpanded: boolean;
-  projectFilter: "CONSOLIDADO" | "A_FECHAR";
+  projectFilter: "CONSOLIDADO" | "A_FECHAR" | "ENTREGUE";
   selectedProjectId: String | null;
   selectedObraId: String | null;
   searchTerm: string;
   navigateToDashboard: () => void;
-  navigateToProjects: (filter?: "CONSOLIDADO" | "A_FECHAR") => void;
+  navigateToProjects: (filter?: "CONSOLIDADO" | "A_FECHAR" | "ENTREGUE") => void;
   navigateToProject: (id: string) => void;
   navigateToObra: (id: string) => void;
   navigateToSteps: (id?: string) => void;
@@ -23,7 +23,7 @@ interface UIState {
   setFluxoSubView: (subView: "dashboard" | "tradicional" | "executivo" | "painel" | "workflow" | "historico") => void;
   setFluxoMenuExpanded: (expanded: boolean) => void;
   setSearchTerm: (term: string) => void;
-  setProjectFilter: (filter: "CONSOLIDADO" | "A_FECHAR") => void;
+  setProjectFilter: (filter: "CONSOLIDADO" | "A_FECHAR" | "ENTREGUE") => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -168,6 +168,7 @@ export interface Usuario {
     modulos: {
       dashboard: boolean | 'visualizar' | 'editar' | 'nenhum';
       contratosConsolidados: boolean | 'visualizar' | 'editar' | 'nenhum';
+      contratosEntregues?: boolean | 'visualizar' | 'editar' | 'nenhum';
       contratosAtivos?: boolean | 'visualizar' | 'editar' | 'nenhum';
       enviarEquipe?: boolean | 'visualizar' | 'editar' | 'nenhum';
       orcamentosAFechar: boolean | 'visualizar' | 'editar' | 'nenhum';

@@ -922,20 +922,6 @@ export default function LevantamentosView() {
             <table className="w-full text-left border-collapse">
               <thead className={`${stickyColumns ? "sticky top-0 z-20" : ""}`}>
                 <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 tracking-wider border-b border-slate-100">
-                  <th className="py-3 px-4 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={sortedLevantamentos.length > 0 && selectedIds.size === sortedLevantamentos.length}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedIds(new Set(sortedLevantamentos.map(l => l.id)));
-                        } else {
-                          setSelectedIds(new Set());
-                        }
-                      }}
-                      className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 cursor-pointer animate-show"
-                    />
-                  </th>
                   <th className="py-3 px-4 w-16">REF</th>
                   <th className="py-3 px-4">OBRA</th>
                   <th className="py-3 px-4">CLIENTE</th>
@@ -991,22 +977,6 @@ export default function LevantamentosView() {
                           : "hover:bg-slate-50/50"
                       }`}
                     >
-                      <td className="py-3.5 px-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {
-                            const copy = new Set(selectedIds);
-                            if (copy.has(lev.id)) {
-                              copy.delete(lev.id);
-                            } else {
-                              copy.add(lev.id);
-                            }
-                            setSelectedIds(copy);
-                          }}
-                          className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 cursor-pointer"
-                        />
-                      </td>
                       <td className="py-3.5 px-4 font-mono font-extrabold text-brand-primary">
                         {lev.ref}
                       </td>

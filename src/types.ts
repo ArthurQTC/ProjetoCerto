@@ -72,7 +72,7 @@ export interface Obra {
   cliente: string | null;
   observacoes: string | null;
   valorContrato: number;
-  statusContrato: 'CONSOLIDADO' | 'A_FECHAR' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO';
+  statusContrato: 'CONSOLIDADO' | 'A_FECHAR' | 'ENTREGUE' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO';
   documentos: DocumentoAnexo[];
   createdAt: string;
   updatedAt: string;
@@ -160,7 +160,7 @@ export interface ObraSummary {
   visaoGeral: number;
   margemLiquida: number;
   percentualMargem: number;
-  statusContrato: 'CONSOLIDADO' | 'A_FECHAR' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO';
+  statusContrato: 'CONSOLIDADO' | 'A_FECHAR' | 'ENTREGUE' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO';
   etapaLevantamento?: boolean;
   etapaProjeto?: boolean;
   etapaCotacao?: boolean;
@@ -193,6 +193,7 @@ export interface ContratoAtivo {
   obraId: string;
   cnpj: string | null;
   contato: string | null;
+  nomeContato?: string | null;
   endereco: string | null; // Keeping it for compatibility but will hide in UI
   municipio?: string | null;
   uf?: string | null;

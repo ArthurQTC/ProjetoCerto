@@ -16,7 +16,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
   const [cliente, setCliente] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [valorContrato, setValorContrato] = useState("");
-  const [statusContrato, setStatusContrato] = useState<'CONSOLIDADO' | 'A_FECHAR' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO'>('CONSOLIDADO');
+  const [statusContrato, setStatusContrato] = useState<'CONSOLIDADO' | 'A_FECHAR' | 'ENTREGUE' | 'EXCLUIDO_CONTRATO' | 'EXCLUIDO_ORCAMENTO'>('CONSOLIDADO');
   const [dataInicioContrato, setDataInicioContrato] = useState("");
   const [dataFimContrato, setDataFimContrato] = useState("");
   const [loading, setLoading] = useState(false);
@@ -209,12 +209,13 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
               <select
                 className="w-full text-sm py-2 px-3 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary hover:border-slate-300 transition-colors bg-white font-semibold text-brand-primary"
                 value={statusContrato}
-                onChange={(e) => setStatusContrato(e.target.value as 'CONSOLIDADO' | 'A_FECHAR')}
+                onChange={(e) => setStatusContrato(e.target.value as any)}
                 disabled={loading}
                 id="projeto_status_contrato_select"
               >
                 <option value="CONSOLIDADO">Consolidado</option>
                 <option value="A_FECHAR">A fechar</option>
+                <option value="ENTREGUE">Entregue</option>
               </select>
             </div>
 

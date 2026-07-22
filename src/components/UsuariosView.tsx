@@ -35,6 +35,7 @@ const ROLES = [
 const MODULE_OPTIONS = [
   { key: "dashboard", label: "Dashboard", tooltip: "Visualização dos painéis financeiros e operacionais (Leitura para gráficos, Edição para alterar metas se aplicável)." },
   { key: "contratosConsolidados", label: "Contratos Consolidados", tooltip: "Acesso à lista e detalhes de Obras ativas. Edição permite alterar, adicionar e remover itens e documentos do contrato." },
+  { key: "contratosEntregues", label: "Contratos Entregues", tooltip: "Acesso à lista e detalhes de Obras entregues. Edição permite alterar, adicionar e remover itens e documentos do contrato." },
   { key: "orcamentosAFechar", label: "Orçamentos a Fechar", tooltip: "Acesso aos orçamentos pendentes. Edição permite alterar, excluir itens e documentos dentro de orçamentos." },
   { key: "etapasContrato", label: "Etapas do Contrato", tooltip: "Gestão do cronograma e macro-etapas. Edição permite criar e modificar etapas." },
   { key: "levantamentosOrcamentos", label: "Levantamentos/Orçamentos", tooltip: "Controle de levantamentos. Edição permite criar, editar e excluir levantamentos e alterar status." },
@@ -76,6 +77,7 @@ const DEFAULT_PERMISSIONS = {
   modulos: {
     dashboard: "editar",
     contratosConsolidados: "editar",
+    contratosEntregues: "editar",
     contratosAtivos: "editar",
     enviarEquipe: "editar",
     orcamentosAFechar: "editar",
@@ -131,6 +133,19 @@ const PERMISSION_HIERARCHY = [
             category: "modulos", 
             label: "Contratos Consolidados", 
             tooltip: "Acesso à lista e detalhes de Obras ativas. Edição permite alterar, adicionar e remover itens e documentos do contrato.",
+            rlsFields: [
+              { key: "valorContrato", category: "colunas", label: "Coluna: Valor Contratado (Fechado)", tooltip: "Controla a visibilidade e edição do valor de faturamento do contrato nas tabelas e detalhes." },
+              { key: "margemLiquida", category: "colunas", label: "Coluna: Margem Líquida da Obra", tooltip: "Controla se o cálculo da margem de lucro (R$ e %) é exibido ou ocultado nas tabelas." },
+              { key: "custoAdm", category: "colunas", label: "Coluna: Custo Administrativo", tooltip: "Controla a visibilidade e edição do valor do custo administrativo alocado à obra." },
+              { key: "enviarEquipe", category: "modulos", label: "Botão: Enviar para Equipe", tooltip: "Permite ao usuário visualizar e/ou acionar o envio de dados do contrato para a equipe." },
+              { key: "exportarExcelContratos", category: "modulos", label: "Função: Exportar para Excel (XLS)", tooltip: "Permite que o usuário exporte os dados financeiros e cadastrais de obras para planilhas excel." }
+            ]
+          },
+          { 
+            key: "contratosEntregues", 
+            category: "modulos", 
+            label: "Contratos Entregues", 
+            tooltip: "Acesso à lista e detalhes de Obras entregues. Edição permite alterar, adicionar e remover itens e documentos do contrato.",
             rlsFields: [
               { key: "valorContrato", category: "colunas", label: "Coluna: Valor Contratado (Fechado)", tooltip: "Controla a visibilidade e edição do valor de faturamento do contrato nas tabelas e detalhes." },
               { key: "margemLiquida", category: "colunas", label: "Coluna: Margem Líquida da Obra", tooltip: "Controla se o cálculo da margem de lucro (R$ e %) é exibido ou ocultado nas tabelas." },
@@ -583,6 +598,7 @@ export default function UsuariosView() {
           </div>
         );
       case "contratosConsolidados":
+      case "contratosEntregues":
         return (
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1.5">
@@ -1317,6 +1333,7 @@ export default function UsuariosView() {
     } else if (role === "GESTOR") {
       updated.modulos.dashboard = 'editar';
       updated.modulos.contratosConsolidados = 'editar';
+      updated.modulos.contratosEntregues = 'editar';
       updated.modulos.enviarEquipe = 'editar';
       updated.modulos.orcamentosAFechar = 'editar';
       updated.modulos.etapasContrato = 'editar';
@@ -1359,6 +1376,7 @@ export default function UsuariosView() {
     } else if (role === "LEITOR") {
       updated.modulos.dashboard = 'visualizar';
       updated.modulos.contratosConsolidados = 'visualizar';
+      updated.modulos.contratosEntregues = 'visualizar';
       updated.modulos.orcamentosAFechar = 'nenhum';
       updated.modulos.etapasContrato = 'nenhum';
       updated.modulos.levantamentosOrcamentos = 'nenhum';

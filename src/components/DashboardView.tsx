@@ -117,7 +117,7 @@ export default function DashboardView() {
 
   // Filter projects by search, CONSOLIDADO status, and contract date range
   const filteredProjects = (data.projetos || data.obras || [])
-    .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO")
+    .filter((p) => (p.statusContrato || "CONSOLIDADO") === "CONSOLIDADO" || p.statusContrato === "ENTREGUE")
     .filter((p) => {
       const matchesSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.cliente && p.cliente.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -548,7 +548,7 @@ export default function DashboardView() {
       {/* ADM Despesas detail modal */}
       {showAdmDetails && (() => {
         const projectsForAdmModal = (data?.projetos || data?.obras || [])
-          .filter((p) => p.statusContrato === "CONSOLIDADO")
+          .filter((p) => p.statusContrato === "CONSOLIDADO" || p.statusContrato === "ENTREGUE")
           .map((p) => {
             const itensAdm = (p.itens || [])
               .filter((i: any) => i.status === "ATIVO" && i.descricao === "Custo ADM")

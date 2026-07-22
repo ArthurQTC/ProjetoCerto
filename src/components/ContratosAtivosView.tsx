@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import {
   Building,
   Phone,
+  User,
   MapPin,
   ArrowLeft,
   Check,
@@ -111,6 +112,7 @@ export default function ContratosAtivosView() {
   // Current edit state
   const [cnpj, setCnpj] = useState("");
   const [contato, setContato] = useState("");
+  const [nomeContato, setNomeContato] = useState("");
   const [endereco, setEndereco] = useState("");
   const [municipio, setMunicipio] = useState("");
   const [uf, setUf] = useState("");
@@ -130,6 +132,7 @@ export default function ContratosAtivosView() {
   const [clienteNome, setClienteNome] = useState("");
   const [contratoNome, setContratoNome] = useState("");
   const [itensMateriais, setItensMateriais] = useState<string[]>([]);
+  const [showConfirmEnviarEquipe, setShowConfirmEnviarEquipe] = useState(false);
 
   // CEP Lookup helper states
   const [cep, setCep] = useState("");
@@ -206,6 +209,7 @@ export default function ContratosAtivosView() {
   const populateFormFromContract = (data: ContratoAtivo) => {
     setCnpj(data.cnpj ? formatCNPJ(data.cnpj) : "");
     setContato(data.contato ? formatPhone(data.contato) : "");
+    setNomeContato(data.nomeContato || (data as any).nome_contato || "");
     setEndereco(data.endereco || "");
     setMunicipio(data.municipio || "");
     setUf(data.uf || "");
@@ -252,6 +256,7 @@ export default function ContratosAtivosView() {
       // Reset form fields only if no cached record exists
       setCnpj("");
       setContato("");
+      setNomeContato("");
       setEndereco("");
       setMunicipio("");
       setUf("");
@@ -341,6 +346,7 @@ export default function ContratosAtivosView() {
           obraId: selectedObra.id,
           cnpj: cleanCnpj || null,
           contato: cleanContato || null,
+          nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
           endereco: endereco || null,
           municipio: municipio || null,
           uf: uf || null,
@@ -735,6 +741,7 @@ export default function ContratosAtivosView() {
         obraId: selectedObra.id,
         cnpj: cleanCnpj || null,
         contato: cleanContato || null,
+        nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
         endereco: endereco || null,
         municipio: municipio || null,
         uf: uf || null,
@@ -794,6 +801,7 @@ export default function ContratosAtivosView() {
         obraId: selectedObra.id,
         cnpj: cleanCnpj || null,
         contato: cleanContato || null,
+        nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
         endereco: endereco || null,
         municipio: municipio || null,
         uf: uf || null,
@@ -921,13 +929,16 @@ export default function ContratosAtivosView() {
                   <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
                     <th className="py-4 px-6">Cliente</th>
                     <th className="py-4 px-6">Obra</th>
-                    <th className="py-4 px-6 text-right">Valor do Contrato</th>
+                    <th className="py-4 px-6">Município / UF</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 text-xs">
                   {filteredObras.map(obra => {
                     const extraData = activeContracts[obra.id];
                     const isConfigured = !!(extraData?.cnpj || extraData?.enderecoEntrega);
+                    const municipioUf = extraData 
+                      ? [extraData.municipio, extraData.uf].filter(Boolean).join(" / ") 
+                      : "";
                     return (
                       <tr
                         key={obra.id}
@@ -940,8 +951,8 @@ export default function ContratosAtivosView() {
                         <td className="py-4 px-6 font-semibold text-slate-600">
                           {obra.nome}
                         </td>
-                        <td className="py-4 px-6 text-right font-bold text-brand-text-primary">
-                          {formatCurrency(obra.valorContrato)}
+                        <td className="py-4 px-6 text-slate-500 font-medium">
+                          {municipioUf || "-"}
                         </td>
                       </tr>
                     );
@@ -1028,39 +1039,99 @@ export default function ContratosAtivosView() {
               </div>
             </div>
 
-            {/* Indicator Block: Metragem a Instalar */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all max-w-md">
-              <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
-                METRAGEM A INSTALAR
-              </label>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Ex: 250 M²"
-                    disabled={!isEditing || !isWritable}
-                    value={metragemAInstalar}
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (!val) {
-                        setMetragemAInstalar("");
-                        return;
-                      }
-                      setMetragemAInstalar(formatMetragemLive(val));
-                    }}
-                    onBlur={() => {
-                      if (metragemAInstalar) {
-                        setMetragemAInstalar(formatMetragemValue(metragemAInstalar));
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-brand-secondary rounded-lg pl-3 pr-12 py-2 text-base font-black text-slate-800 focus:outline-none transition-all disabled:bg-slate-100/60"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded border border-slate-300/40 select-none pointer-events-none">
-                    M²
-                  </span>
+            {/* Side-by-side Block: Metragem a Instalar & Itens a Serem Instalados */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Indicator Block: Metragem a Instalar */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all flex flex-col justify-between">
+                <div>
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                    METRAGEM A INSTALAR
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder="Ex: 250 M²"
+                        disabled={!isEditing || !isWritable}
+                        value={metragemAInstalar}
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (!val) {
+                            setMetragemAInstalar("");
+                            return;
+                          }
+                          setMetragemAInstalar(formatMetragemLive(val));
+                        }}
+                        onBlur={() => {
+                          if (metragemAInstalar) {
+                            setMetragemAInstalar(formatMetragemValue(metragemAInstalar));
+                          }
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-brand-secondary rounded-lg pl-3 pr-12 py-2 text-base font-black text-slate-800 focus:outline-none transition-all disabled:bg-slate-100/60"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded border border-slate-300/40 select-none pointer-events-none">
+                        M²
+                      </span>
+                    </div>
+                    <div className="w-10 h-10 bg-orange-50 border border-orange-100 rounded-xl flex items-center justify-center text-brand-accent shrink-0">
+                      <Layers className="w-5 h-5" />
+                    </div>
+                  </div>
                 </div>
-                <div className="w-10 h-10 bg-orange-50 border border-orange-100 rounded-xl flex items-center justify-center text-brand-accent shrink-0">
-                  <Layers className="w-5 h-5" />
+              </div>
+
+              {/* Itens a serem instalados Field */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                    ITENS A SEREM INSTALADOS
+                  </label>
+                  {isEditing && isWritable && (
+                    <button
+                      type="button"
+                      onClick={() => setItensInstalacao([...itensInstalacao, { material: "", valor: 0 }])}
+                      className="text-[10px] font-bold text-brand-accent hover:text-orange-600 transition-colors uppercase tracking-widest flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Adicionar Item
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {itensInstalacao.length === 0 ? (
+                    <div className="p-3 border-2 border-dashed border-slate-100 rounded-xl text-center">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Nenhum item adicionado</p>
+                    </div>
+                  ) : (
+                    itensInstalacao.map((item, index) => (
+                      <div key={index} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-100 group">
+                        <div className="flex-1 space-y-1">
+                          <input
+                            type="text"
+                            placeholder="Descrição / Material do Item"
+                            disabled={!isEditing || !isWritable}
+                            value={item.material}
+                            onChange={(e) => {
+                              const newItens = [...itensInstalacao];
+                              newItens[index].material = e.target.value;
+                              setItensInstalacao(newItens);
+                            }}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-brand-secondary rounded-lg text-xs font-semibold focus:outline-none transition-all"
+                          />
+                        </div>
+                        {isEditing && isWritable && (
+                          <button
+                            type="button"
+                            onClick={() => setItensInstalacao(itensInstalacao.filter((_, i) => i !== index))}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Remover Item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -1139,6 +1210,25 @@ export default function ContratosAtivosView() {
                 </div>
               </div>
 
+              {/* Nome do Contato Field */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Nome do Contato
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    maxLength={60}
+                    placeholder="Nome do contato (máx. 60 caracteres)"
+                    disabled={!isEditing || !isWritable}
+                    value={nomeContato}
+                    onChange={e => setNomeContato(e.target.value.slice(0, 60))}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  />
+                </div>
+              </div>
+
               {/* Contato (Telefone) Field */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -1155,76 +1245,6 @@ export default function ContratosAtivosView() {
                     onChange={e => setContato(formatPhone(e.target.value))}
                     className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
                   />
-                </div>
-              </div>
-
-              {/* Itens a serem instalados Field */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Itens a serem instalados
-                  </label>
-                  {isEditing && isWritable && (
-                    <button
-                      type="button"
-                      onClick={() => setItensInstalacao([...itensInstalacao, { material: "", valor: 0 }])}
-                      className="text-[10px] font-bold text-brand-accent hover:text-orange-600 transition-colors uppercase tracking-widest flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> Adicionar Item
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  {itensInstalacao.length === 0 ? (
-                    <div className="p-4 border-2 border-dashed border-slate-100 rounded-xl text-center">
-                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Nenhum item adicionado</p>
-                    </div>
-                  ) : (
-                    itensInstalacao.map((item, index) => (
-                      <div key={index} className="flex gap-2 items-start bg-slate-50 p-2 rounded-xl border border-slate-100 group">
-                        <div className="flex-1 space-y-1">
-                          <input
-                            type="text"
-                            placeholder="Material"
-                            disabled={!isEditing || !isWritable}
-                            value={item.material}
-                            onChange={(e) => {
-                              const newItens = [...itensInstalacao];
-                              newItens[index].material = e.target.value;
-                              setItensInstalacao(newItens);
-                            }}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-brand-secondary rounded-lg text-xs font-semibold focus:outline-none transition-all"
-                          />
-                        </div>
-                        <div className="w-40 space-y-1">
-                          <input
-                            type="text"
-                            placeholder="Valor R$"
-                            disabled={!isEditing || !isWritable}
-                            value={formatCurrencyLive((item.valor * 100).toFixed(0))}
-                            onChange={(e) => {
-                              const cleanValue = e.target.value.replace(/\D/g, "");
-                              const numValue = Number(cleanValue) / 100;
-                              const newItens = [...itensInstalacao];
-                              newItens[index].valor = numValue;
-                              setItensInstalacao(newItens);
-                            }}
-                            className="w-full px-3 py-1.5 bg-white border border-slate-200 focus:border-brand-secondary rounded-lg text-xs font-semibold focus:outline-none transition-all"
-                          />
-                        </div>
-                        {isEditing && isWritable && (
-                          <button
-                            type="button"
-                            onClick={() => setItensInstalacao(itensInstalacao.filter((_, i) => i !== index))}
-                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
                 </div>
               </div>
 
@@ -1564,7 +1584,11 @@ export default function ContratosAtivosView() {
                         <span className="font-extrabold text-slate-800">{cnpj ? formatCNPJ(cnpj) : "Não Informado"}</span>
                       </div>
                       <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Contato:</span>
+                        <span className="font-bold text-slate-400">Nome do Contato:</span>
+                        <span className="font-extrabold text-slate-800">{nomeContato || "Não Informado"}</span>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
+                        <span className="font-bold text-slate-400">Contato (Telefone):</span>
                         <span className="font-extrabold text-slate-800">{contato ? formatPhone(contato) : "Não Informado"}</span>
                       </div>
                     </div>
@@ -1614,7 +1638,6 @@ export default function ContratosAtivosView() {
                         itensInstalacao.map((it, idx) => (
                           <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-700 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
                             <span>{it.material}</span>
-                            <span className="text-brand-accent whitespace-nowrap">{formatCurrency(it.valor)}</span>
                           </div>
                         ))
                       ) : (
@@ -1701,7 +1724,7 @@ export default function ContratosAtivosView() {
               <div className="space-y-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={handleEnviarEquipe}
+                  onClick={() => setShowConfirmEnviarEquipe(true)}
                   disabled={isSaving}
                   className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold py-3 rounded-xl cursor-pointer shadow transition-all disabled:opacity-50"
                 >
@@ -1753,6 +1776,46 @@ export default function ContratosAtivosView() {
           </motion.div>
         </div>
       )}
+      {/* MODAL: ENVIAR PARA EQUIPE CONFIRMATION */}
+      <AnimatePresence>
+        {showConfirmEnviarEquipe && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-slate-100 overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="text-sm font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                <Send className="w-4 h-4 text-emerald-600" />
+                Enviar para Equipe
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                Deseja enviar e-mail informando toda equipe?
+              </p>
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmEnviarEquipe(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-colors"
+                  onClick={() => {
+                    setShowConfirmEnviarEquipe(false);
+                    handleEnviarEquipe();
+                  }}
+                >
+                  Confirmar e Enviar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

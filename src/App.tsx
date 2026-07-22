@@ -232,6 +232,7 @@ function AppContent() {
       let hasAccess = false;
       if (activeView === "dashboard" && hasPermission("modulos", "dashboard")) hasAccess = true;
       else if (activeView === "projects" && projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) hasAccess = true;
+      else if (activeView === "projects" && projectFilter === "ENTREGUE" && hasPermission("modulos", "contratosEntregues")) hasAccess = true;
       else if (activeView === "projects" && projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar")) hasAccess = true;
       else if (activeView === "contratos-ativos" && hasPermission("modulos", "contratosAtivos")) hasAccess = true;
       else if (activeView === "steps" && hasPermission("modulos", "etapasContrato")) hasAccess = true;
@@ -245,6 +246,8 @@ function AppContent() {
           navigateToDashboard();
         } else if (hasPermission("modulos", "contratosConsolidados")) {
           navigateToProjects("CONSOLIDADO");
+        } else if (hasPermission("modulos", "contratosEntregues")) {
+          navigateToProjects("ENTREGUE");
         } else if (hasPermission("modulos", "orcamentosAFechar")) {
           navigateToProjects("A_FECHAR");
         } else if (hasPermission("modulos", "levantamentosOrcamentos")) {
@@ -338,6 +341,24 @@ function AppContent() {
                 </button>
               )}
 
+              {hasPermission("modulos", "contratosAtivos") && (
+                <button
+                  onClick={() => {
+                    useUIStore.getState().navigateToContratosAtivos();
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
+                    activeView === "contratos-ativos"
+                      ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
+                      : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
+                  }`}
+                  id="sidebar_nav_contratos_ativos"
+                >
+                  <Folders className="w-4 h-4 text-brand-accent" />
+                  Contratos Ativos
+                </button>
+              )}
+
               {hasPermission("modulos", "contratosConsolidados") && (
                 <button
                   onClick={() => {
@@ -356,21 +377,21 @@ function AppContent() {
                 </button>
               )}
 
-              {hasPermission("modulos", "contratosAtivos") && (
+              {hasPermission("modulos", "contratosEntregues") && (
                 <button
                   onClick={() => {
-                    useUIStore.getState().navigateToContratosAtivos();
+                    navigateToProjects("ENTREGUE");
                     setMobileMenuOpen(false);
                   }}
                   className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold leading-none flex items-center gap-2.5 transition-all duration-200 ${
-                    activeView === "contratos-ativos"
+                    (activeView === "projects" && projectFilter === "ENTREGUE") || (activeView === "project-detail" && projectFilter === "ENTREGUE")
                       ? "bg-brand-secondary text-white font-extrabold border-l-2 border-brand-accent pl-2.5"
                       : "text-white/70 hover:text-white hover:bg-white/5 border-l-2 border-transparent"
                   }`}
-                  id="sidebar_nav_contratos_ativos"
+                  id="sidebar_nav_projects_entregue"
                 >
                   <Folders className="w-4 h-4 text-brand-accent" />
-                  Contratos Ativos
+                  Contratos Entregues
                 </button>
               )}
 
@@ -708,7 +729,11 @@ function AppContent() {
           <div className="w-full max-w-full mx-auto">
             {activeView === "dashboard" && hasPermission("modulos", "dashboard") ? (
               <DashboardView />
-            ) : activeView === "projects" && ((projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) || (projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar"))) ? (
+            ) : activeView === "projects" && (
+              (projectFilter === "CONSOLIDADO" && hasPermission("modulos", "contratosConsolidados")) ||
+              (projectFilter === "ENTREGUE" && hasPermission("modulos", "contratosEntregues")) ||
+              (projectFilter === "A_FECHAR" && hasPermission("modulos", "orcamentosAFechar"))
+            ) ? (
               <ProjectsListView />
             ) : activeView === "contratos-ativos" && hasPermission("modulos", "contratosAtivos") ? (
               <ContratosAtivosView />

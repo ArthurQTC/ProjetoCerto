@@ -627,6 +627,7 @@ async function checkDbConnection() {
             modulos: {
               dashboard: true,
               contratosConsolidados: true,
+              contratosEntregues: true,
               orcamentosAFechar: true,
               etapasContrato: true,
               levantamentosOrcamentos: true,
@@ -678,6 +679,7 @@ async function checkDbConnection() {
             modulos: {
               dashboard: true,
               contratosConsolidados: true,
+              contratosEntregues: true,
               orcamentosAFechar: true,
               etapasContrato: true,
               levantamentosOrcamentos: true,
@@ -801,6 +803,7 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS itens_instalacao TEXT');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "metragem_a_instalar" VARCHAR(255)');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "observacoes_gerais" TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "nome_contato" VARCHAR(60)');
 
         // Removed automatic migrations and ALTER commands as per user request to avoid automatic data updates on startup.
 
@@ -2076,7 +2079,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
       }
 
       const allCalculated = freshObras.map(formatObraWithMetrics);
-      const obrasConsolidadas = freshObras.filter((o) => o.statusContrato === "CONSOLIDADO");
+      const obrasConsolidadas = freshObras.filter((o) => o.statusContrato === "CONSOLIDADO" || o.statusContrato === "ENTREGUE");
       const obrasCalculadasConsolidadas = obrasConsolidadas.map(formatObraWithMetrics);
 
       const totalContratos = obrasCalculadasConsolidadas.reduce((acc, o) => acc + o.valorContrato, 0);
@@ -2462,7 +2465,8 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
             : (data.saldo_receber !== undefined && data.saldo_receber !== null ? Number(data.saldo_receber) : 0),
           tipoObra: data.tipoObra || data.tipo_obra || "Instalação",
           metragemAInstalar: data.metragemAInstalar || data.metragem_a_instalar || "",
-          observacoesGerais: data.observacoesGerais || data.observacoes_gerais || ""
+          observacoesGerais: data.observacoesGerais || data.observacoes_gerais || "",
+          nomeContato: data.nomeContato || data.nome_contato || ""
         });
       } else {
         res.json({
@@ -2470,6 +2474,7 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
           obraId,
           cnpj: "",
           contato: "",
+          nomeContato: "",
           endereco: "",
           municipio: "",
           uf: "",
@@ -2496,7 +2501,7 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
 
 app.post("/api/contratos-ativos", async (req, res) => {
   const { 
-    obraId, cnpj, contato, endereco, municipio, uf, bairro, complemento, 
+    obraId, cnpj, contato, nomeContato, endereco, municipio, uf, bairro, complemento, 
     itensInstalacao, enderecoEntrega, condicoesComerciais, freteTipo, 
     entrada, saldoReceber, tipoObra, metragemAInstalar, observacoesGerais 
   } = req.body;
@@ -2510,6 +2515,7 @@ app.post("/api/contratos-ativos", async (req, res) => {
       
       const cleanContato = contato ? String(contato).replace(/\D/g, '') : null;
       const numContato = cleanContato ? cleanContato : null;
+      const cleanNomeContato = nomeContato ? String(nomeContato).trim().slice(0, 60) : null;
       
       if (check.rows.length > 0) {
         // UPDATE
@@ -2519,8 +2525,8 @@ app.post("/api/contratos-ativos", async (req, res) => {
               bairro = $6, complemento = $7, itens_instalacao = $8,
               "enderecoEntrega" = $9, "condicoesComerciais" = $10, "freteTipo" = $11, 
               entrada = $12, "saldoReceber" = $13, "tipoObra" = $14,
-              metragem_a_instalar = $15, observacoes_gerais = $16, "updatedAt" = NOW()
-          WHERE "obraId" = $17
+              metragem_a_instalar = $15, observacoes_gerais = $16, nome_contato = $17, "updatedAt" = NOW()
+          WHERE "obraId" = $18
           RETURNING *
         `, [
           cnpj || null,
@@ -2539,13 +2545,15 @@ app.post("/api/contratos-ativos", async (req, res) => {
           tipoObra || 'Instalação',
           metragemAInstalar || null,
           observacoesGerais || null,
+          cleanNomeContato,
           obraId
         ]);
         res.json({
           ...result.rows[0],
           itensInstalacao: result.rows[0].itens_instalacao,
           metragemAInstalar: result.rows[0].metragem_a_instalar,
-          observacoesGerais: result.rows[0].observacoes_gerais
+          observacoesGerais: result.rows[0].observacoes_gerais,
+          nomeContato: result.rows[0].nome_contato
         });
       } else {
         // INSERT
@@ -2554,9 +2562,9 @@ app.post("/api/contratos-ativos", async (req, res) => {
           INSERT INTO contratos_ativos (
             id, "obraId", cnpj, contato, endereco, municipio, uf, bairro, complemento, 
             itens_instalacao, "enderecoEntrega", "condicoesComerciais", "freteTipo", 
-            entrada, "saldoReceber", "tipoObra", metragem_a_instalar, observacoes_gerais, "createdAt", "updatedAt"
+            entrada, "saldoReceber", "tipoObra", metragem_a_instalar, observacoes_gerais, nome_contato, "createdAt", "updatedAt"
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
           RETURNING *
         `, [
           newId,
@@ -2576,13 +2584,15 @@ app.post("/api/contratos-ativos", async (req, res) => {
           saldoReceber !== undefined ? Number(saldoReceber) : 0.0,
           tipoObra || 'Instalação',
           metragemAInstalar || null,
-          observacoesGerais || null
+          observacoesGerais || null,
+          cleanNomeContato
         ]);
         res.status(201).json({
           ...result.rows[0],
           itensInstalacao: result.rows[0].itens_instalacao,
           metragemAInstalar: result.rows[0].metragem_a_instalar,
-          observacoesGerais: result.rows[0].observacoes_gerais
+          observacoesGerais: result.rows[0].observacoes_gerais,
+          nomeContato: result.rows[0].nome_contato
         });
       }
     } else {
@@ -4338,16 +4348,40 @@ app.get("/api/configuracoes/custo-adm-global", async (req, res) => {
   });
 
   app.post("/api/enviar-para-equipe", async (req, res) => {
-    const { contratoNome, nomeCliente, detalhes, pdfBase64, valorContrato, materiais } = req.body;
+    let { contratoNome, nomeCliente, detalhes, pdfBase64, valorContrato, materiais, metragemAInstalar, municipio, uf, obraId } = req.body;
     
     try {
+      if (pool) {
+        let targetObraId = obraId;
+        if (!targetObraId && contratoNome) {
+          const obraRes = await pool.query('SELECT id, cliente FROM obras WHERE nome = $1 LIMIT 1', [contratoNome]);
+          if (obraRes.rows.length > 0) {
+            targetObraId = obraRes.rows[0].id;
+            if (!nomeCliente) nomeCliente = obraRes.rows[0].cliente;
+          }
+        }
+        if (targetObraId) {
+          const caRes = await pool.query('SELECT * FROM contratos_ativos WHERE obra_id = $1 LIMIT 1', [targetObraId]);
+          if (caRes.rows.length > 0) {
+            const row = caRes.rows[0];
+            if (!municipio) municipio = row.municipio;
+            if (!uf) uf = row.uf;
+            if (!metragemAInstalar) metragemAInstalar = row.metragem_a_instalar || row.metragemAInstalar;
+            if (!materiais) materiais = row.itens_instalacao || row.itensInstalacao;
+          }
+        }
+      }
+
       await sendEmail({ 
         contratoNome, 
         nomeCliente,
         detalhes, 
         pdfBase64,
         valorContrato,
-        materiais
+        materiais: typeof materiais === 'object' ? JSON.stringify(materiais) : materiais,
+        metragemAInstalar,
+        municipio,
+        uf
       });
       res.json({ success: true });
     } catch (error: any) {
