@@ -114,7 +114,6 @@ export async function sendEmail({
         </div>
       </div>
 
-      <p>O contrato em PDF está em anexo a este e-mail.</p>
       <p style="margin-top: 40px; font-size: 11px; color: #a0aec0; border-top: 1px solid #edf2f7; padding-top: 16px;">
         Este e-mail foi gerado automaticamente pelo sistema de Gestão de Obras.
       </p>

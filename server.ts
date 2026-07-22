@@ -804,6 +804,7 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "metragem_a_instalar" VARCHAR(255)');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "observacoes_gerais" TEXT');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "nome_contato" VARCHAR(60)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS documentos TEXT');
 
         // Removed automatic migrations and ALTER commands as per user request to avoid automatic data updates on startup.
 
@@ -1973,6 +1974,7 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
           );
         `);
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "tipoObra" VARCHAR(255) DEFAULT \'Instalação\'');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS documentos TEXT');
 
         console.log("Populando dados padrão...");
         const defaultCategories = [
@@ -2433,7 +2435,8 @@ app.get("/api/contratos-ativos", async (req, res) => {
           : (data.saldo_receber !== undefined && data.saldo_receber !== null ? Number(data.saldo_receber) : 0),
         tipoObra: data.tipoObra || data.tipo_obra || "Instalação",
         metragemAInstalar: data.metragemAInstalar || data.metragem_a_instalar || "",
-        observacoesGerais: data.observacoesGerais || data.observacoes_gerais || ""
+        observacoesGerais: data.observacoesGerais || data.observacoes_gerais || "",
+        documentos: data.documentos ? (typeof data.documentos === 'string' ? JSON.parse(data.documentos) : data.documentos) : []
       }));
       res.json(mapped);
     } else {
@@ -2466,7 +2469,8 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
           tipoObra: data.tipoObra || data.tipo_obra || "Instalação",
           metragemAInstalar: data.metragemAInstalar || data.metragem_a_instalar || "",
           observacoesGerais: data.observacoesGerais || data.observacoes_gerais || "",
-          nomeContato: data.nomeContato || data.nome_contato || ""
+          nomeContato: data.nomeContato || data.nome_contato || "",
+          documentos: data.documentos ? (typeof data.documentos === 'string' ? JSON.parse(data.documentos) : data.documentos) : []
         });
       } else {
         res.json({
@@ -2487,7 +2491,8 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
           entrada: 0.0,
           saldoReceber: 0.0,
           metragemAInstalar: "",
-          observacoesGerais: ""
+          observacoesGerais: "",
+          documentos: []
         });
       }
     } else {
@@ -2501,9 +2506,9 @@ app.get("/api/contratos-ativos/:obraId", async (req, res) => {
 
 app.post("/api/contratos-ativos", async (req, res) => {
   const { 
-    obraId, cnpj, contato, nomeContato, endereco, municipio, uf, bairro, complemento, 
+    obraId, cnpj, contato, nomeContato, address, endereco, municipio, uf, bairro, complemento, 
     itensInstalacao, enderecoEntrega, condicoesComerciais, freteTipo, 
-    entrada, saldoReceber, tipoObra, metragemAInstalar, observacoesGerais 
+    entrada, saldoReceber, tipoObra, metragemAInstalar, observacoesGerais, documentos 
   } = req.body;
   
   if (!obraId) {
@@ -2516,6 +2521,7 @@ app.post("/api/contratos-ativos", async (req, res) => {
       const cleanContato = contato ? String(contato).replace(/\D/g, '') : null;
       const numContato = cleanContato ? cleanContato : null;
       const cleanNomeContato = nomeContato ? String(nomeContato).trim().slice(0, 60) : null;
+      const docStr = documentos ? (typeof documentos === 'string' ? documentos : JSON.stringify(documentos)) : null;
       
       if (check.rows.length > 0) {
         // UPDATE
@@ -2525,8 +2531,9 @@ app.post("/api/contratos-ativos", async (req, res) => {
               bairro = $6, complemento = $7, itens_instalacao = $8,
               "enderecoEntrega" = $9, "condicoesComerciais" = $10, "freteTipo" = $11, 
               entrada = $12, "saldoReceber" = $13, "tipoObra" = $14,
-              metragem_a_instalar = $15, observacoes_gerais = $16, nome_contato = $17, "updatedAt" = NOW()
-          WHERE "obraId" = $18
+              metragem_a_instalar = $15, observacoes_gerais = $16, nome_contato = $17, 
+              documentos = $18, "updatedAt" = NOW()
+          WHERE "obraId" = $19
           RETURNING *
         `, [
           cnpj || null,
@@ -2546,6 +2553,7 @@ app.post("/api/contratos-ativos", async (req, res) => {
           metragemAInstalar || null,
           observacoesGerais || null,
           cleanNomeContato,
+          docStr,
           obraId
         ]);
         res.json({
@@ -2553,7 +2561,8 @@ app.post("/api/contratos-ativos", async (req, res) => {
           itensInstalacao: result.rows[0].itens_instalacao,
           metragemAInstalar: result.rows[0].metragem_a_instalar,
           observacoesGerais: result.rows[0].observacoes_gerais,
-          nomeContato: result.rows[0].nome_contato
+          nomeContato: result.rows[0].nome_contato,
+          documentos: result.rows[0].documentos ? (typeof result.rows[0].documentos === 'string' ? JSON.parse(result.rows[0].documentos) : result.rows[0].documentos) : []
         });
       } else {
         // INSERT
@@ -2562,9 +2571,9 @@ app.post("/api/contratos-ativos", async (req, res) => {
           INSERT INTO contratos_ativos (
             id, "obraId", cnpj, contato, endereco, municipio, uf, bairro, complemento, 
             itens_instalacao, "enderecoEntrega", "condicoesComerciais", "freteTipo", 
-            entrada, "saldoReceber", "tipoObra", metragem_a_instalar, observacoes_gerais, nome_contato, "createdAt", "updatedAt"
+            entrada, "saldoReceber", "tipoObra", metragem_a_instalar, observacoes_gerais, nome_contato, documentos, "createdAt", "updatedAt"
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW())
           RETURNING *
         `, [
           newId,
@@ -2585,14 +2594,16 @@ app.post("/api/contratos-ativos", async (req, res) => {
           tipoObra || 'Instalação',
           metragemAInstalar || null,
           observacoesGerais || null,
-          cleanNomeContato
+          cleanNomeContato,
+          docStr
         ]);
         res.status(201).json({
           ...result.rows[0],
           itensInstalacao: result.rows[0].itens_instalacao,
           metragemAInstalar: result.rows[0].metragem_a_instalar,
           observacoesGerais: result.rows[0].observacoes_gerais,
-          nomeContato: result.rows[0].nome_contato
+          nomeContato: result.rows[0].nome_contato,
+          documentos: result.rows[0].documentos ? (typeof result.rows[0].documentos === 'string' ? JSON.parse(result.rows[0].documentos) : result.rows[0].documentos) : []
         });
       }
     } else {

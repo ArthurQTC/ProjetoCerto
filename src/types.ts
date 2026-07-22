@@ -208,6 +208,7 @@ export interface ContratoAtivo {
   tipoObra?: string;
   metragemAInstalar?: string | null;
   observacoesGerais?: string | null;
+  documentos?: any[];
   createdAt?: string;
   updatedAt?: string;
 }

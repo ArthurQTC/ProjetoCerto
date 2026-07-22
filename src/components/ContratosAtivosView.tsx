@@ -30,7 +30,8 @@ import {
   Plus,
   Trash2,
   Lock,
-  Send
+  Send,
+  UploadCloud
 } from "lucide-react";
 import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
@@ -127,6 +128,8 @@ export default function ContratosAtivosView() {
   const [tipoObra, setTipoObra] = useState("Instalação");
   const [metragemAInstalar, setMetragemAInstalar] = useState("");
   const [observacoesGerais, setObservacoesGerais] = useState("");
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Edit fields for name of client and name of contract
   const [clienteNome, setClienteNome] = useState("");
@@ -235,6 +238,7 @@ export default function ContratosAtivosView() {
     const rawMetragem = data.metragemAInstalar || (data as any).metragem_a_instalar || "";
     setMetragemAInstalar(rawMetragem ? formatMetragemValue(rawMetragem) : "");
     setObservacoesGerais(data.observacoesGerais || (data as any).observacoes_gerais || "");
+    setDocumentos(data.documentos || []);
   };
 
   // When selected obra changes, load its form state
@@ -271,6 +275,7 @@ export default function ContratosAtivosView() {
       setTipoObra("Instalação");
       setMetragemAInstalar("");
       setObservacoesGerais("");
+      setDocumentos([]);
     }
 
     // 2. Refresh details concurrently in background
@@ -755,7 +760,8 @@ export default function ContratosAtivosView() {
         saldoReceber: saldoReceber === "" ? 0.0 : Number(saldoReceber),
         tipoObra,
         metragemAInstalar: metragemAInstalar ? metragemAInstalar.replace(/m²/gi, '').trim() : null,
-        observacoesGerais: observacoesGerais || null
+        observacoesGerais: observacoesGerais || null,
+        documentos: documentos || []
       };
 
       const response = await fetch("/api/contratos-ativos", {
@@ -832,6 +838,97 @@ export default function ContratosAtivosView() {
     } catch (err) {
       console.error("Erro ao salvar tipo de obra:", err);
     }
+  };
+
+  const autoSaveDocuments = async (updatedDocs: any[]) => {
+    if (!selectedObra) return;
+    setIsSaving(true);
+    try {
+      const cleanCnpj = cnpj.replace(/\D/g, "");
+      const cleanContato = contato.replace(/\D/g, "");
+
+      const payload = {
+        obraId: selectedObra.id,
+        cnpj: cleanCnpj || null,
+        contato: cleanContato || null,
+        nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
+        endereco: endereco || null,
+        municipio: municipio || null,
+        uf: uf || null,
+        bairro: bairro || null,
+        complemento: complemento || null,
+        itensInstalacao: JSON.stringify(itensInstalacao),
+        enderecoEntrega: enderecoEntrega || null,
+        condicoesComerciais: condicoesComerciais || null,
+        freteTipo,
+        entrada: entrada === "" ? 0.0 : Number(entrada),
+        saldoReceber: saldoReceber === "" ? 0.0 : Number(saldoReceber),
+        tipoObra,
+        metragemAInstalar: metragemAInstalar ? metragemAInstalar.replace(/m²/gi, '').trim() : null,
+        observacoesGerais: observacoesGerais || null,
+        documentos: updatedDocs
+      };
+
+      const response = await fetch("/api/contratos-ativos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const updatedItem: ContratoAtivo = await response.json();
+        setActiveContracts(prev => ({
+          ...prev,
+          [selectedObra.id]: updatedItem
+        }));
+        if (globalContratosAtivosCache) {
+          globalContratosAtivosCache[selectedObra.id] = updatedItem;
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao salvar anexo:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64Url = reader.result as string;
+        const novoDoc = {
+          id: "doc-" + Date.now(),
+          nome: file.name,
+          data: new Date().toISOString().split('T')[0],
+          tamanho: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+          url: base64Url,
+        };
+
+        const updatedDocs = [...documentos, novoDoc];
+        setDocumentos(updatedDocs);
+        await autoSaveDocuments(updatedDocs);
+      } catch (err: any) {
+        alert("Erro ao enviar arquivo: " + err.message);
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.onerror = () => {
+      alert("Erro ao ler o arquivo.");
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    const updatedDocs = documentos.filter((d: any) => d.id !== docId);
+    setDocumentos(updatedDocs);
+    await autoSaveDocuments(updatedDocs);
   };
 
   // Filter list of consolidadas
@@ -1417,15 +1514,108 @@ export default function ContratosAtivosView() {
                   OBSERVAÇÕES GERAIS:
                 </label>
                 <textarea
-                  rows={4}
+                  rows={10}
                   placeholder="Preencher informações / observações gerais..."
                   disabled={!isEditing || !isWritable}
                   value={observacoesGerais}
                   onChange={e => setObservacoesGerais(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[100px] disabled:bg-slate-100/60"
+                  className="w-full p-3.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[220px] disabled:bg-slate-100/60"
                 />
               </div>
             </div>
+          </div>
+
+          {/* 3. ANEXOS / ATTACHMENTS FOR ACTIVE CONTRACTS */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4 mt-6">
+            <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center justify-between pb-3 border-b border-slate-100">
+              <span className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-brand-accent" />
+                Anexos & Documentos do Contrato Ativo ({documentos?.length || 0})
+              </span>
+            </h3>
+
+            {/* List of currently attached documents */}
+            {documentos && documentos.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-72 overflow-y-auto pr-1">
+                {documentos.map((doc: any) => (
+                  <div key={doc.id} className="p-3 border border-slate-150 rounded-xl hover:border-brand-accent transition-all flex items-center justify-between gap-3 bg-slate-50/50">
+                    <div className="flex items-center gap-3 truncate">
+                      <FileText className="w-5 h-5 text-brand-accent shrink-0" />
+                      <div className="truncate text-left">
+                        <p className="text-xs font-bold text-slate-800 truncate" title={doc.nome}>
+                          {doc.nome}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {doc.data} • {doc.tamanho}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <a
+                        href={doc.url}
+                        download={doc.nome}
+                        target="_blank"
+                        rel="noreferrer referrerPolicy"
+                        className="px-3 py-1.5 hover:bg-white border border-slate-200 text-brand-accent rounded-lg text-[10px] font-extrabold transition-colors uppercase tracking-wider"
+                        title="Baixar ou Visualizar Documento"
+                      >
+                        Baixar
+                      </a>
+                      {isEditing && isWritable && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          className="p-1.5 hover:bg-red-50 text-brand-error rounded-lg transition-colors"
+                          title="Excluir Documento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-350 border border-dashed border-slate-200 rounded-2xl bg-slate-50/30">
+                <FileText className="w-6 h-6 mx-auto opacity-30 mb-2" />
+                <p className="text-xs font-bold">Nenhum documento anexado para este contrato ativo</p>
+                <p className="text-[10px] text-slate-400 mt-1">Os documentos anexados aqui são específicos para este Contrato Ativo.</p>
+              </div>
+            )}
+
+            {/* Upload Area */}
+            {isEditing && isWritable && (
+              <div className="pt-2">
+                <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-5 transition-all ${
+                  isUploading 
+                    ? "border-brand-secondary bg-slate-50/50 cursor-not-allowed" 
+                    : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
+                }`}>
+                  <div className="flex flex-col items-center justify-center text-center">
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-6 h-6 text-brand-accent animate-spin mb-1.5" />
+                        <p className="text-xs font-bold text-slate-700">Enviando arquivo...</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Salvando no banco de dados, aguarde...</p>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-6 h-6 text-brand-accent mb-1.5" />
+                        <p className="text-xs font-extrabold text-slate-700">Anexar Documento (PDF, Imagem, DWG, Excel)</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Clique ou arraste o arquivo aqui</p>
+                      </>
+                    )}
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="application/pdf,image/*,.dwg,.xlsx,.xls" 
+                    className="hidden" 
+                    onChange={handleLocalFileUpload} 
+                    disabled={isUploading}
+                  />
+                </label>
+              </div>
+            )}
           </div>
         </form>
       )}
