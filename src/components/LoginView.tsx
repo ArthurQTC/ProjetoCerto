@@ -257,7 +257,6 @@ export default function LoginView() {
               </div>
             </div>
 
-            {/* Ocultado por enquanto
             <div className="flex justify-end pt-1">
               <button
                 type="button"
@@ -267,7 +266,6 @@ export default function LoginView() {
                 Esqueceu sua senha?
               </button>
             </div>
-            */}
 
             <button
               type="submit"

@@ -166,19 +166,19 @@ export async function sendVerificationCodeEmail({
   code: string;
   usuarioNome: string;
 }) {
-  console.log("[EmailService] Enviando código para:", email);
+  console.log("[EmailService] RESEND_API_KEY:", !!process.env.RESEND_API_KEY);
+  console.log("[EmailService] SMTP_FROM:", process.env.SMTP_FROM);
 
   if (!process.env.RESEND_API_KEY) {
-    console.warn("\n==================================================");
-    console.warn(`[DEVELOPMENT MODE] RESEND_API_KEY não configurada.`);
-    console.warn(`CÓDIGO DE VERIFICAÇÃO PARA ${email}: ${code}`);
-    console.warn("==================================================\n");
-    return { mock: true, code };
+    throw new Error("RESEND_API_KEY não configurada.");
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY);
 
-  const from = process.env.SMTP_FROM || "onboarding@resend.dev";
+  const from = process.env.SMTP_FROM;
+  if (!from) {
+    throw new Error("SMTP_FROM não configurado.");
+  }
 
   const subject = `🔑 Seu código de verificação para alteração de senha: ${code}`;
 

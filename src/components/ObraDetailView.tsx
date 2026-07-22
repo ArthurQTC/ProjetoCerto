@@ -1021,12 +1021,8 @@ export default function ObraDetailView() {
                                 <div className="text-left">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <p className={isOutOfBudget ? "line-through text-brand-text-secondary" : ""}>{item.descricao}</p>
-                                    {item.unidade && (
-                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md font-sans border select-none ${
-                                        item.unidade === "Peças"
-                                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                                          : "bg-slate-100 text-slate-600 border-slate-200"
-                                      }`}>
+                                    {item.unidade === "Peças" && (
+                                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md font-sans border select-none bg-amber-50 text-amber-700 border-amber-200">
                                         {item.unidade}
                                       </span>
                                     )}
@@ -1234,9 +1230,11 @@ export default function ObraDetailView() {
                                                     <span className="font-bold text-brand-text-primary capitalize truncate max-w-sm">
                                                       {sub.descricao}
                                                     </span>
-                                                    <span className="text-[8px] font-black uppercase text-brand-accent/70 tracking-widest">
-                                                      Unidade: {sub.unidade || "Metro Quadrado"}
-                                                    </span>
+                                                    {sub.unidade === "Peças" && (
+                                                      <span className="text-[8px] font-black uppercase text-brand-accent/70 tracking-widest">
+                                                        Unidade: {sub.unidade}
+                                                      </span>
+                                                    )}
                                                   </div>
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0">

@@ -99,6 +99,7 @@ function AppContent() {
   const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
   const [logoFailed, setLogoFailed] = useState(false);
   const [maintenanceModule, setMaintenanceModule] = useState<string | null>(null);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // Estados de alteração de senha própria
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -696,30 +697,93 @@ function AppContent() {
             {!logoFailed && logoUrl !== DEFAULT_LOGO_URL && (
               <img src={logoUrl} alt="Auxiliary Logo" className="h-6 object-contain grayscale opacity-60 hover:opacity-100 transition-opacity" />
             )}
-            <div className="flex items-center gap-2.5 bg-slate-50 p-2 rounded-xl border border-slate-100">
-              <div className="w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center font-bold text-xs text-white uppercase shrink-0">
-                {user?.nome ? user.nome.substring(0, 2).toUpperCase() : "PC"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold text-brand-text-primary truncate leading-none">{user?.nome}</p>
-                <p className="text-[9px] font-bold text-[#D9A441] uppercase tracking-wider mt-1 leading-none">{user?.nivel}</p>
-              </div>
-              {/* Alterar Senha - Ocultado por enquanto
-              <button
-                onClick={() => setShowChangePasswordModal(true)}
-                className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-200 transition-all cursor-pointer mr-1"
-                title="Alterar Senha"
+            <div className="relative">
+              <div 
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                className="flex items-center gap-2.5 bg-slate-50 p-2 rounded-xl border border-slate-100 cursor-pointer hover:bg-slate-100 active:bg-slate-200 transition-all select-none"
               >
-                <Key className="w-3.5 h-3.5" />
-              </button>
-              */}
-              <button
-                onClick={() => logout()}
-                className="p-1.5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg border border-slate-200 hover:border-red-200 transition-all cursor-pointer"
-                title="Sair"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
+                <div className="w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center font-bold text-xs text-white uppercase shrink-0">
+                  {user?.nome ? user.nome.substring(0, 2).toUpperCase() : "PC"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold text-brand-text-primary truncate leading-none">{user?.nome}</p>
+                  <p className="text-[9px] font-bold text-[#D9A441] uppercase tracking-wider mt-1 leading-none">{user?.nivel}</p>
+                </div>
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    logout();
+                  }}
+                  className="p-1.5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg border border-slate-200 hover:border-red-200 transition-all cursor-pointer ml-1"
+                  title="Sair"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* FLOATING PROFILE POPUP / DROPDOWN */}
+              <AnimatePresence>
+                {showProfileDropdown && (
+                  <>
+                    {/* Invisible backdrop to close the dropdown when clicking outside */}
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowProfileDropdown(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-72 bg-white rounded-2xl border border-slate-100 shadow-xl p-5 z-50 text-slate-700 space-y-4"
+                    >
+                      <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                        <div className="w-10 h-10 rounded-xl bg-brand-secondary flex items-center justify-center font-black text-sm text-white uppercase">
+                          {user?.nome ? user.nome.substring(0, 2).toUpperCase() : "PC"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-slate-800 truncate leading-tight">{user?.nome}</p>
+                          <p className="text-[10px] font-extrabold text-[#D9A441] uppercase tracking-widest mt-0.5 leading-none">{user?.nivel}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 text-[11px]">
+                        <div>
+                          <p className="font-extrabold text-slate-400 uppercase tracking-wider text-[9px] leading-none">E-mail Cadastrado</p>
+                          <p className="font-bold text-slate-700 mt-1 break-all bg-slate-50 p-2 rounded-lg border border-slate-100 font-mono">{user?.email || "Não informado"}</p>
+                        </div>
+                        <div>
+                          <p className="font-extrabold text-slate-400 uppercase tracking-wider text-[9px] leading-none">Nome de Usuário</p>
+                          <p className="font-bold text-slate-700 mt-1 bg-slate-50 p-2 rounded-lg border border-slate-100 font-mono">{user?.nome_usuario || user?.nome?.toLowerCase().replace(/\s+/g, '') || "Não informado"}</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex flex-col gap-2">
+                        <button
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            setShowChangePasswordModal(true);
+                          }}
+                          className="w-full py-2 px-3 bg-brand-primary hover:bg-brand-secondary text-white font-extrabold text-[11px] uppercase tracking-wider rounded-xl shadow-md shadow-brand-primary/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Key className="w-3.5 h-3.5 text-brand-accent" />
+                          <span>Alterar Senha</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            logout();
+                          }}
+                          className="w-full py-2 px-3 bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-600 font-bold text-[11px] uppercase tracking-wider rounded-xl border border-slate-200 hover:border-red-100 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sair da Conta</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>
