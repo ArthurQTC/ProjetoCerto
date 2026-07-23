@@ -19,6 +19,7 @@ import {
   GitFork,
   ChevronDown,
   Key,
+  Clock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useUIStore, useAuthStore } from "./store";
@@ -32,7 +33,7 @@ import LoginView from "./components/LoginView";
 import FluxoOperacionalView from "./components/FluxoOperacionalView";
 import ContratosAtivosView from "./components/ContratosAtivosView";
 
-// Global Fetch Interceptor to automatically attach authorization tokens
+// Global Fetch Interceptor to automatically attach authorization tokens and prevent HTML JSON parsing errors
 const originalFetch = window.fetch;
 const customFetch = async function (input: RequestInfo | URL, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
@@ -50,7 +51,41 @@ const customFetch = async function (input: RequestInfo | URL, init?: RequestInit
       };
     }
   }
-  return originalFetch(input, init);
+  
+  try {
+    const response = await originalFetch(input, init);
+    const urlString = typeof input === "string" ? input : (input instanceof URL ? input.href : input.url);
+    
+    // Check if it's a local API request
+    const isLocalApi = urlString.startsWith("/api/") || 
+                        urlString.startsWith("api/") || 
+                        (urlString.includes("/api/") && (urlString.startsWith(window.location.origin) || !urlString.startsWith("http")));
+                        
+    if (isLocalApi) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.warn(`[Fetch Interceptor App] API request to ${urlString} returned HTML instead of JSON. Overriding to prevent client crash.`);
+        
+        const mockErrorBody = JSON.stringify({
+          error: "Servidor temporariamente indisponível ou rota não encontrada (404/500).",
+          details: "O servidor retornou uma página HTML em vez de dados JSON.",
+          status: response.status
+        });
+        
+        return new Response(mockErrorBody, {
+          status: response.status >= 200 && response.status < 300 ? 500 : response.status,
+          statusText: response.statusText || "Internal Server Error (HTML response)",
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
+      }
+    }
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
 };
 
 try {
@@ -100,6 +135,45 @@ function AppContent() {
   const [logoFailed, setLogoFailed] = useState(false);
   const [maintenanceModule, setMaintenanceModule] = useState<string | null>(null);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+
+  // Inactivity timeout of 15 minutes
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timeoutId: any;
+    const INACTIVITY_TIME = 15 * 60 * 1000; // 15 minutes
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        logout();
+        setShowSessionExpiredModal(true);
+      }, INACTIVITY_TIME);
+    };
+
+    const events = ["mousemove", "mousedown", "keypress", "scroll", "touchstart"];
+    
+    const addListeners = () => {
+      events.forEach((event) => {
+        window.addEventListener(event, resetTimer, { passive: true });
+      });
+    };
+
+    const removeListeners = () => {
+      events.forEach((event) => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+
+    addListeners();
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      removeListeners();
+    };
+  }, [isAuthenticated, logout]);
 
   // Estados de alteração de senha própria
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -1260,6 +1334,37 @@ function AppContent() {
                   </form>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showSessionExpiredModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-sm bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 text-center space-y-4"
+            >
+              <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto text-amber-500 animate-pulse">
+                <Clock className="w-6 h-6" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">
+                  Tempo de sessão expirado.
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Por motivos de segurança, sua sessão foi encerrada devido à inatividade. Faça login novamente para continuar seu trabalho.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowSessionExpiredModal(false)}
+                className="w-full py-2.5 bg-brand-primary hover:bg-brand-secondary text-white font-black text-[11px] uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Fazer Login
+              </button>
             </motion.div>
           </div>
         )}
