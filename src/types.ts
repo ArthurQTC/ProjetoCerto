@@ -194,6 +194,7 @@ export interface ContratoAtivo {
   cnpj: string | null;
   contato: string | null;
   nomeContato?: string | null;
+  cep?: string | null;
   endereco: string | null; // Keeping it for compatibility but will hide in UI
   municipio?: string | null;
   uf?: string | null;

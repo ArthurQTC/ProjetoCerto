@@ -35,6 +35,136 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
+import * as XLSX from "xlsx";
+
+// Converts modern CSS OKLCH values to standard RGB values for perfect html2canvas compatibility
+const oklchToRgbStr = (oklchStr: string): string => {
+  try {
+    const match = oklchStr.match(/oklch\s*\(\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)(?:\s*\/\s*([0-9.%]+))?\s*\)/i);
+    if (!match) return "rgb(120, 120, 120)";
+    const l = parseFloat(match[1]);
+    const c = parseFloat(match[2]);
+    const h = parseFloat(match[3]);
+    const a = match[4] ? (match[4].endsWith("%") ? parseFloat(match[4]) / 100 : parseFloat(match[4])) : 1;
+
+    const hRad = (h * Math.PI) / 180;
+    const a_ = c * Math.cos(hRad);
+    const b_ = c * Math.sin(hRad);
+
+    const l_ = l + 0.3963377774 * a_ + 0.2158037573 * b_;
+    const m_ = l - 0.1055613458 * a_ - 0.0638541728 * b_;
+    const s_ = l - 0.0894841775 * a_ - 1.2914855480 * b_;
+
+    const l3 = l_ * l_ * l_;
+    const m3 = m_ * m_ * m_;
+    const s3 = s_ * s_ * s_;
+
+    const rL = +4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3;
+    const gL = -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3;
+    const bL = -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076126010 * s3;
+
+    const f = (cVal: number) => {
+      const clamped = Math.max(0, Math.min(1, cVal));
+      return clamped <= 0.0031308
+        ? 12.92 * clamped
+        : 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
+    };
+
+    const r = Math.round(f(rL) * 255);
+    const g = Math.round(f(gL) * 255);
+    const b = Math.round(f(bL) * 255);
+
+    if (a < 1) {
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    return `rgb(${r}, ${g}, ${b})`;
+  } catch (err) {
+    return "rgb(120, 120, 120)";
+  }
+};
+
+// Sanitizes CSS content for html2canvas compatibility by replacing modern unsupported CSS color functions
+const sanitizeCssForHtml2Canvas = (css: string): string => {
+  if (!css) return "";
+  let result = css;
+  result = result.replace(/in\s+(oklch|oklab)/gi, "in srgb");
+  result = result.replace(/oklch\s*\([^)]+\)/gi, (match) => oklchToRgbStr(match));
+
+  // Regex to strip unsupported color functions: color(...), color-mix(...), oklab(...), lab(...), lch(...), hwb(...), light-dark(...)
+  const unsupportedColorRegex = /(color|color-mix|oklab|lab|lch|hwb|light-dark)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
+
+  let attempts = 0;
+  while (unsupportedColorRegex.test(result) && attempts < 10) {
+    result = result.replace(unsupportedColorRegex, "rgba(100, 100, 100, 0.8)");
+    attempts++;
+  }
+
+  return result;
+};
+
+// Helper to sanitize cloned document for html2canvas
+const sanitizeClonedDocument = (clonedDoc: Document) => {
+  // Hide action elements that shouldn't appear in exported PDFs (e.g. Delete buttons)
+  const noPrintEls = Array.from(clonedDoc.querySelectorAll(".no-print"));
+  noPrintEls.forEach((el) => {
+    (el as HTMLElement).style.display = "none";
+  });
+
+  // 1. Sanitize all <style> elements
+  const styles = Array.from(clonedDoc.querySelectorAll("style"));
+  styles.forEach((el) => {
+    if (el.textContent) {
+      el.textContent = sanitizeCssForHtml2Canvas(el.textContent);
+    }
+  });
+
+  // 2. Sanitize all inline styles on all elements
+  const allElements = Array.from(clonedDoc.querySelectorAll("*"));
+  allElements.forEach((el) => {
+    const hEl = el as HTMLElement;
+    const styleAttr = hEl.getAttribute("style");
+    if (styleAttr) {
+      hEl.setAttribute("style", sanitizeCssForHtml2Canvas(styleAttr));
+    }
+  });
+
+  // 3. Sanitize styleSheets
+  try {
+    const sheets = Array.from(clonedDoc.styleSheets);
+    sheets.forEach((sheet) => {
+      try {
+        const rules = Array.from(sheet.cssRules || sheet.rules || []);
+        rules.forEach((rule: any) => {
+          if (rule.style) {
+            for (let i = 0; i < rule.style.length; i++) {
+              const prop = rule.style[i];
+              const val = rule.style.getPropertyValue(prop);
+              if (val && (
+                val.includes("color(") ||
+                val.includes("color-mix") ||
+                val.includes("oklch") ||
+                val.includes("oklab") ||
+                val.includes("lab(")
+              )) {
+                rule.style.setProperty(prop, sanitizeCssForHtml2Canvas(val));
+              }
+            }
+          }
+        });
+      } catch (e) {
+        // Ignore cross-origin stylesheet error
+      }
+    });
+  } catch (e) {}
+};
+
+// Helper to safely render Excel sheet HTML without crashing on empty range (!ref)
+const getSheetHtml = (sheet: any) => {
+  if (!sheet || !sheet['!ref']) {
+    return "<div style='padding: 24px; text-align: center; color: #94a3b8; font-weight: 700; font-size: 12px;'>A aba selecionada está vazia ou não possui dados para exibição.</div>";
+  }
+  return XLSX.utils.sheet_to_html(sheet);
+};
 
 // Helper functions for premium mask experience
 const formatCEP = (value: string) => {
@@ -91,17 +221,54 @@ const formatMetragemLive = (val: string): string => {
   return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const parseMetragemToFloat = (val: string | number | null | undefined): number => {
+  if (val === null || val === undefined || val === "") return 0;
+  const str = val.toString().replace(/m²/gi, '').trim();
+  if (!str) return 0;
+  let cleaned = str;
+  if (str.includes(',')) {
+    cleaned = str.replace(/\./g, '').replace(',', '.');
+  } else {
+    cleaned = str.replace(/[^\d.]/g, '');
+  }
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+};
+
 interface ItemInstalacao {
   material: string;
   valor: number;
 }
+
+interface ComentarioUnico {
+  id: string;
+  autor: string;
+  texto: string;
+  data: string;
+}
+
+const parseComments = (val: string | null | undefined): ComentarioUnico[] => {
+  if (!val) return [];
+  const trimmed = val.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (e) {
+      // Fallback
+    }
+  }
+  return [{ id: "legacy-" + Math.random().toString(36).substring(2, 7), autor: "Anterior", texto: trimmed, data: "" }];
+};
 
 // Global module-level cache for instant rendering
 let globalObrasCache: Obra[] | null = null;
 let globalContratosAtivosCache: Record<string, ContratoAtivo> | null = null;
 
 export default function ContratosAtivosView() {
-  const { hasPermission } = useAuthStore();
+  const { hasPermission, user } = useAuthStore();
   const isWritable = hasPermission("modulos", "contratosAtivos", "editar");
 
   const [obras, setObras] = useState<Obra[]>(() => globalObrasCache || []);
@@ -131,6 +298,40 @@ export default function ContratosAtivosView() {
   const [documentos, setDocumentos] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Comment-style lists for Conditions and Observations
+  const [condicoesList, setCondicoesList] = useState<ComentarioUnico[]>([]);
+  const [newCondicaoText, setNewCondicaoText] = useState("");
+  const [observacoesList, setObservacoesList] = useState<ComentarioUnico[]>([]);
+  const [newObservacaoText, setNewObservacaoText] = useState("");
+
+  const handleAddCondicao = () => {
+    if (!newCondicaoText.trim()) return;
+    const newComment: ComentarioUnico = {
+      id: "comment-" + Math.random().toString(36).substring(2, 9),
+      autor: user?.nome || "Usuário",
+      texto: newCondicaoText.trim(),
+      data: new Date().toLocaleString("pt-BR", { hour12: false, dateStyle: "short", timeStyle: "short" })
+    };
+    const updated = [...condicoesList, newComment];
+    setCondicoesList(updated);
+    setCondicoesComerciais(JSON.stringify(updated));
+    setNewCondicaoText("");
+  };
+
+  const handleAddObservacao = () => {
+    if (!newObservacaoText.trim()) return;
+    const newComment: ComentarioUnico = {
+      id: "comment-" + Math.random().toString(36).substring(2, 9),
+      autor: user?.nome || "Usuário",
+      texto: newObservacaoText.trim(),
+      data: new Date().toLocaleString("pt-BR", { hour12: false, dateStyle: "short", timeStyle: "short" })
+    };
+    const updated = [...observacoesList, newComment];
+    setObservacoesList(updated);
+    setObservacoesGerais(JSON.stringify(updated));
+    setNewObservacaoText("");
+  };
+
   // Edit fields for name of client and name of contract
   const [clienteNome, setClienteNome] = useState("");
   const [contratoNome, setContratoNome] = useState("");
@@ -152,6 +353,269 @@ export default function ContratosAtivosView() {
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const pdfContentRef = useRef<HTMLDivElement>(null);
+
+  // Drag and drop states
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Document Preview states
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [excelPreviewData, setExcelPreviewData] = useState<{ sheets: string[]; activeSheetIdx: number; htmlContent: string; workbook?: any } | null>(null);
+  const [isParsingExcel, setIsParsingExcel] = useState(false);
+  const [excelTab, setExcelTab] = useState<"microsoft" | "local">("microsoft");
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUploading) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (isUploading) return;
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    // Validate type: PDF, Excel, Image
+    const fileType = file.type;
+    const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    const isPdf = fileType === "application/pdf" || fileExtension === ".pdf";
+    const isImage = fileType.startsWith("image/") || [".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(fileExtension);
+    const isExcel = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"].includes(fileType) || [".xlsx", ".xls"].includes(fileExtension);
+
+    if (!isPdf && !isImage && !isExcel) {
+      alert("Formato de arquivo não suportado. Por favor, envie apenas PDF, Excel ou Imagens.");
+      return;
+    }
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64Url = reader.result as string;
+        const novoDoc = {
+          id: "doc-" + Date.now(),
+          nome: file.name,
+          data: new Date().toISOString().split('T')[0],
+          tamanho: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+          url: base64Url,
+        };
+
+        const updatedDocs = [...documentos, novoDoc];
+        setDocumentos(updatedDocs);
+        await autoSaveDocuments(updatedDocs);
+      } catch (err: any) {
+        alert("Erro ao enviar arquivo: " + err.message);
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.onerror = () => {
+      alert("Erro ao ler o arquivo.");
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePreviewDocument = async (doc: any) => {
+    setPreviewDoc(doc);
+    if (!doc || !doc.nome) return;
+    const fileExtension = doc.nome.substring(doc.nome.lastIndexOf('.')).toLowerCase();
+    const docUrlStr = typeof doc.url === "string" ? doc.url : "";
+    const isExcel = [".xlsx", ".xls"].includes(fileExtension) || 
+                    docUrlStr.includes("sheet") || 
+                    docUrlStr.includes("excel") || 
+                    docUrlStr.includes("spreadsheet");
+                    
+    if (isExcel) {
+      setIsParsingExcel(true);
+      setExcelPreviewData(null);
+      try {
+        let arrayBuffer: ArrayBuffer;
+        
+        if (docUrlStr.startsWith("data:")) {
+          const commaIdx = docUrlStr.indexOf(",");
+          const base64Data = commaIdx !== -1 ? docUrlStr.substring(commaIdx + 1) : docUrlStr;
+          
+          // Decode Base64 to ArrayBuffer
+          const binaryString = window.atob(base64Data);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          arrayBuffer = bytes.buffer;
+        } else if (docUrlStr) {
+          // It's a URL, fetch it to get arrayBuffer
+          const response = await fetch(docUrlStr);
+          arrayBuffer = await response.arrayBuffer();
+        } else {
+          throw new Error("URL do documento não disponível.");
+        }
+
+        // Read Excel workbook
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
+        const sheets = workbook.SheetNames;
+        
+        if (sheets.length > 0) {
+          const firstSheetName = sheets[0];
+          const sheet = workbook.Sheets[firstSheetName];
+          const html = getSheetHtml(sheet);
+          setExcelPreviewData({
+            sheets,
+            activeSheetIdx: 0,
+            htmlContent: html,
+            workbook
+          });
+        }
+      } catch (err) {
+        console.error("Erro ao analisar arquivo Excel:", err);
+      } finally {
+        setIsParsingExcel(false);
+      }
+    } else {
+      setExcelPreviewData(null);
+    }
+  };
+
+  const handleSwitchExcelSheet = (sheetIdx: number) => {
+    if (!excelPreviewData || !excelPreviewData.workbook) return;
+    try {
+      const workbook = excelPreviewData.workbook;
+      const sheetName = excelPreviewData.sheets[sheetIdx];
+      if (!sheetName) return;
+      const sheet = workbook.Sheets[sheetName];
+      const html = getSheetHtml(sheet);
+
+      setExcelPreviewData({
+        ...excelPreviewData,
+        activeSheetIdx: sheetIdx,
+        htmlContent: html
+      });
+    } catch (err) {
+      console.error("Erro ao alternar planilha:", err);
+    }
+  };
+
+  // Instant Comment Deletion functions for admins
+  const handleInstantDeleteCondicao = async (commentId: string) => {
+    const updated = condicoesList.filter(c => c.id !== commentId);
+    setCondicoesList(updated);
+    setCondicoesComerciais(JSON.stringify(updated));
+
+    if (!selectedObra) return;
+
+    if (!isEditing) {
+      try {
+        const cleanCnpj = cnpj.replace(/\D/g, "");
+        const cleanContato = contato.replace(/\D/g, "");
+        const payload = {
+          obraId: selectedObra.id,
+          cnpj: cleanCnpj || null,
+          contato: cleanContato || null,
+          nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
+          cep: cep || null,
+          endereco: endereco || null,
+          municipio: municipio || null,
+          uf: uf || null,
+          bairro: bairro || null,
+          complemento: complemento || null,
+          itensInstalacao: JSON.stringify(itensInstalacao),
+          enderecoEntrega: enderecoEntrega || null,
+          condicoesComerciais: JSON.stringify(updated),
+          freteTipo,
+          entrada: entrada === "" ? 0.0 : Number(entrada),
+          saldoReceber: saldoReceber === "" ? 0.0 : Number(saldoReceber),
+          tipoObra,
+          metragemAInstalar: metragemAInstalar ? metragemAInstalar.replace(/m²/gi, '').trim() : null,
+          observacoesGerais: observacoesGerais || null,
+          documentos: documentos || []
+        };
+
+        const response = await fetch("/api/contratos-ativos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+          setActiveContracts(prev => ({
+            ...prev,
+            [selectedObra.id]: {
+              ...prev[selectedObra.id],
+              condicoesComerciais: JSON.stringify(updated)
+            }
+          }));
+        }
+      } catch (err) {
+        console.error("Erro ao salvar exclusão da condição:", err);
+      }
+    }
+  };
+
+  const handleInstantDeleteObservacao = async (commentId: string) => {
+    const updated = observacoesList.filter(o => o.id !== commentId);
+    setObservacoesList(updated);
+    setObservacoesGerais(JSON.stringify(updated));
+
+    if (!selectedObra) return;
+
+    if (!isEditing) {
+      try {
+        const cleanCnpj = cnpj.replace(/\D/g, "");
+        const cleanContato = contato.replace(/\D/g, "");
+        const payload = {
+          obraId: selectedObra.id,
+          cnpj: cleanCnpj || null,
+          contato: cleanContato || null,
+          nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
+          cep: cep || null,
+          endereco: endereco || null,
+          municipio: municipio || null,
+          uf: uf || null,
+          bairro: bairro || null,
+          complemento: complemento || null,
+          itensInstalacao: JSON.stringify(itensInstalacao),
+          enderecoEntrega: enderecoEntrega || null,
+          condicoesComerciais: condicoesComerciais || null,
+          freteTipo,
+          entrada: entrada === "" ? 0.0 : Number(entrada),
+          saldoReceber: saldoReceber === "" ? 0.0 : Number(saldoReceber),
+          tipoObra,
+          metragemAInstalar: metragemAInstalar ? metragemAInstalar.replace(/m²/gi, '').trim() : null,
+          observacoesGerais: JSON.stringify(updated),
+          documentos: documentos || []
+        };
+
+        const response = await fetch("/api/contratos-ativos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+          setActiveContracts(prev => ({
+            ...prev,
+            [selectedObra.id]: {
+              ...prev[selectedObra.id],
+              observacoesGerais: JSON.stringify(updated)
+            }
+          }));
+        }
+      } catch (err) {
+        console.error("Erro ao salvar exclusão da observação:", err);
+      }
+    }
+  };
 
   // Load all projects and contracts active records
   useEffect(() => {
@@ -218,6 +682,7 @@ export default function ContratosAtivosView() {
     setUf(data.uf || "");
     setBairro(data.bairro || "");
     setComplemento(data.complemento || "");
+    setCep(data.cep || "");
     
     try {
       if (data.itensInstalacao && data.itensInstalacao.startsWith("[")) {
@@ -230,14 +695,20 @@ export default function ContratosAtivosView() {
     }
 
     setEnderecoEntrega(data.enderecoEntrega || "");
-    setCondicoesComerciais(data.condicoesComerciais || "");
+    const rawCondicoes = data.condicoesComerciais || "";
+    setCondicoesComerciais(rawCondicoes);
+    setCondicoesList(parseComments(rawCondicoes));
+
     setFreteTipo(data.freteTipo || "CIF");
     setEntrada(data.entrada !== undefined ? data.entrada : "");
     setSaldoReceber(data.saldoReceber !== undefined ? data.saldoReceber : "");
     setTipoObra(data.tipoObra || "Instalação");
     const rawMetragem = data.metragemAInstalar || (data as any).metragem_a_instalar || "";
     setMetragemAInstalar(rawMetragem ? formatMetragemValue(rawMetragem) : "");
-    setObservacoesGerais(data.observacoesGerais || (data as any).observacoes_gerais || "");
+    const rawObservacoes = data.observacoesGerais || (data as any).observacoes_gerais || "";
+    setObservacoesGerais(rawObservacoes);
+    setObservacoesList(parseComments(rawObservacoes));
+
     setDocumentos(data.documentos || []);
   };
 
@@ -269,12 +740,16 @@ export default function ContratosAtivosView() {
       setItensInstalacao([]);
       setEnderecoEntrega("");
       setCondicoesComerciais("");
+      setCondicoesList([]);
+      setNewCondicaoText("");
       setFreteTipo("CIF");
       setEntrada("");
       setSaldoReceber("");
       setTipoObra("Instalação");
       setMetragemAInstalar("");
       setObservacoesGerais("");
+      setObservacoesList([]);
+      setNewObservacaoText("");
       setDocumentos([]);
     }
 
@@ -352,6 +827,7 @@ export default function ContratosAtivosView() {
           cnpj: cleanCnpj || null,
           contato: cleanContato || null,
           nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
+          cep: cep || null,
           endereco: endereco || null,
           municipio: municipio || null,
           uf: uf || null,
@@ -392,52 +868,52 @@ export default function ContratosAtivosView() {
       if (!targetElement) throw new Error("Elemento de pré-visualização não encontrado");
 
       const canvas = await html2canvas(targetElement, { 
-        scale: 2, 
+        scale: 3, // HD quality
         useCORS: true,
+        allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
+        windowWidth: 1280,
         onclone: (clonedDoc) => {
-          // Garante que o elemento clonado esteja visível para o html2canvas
+          // Garante que o elemento clonado esteja visível e responsivo no desktop para o html2canvas
           const clonedElement = clonedDoc.getElementById("ficha-cadastral-pdf-content");
           if (clonedElement) {
-            clonedElement.style.position = "static";
-            clonedElement.style.margin = "0";
-            clonedElement.style.left = "0";
-            clonedElement.style.top = "0";
+            clonedElement.style.width = "800px";
+            clonedElement.style.minWidth = "800px";
+            clonedElement.style.maxWidth = "800px";
+            clonedElement.style.padding = "40px";
+            clonedElement.style.margin = "0 auto";
+            clonedElement.style.boxShadow = "none";
+            clonedElement.style.borderRadius = "0px";
+            clonedElement.style.border = "none";
+
+            let parent = clonedElement.parentElement;
+            while (parent) {
+              parent.style.width = "auto";
+              parent.style.minWidth = "auto";
+              parent.style.maxWidth = "none";
+              parent.style.padding = "0";
+              parent.style.margin = "0";
+              parent.style.overflow = "visible";
+              parent = parent.parentElement;
+            }
           }
 
-          // Backup e limpeza radical de estilos oklch/oklab no documento clonado
-          const styles = Array.from(clonedDoc.querySelectorAll("style"));
-          styles.forEach((el) => {
-            let css = el.textContent || "";
-            if (css.includes("oklch") || css.includes("oklab") || css.includes("color-mix")) {
-              // Substitui color-mix e gradientes que usam oklch/oklab por srgb
-              css = css.replace(/in\s+(oklch|oklab)/gi, "in srgb");
-              
-              // Regex para capturar funções de cor e substituir por um fallback seguro
-              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
-              css = css.replace(colorRegex, "rgba(100, 100, 100, 1)");
-              el.textContent = css;
-            }
-          });
-          
-          const styledElements = Array.from(clonedDoc.querySelectorAll("*")).filter(el => (el as HTMLElement).getAttribute("style"));
-          styledElements.forEach(el => {
-            const hEl = el as HTMLElement;
-            let style = hEl.getAttribute("style") || "";
-            if (style.includes("oklch") || style.includes("oklab") || style.includes("color-mix")) {
-              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
-              style = style.replace(colorRegex, "rgba(100, 100, 100, 1)");
-              hEl.setAttribute("style", style);
-            }
-          });
+          sanitizeClonedDocument(clonedDoc);
         }
       });
-      const imgData = canvas.toDataURL("image/jpeg", 0.9);
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const imgHeightInMm = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, imgHeightInMm);
+      const imgData = canvas.toDataURL("image/png");
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      const pdfWidth = 210;
+      const imgHeightInMm = (canvasHeight * pdfWidth) / canvasWidth;
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: [pdfWidth, imgHeightInMm]
+      });
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, imgHeightInMm, "", "FAST");
       
       const pdfBase64 = pdf.output('datauristring');
 
@@ -484,65 +960,63 @@ export default function ContratosAtivosView() {
       if (!element) throw new Error("Elemento de pré-visualização não encontrado");
 
       const canvas = await html2canvas(element, {
-        scale: 2, 
+        scale: 3, // Premium ultra-high definition (HD) quality
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
+        windowWidth: 1280, // Force desktop-resolution responsive styling (keeps grid/flex as widescreen)
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
         onclone: (clonedDoc) => {
-          // Strip oklch/oklab from the cloned document styles ONLY to prevent crashing without affecting the main page
-          const styles = Array.from(clonedDoc.querySelectorAll("style"));
-          styles.forEach((el) => {
-            let css = el.textContent || "";
-            if (css.includes("oklch") || css.includes("oklab") || css.includes("color-mix")) {
-              css = css.replace(/in\s+(oklch|oklab)/gi, "in srgb");
-              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
-              css = css.replace(colorRegex, "rgba(100, 100, 100, 1)");
-              el.textContent = css;
+          // Force the PDF container in the cloned document to be exactly 800px wide
+          const clonedElement = clonedDoc.getElementById("ficha-cadastral-pdf-content");
+          if (clonedElement) {
+            clonedElement.style.width = "800px";
+            clonedElement.style.minWidth = "800px";
+            clonedElement.style.maxWidth = "800px";
+            clonedElement.style.padding = "40px";
+            clonedElement.style.margin = "0 auto";
+            clonedElement.style.boxShadow = "none";
+            clonedElement.style.borderRadius = "0px";
+            clonedElement.style.border = "none";
+
+            // Traverse and reset parent container limitations so they do not restrict or truncate the render
+            let parent = clonedElement.parentElement;
+            while (parent) {
+              parent.style.width = "auto";
+              parent.style.minWidth = "auto";
+              parent.style.maxWidth = "none";
+              parent.style.padding = "0";
+              parent.style.margin = "0";
+              parent.style.overflow = "visible";
+              parent = parent.parentElement;
             }
-          });
-          
-          const styledElements = Array.from(clonedDoc.querySelectorAll("*")).filter(el => (el as HTMLElement).getAttribute("style"));
-          styledElements.forEach(el => {
-            const hEl = el as HTMLElement;
-            let style = hEl.getAttribute("style") || "";
-            if (style.includes("oklch") || style.includes("oklab") || style.includes("color-mix")) {
-              const colorRegex = /(oklch|oklab|color-mix|lab|lch|hwb|color)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
-              style = style.replace(colorRegex, "rgba(100, 100, 100, 1)");
-              hEl.setAttribute("style", style);
-            }
-          });
+          }
+
+          sanitizeClonedDocument(clonedDoc);
         }
       });
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.98);
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4"
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
-      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+      const imgData = canvas.toDataURL("image/png"); // Lossless PNG encoding for ultra HD text crispness
       
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
       
+      const pdfWidth = 210; // Standard A4 width in mm
       const imgHeightInMm = (canvasHeight * pdfWidth) / canvasWidth;
-      
-      let heightLeft = imgHeightInMm;
-      let position = 0;
 
-      // Draw image
-      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeightInMm);
-      heightLeft -= pdfHeight;
+      // Generate a dynamic format PDF that matches the aspect ratio perfectly
+      // This guarantees the PDF is a single continuous high-definition page with absolutely zero text cuts or line splits!
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: [pdfWidth, imgHeightInMm]
+      });
 
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeightInMm;
-        pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeightInMm);
-        heightLeft -= pdfHeight;
-      }
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, imgHeightInMm, "", "FAST");
 
       const clientCleanName = clienteNome ? clienteNome.trim().replace(/[^a-zA-Z0-9]/g, "_") : "Cliente";
       pdf.save(`Dados_para_Contrato_${clientCleanName}.pdf`);
@@ -701,7 +1175,7 @@ export default function ContratosAtivosView() {
         setUf(data.uf || "");
         setBairro(data.bairro || "");
         setEnderecoEntrega(`${data.logradouro || ""}${data.complemento ? ", " + data.complemento : ""}`);
-        setCep(""); // Clear CEP on success
+        // Keep the CEP value in the input state as requested by the user instead of clearing it
       }
     } catch (err) {
       setCepError("Falha na consulta do CEP. Tente digitar manualmente.");
@@ -747,6 +1221,7 @@ export default function ContratosAtivosView() {
         cnpj: cleanCnpj || null,
         contato: cleanContato || null,
         nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
+        cep: cep || null,
         endereco: endereco || null,
         municipio: municipio || null,
         uf: uf || null,
@@ -852,6 +1327,7 @@ export default function ContratosAtivosView() {
         cnpj: cleanCnpj || null,
         contato: cleanContato || null,
         nomeContato: nomeContato ? nomeContato.trim().slice(0, 60) : null,
+        cep: cep || null,
         endereco: endereco || null,
         municipio: municipio || null,
         uf: uf || null,
@@ -975,10 +1451,7 @@ export default function ContratosAtivosView() {
                     <p className="text-lg font-black text-white mt-2">
                       {filteredObras.reduce((sum, o) => {
                         const valStr = activeContracts[o.id]?.metragemAInstalar;
-                        if (!valStr) return sum;
-                        const cleaned = valStr.toString().replace(',', '.').replace(/[^\d.]/g, '');
-                        const num = parseFloat(cleaned);
-                        return sum + (isNaN(num) ? 0 : num);
+                        return sum + parseMetragemToFloat(valStr);
                       }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M²
                     </p>
                   )}
@@ -1139,7 +1612,7 @@ export default function ContratosAtivosView() {
             {/* Side-by-side Block: Metragem a Instalar & Itens a Serem Instalados */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Indicator Block: Metragem a Instalar */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all flex flex-col justify-between">
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all flex flex-col justify-between self-start w-full">
                 <div>
                   <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
                     METRAGEM A INSTALAR
@@ -1460,14 +1933,56 @@ export default function ContratosAtivosView() {
               </div>
 
               {/* Big Description text area */}
-              <div className="space-y-1.5">
-                <textarea
-                  rows={8}
-                  disabled={!isEditing || !isWritable}
-                  value={condicoesComerciais}
-                  onChange={e => setCondicoesComerciais(e.target.value)}
-                  className="w-full p-4 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[160px] disabled:bg-slate-100/60"
-                />
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  {condicoesList.length > 0 ? (
+                    condicoesList.map((c) => (
+                      <div key={c.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 relative shadow-sm">
+                        <p className="text-xs font-semibold text-slate-700 leading-relaxed pr-1 whitespace-pre-line">{c.texto}</p>
+                        <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-slate-100/60">
+                          {user?.nivel?.toUpperCase() === 'ADMIN' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleInstantDeleteCondicao(c.id)}
+                              className="hover:bg-red-50 text-red-500 rounded p-1 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                              title="Excluir condição comercial"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Excluir
+                            </button>
+                          ) : <div />}
+                          <span className="text-[10px] font-bold text-slate-400">
+                            {c.autor} {c.data ? `• ${c.data}` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400 font-medium italic p-2 bg-slate-50/50 rounded-lg text-center border border-dashed border-slate-200">Nenhuma condição comercial registrada.</p>
+                  )}
+                </div>
+
+                {isEditing && isWritable && (
+                  <div className="space-y-2 pt-2 border-t border-slate-150">
+                    <textarea
+                      rows={3}
+                      placeholder="Adicionar nova condição comercial..."
+                      value={newCondicaoText}
+                      onChange={(e) => setNewCondicaoText(e.target.value)}
+                      className="w-full p-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleAddCondicao}
+                        className="px-4 py-2 bg-brand-secondary text-white rounded-lg text-xs font-bold hover:bg-brand-secondary/90 transition-all flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Adicionar Condição
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Freight CIF or FOB segmented selector control */}
@@ -1513,14 +2028,57 @@ export default function ContratosAtivosView() {
                 <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
                   OBSERVAÇÕES GERAIS:
                 </label>
-                <textarea
-                  rows={10}
-                  placeholder="Preencher informações / observações gerais..."
-                  disabled={!isEditing || !isWritable}
-                  value={observacoesGerais}
-                  onChange={e => setObservacoesGerais(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-y min-h-[220px] disabled:bg-slate-100/60"
-                />
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {observacoesList.length > 0 ? (
+                      observacoesList.map((o) => (
+                        <div key={o.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 relative shadow-sm">
+                          <p className="text-xs font-semibold text-slate-700 leading-relaxed pr-1 whitespace-pre-line">{o.texto}</p>
+                          <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-slate-100/60">
+                            {user?.nivel?.toUpperCase() === 'ADMIN' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleInstantDeleteObservacao(o.id)}
+                                className="hover:bg-red-50 text-red-500 rounded p-1 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                                title="Excluir observação geral"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Excluir
+                              </button>
+                            ) : <div />}
+                            <span className="text-[10px] font-bold text-slate-400">
+                              {o.autor} {o.data ? `• ${o.data}` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-400 font-medium italic p-2 bg-slate-50/50 rounded-lg text-center border border-dashed border-slate-200">Nenhuma observação geral registrada.</p>
+                    )}
+                  </div>
+
+                  {isEditing && isWritable && (
+                    <div className="space-y-2 pt-2 border-t border-slate-150">
+                      <textarea
+                        rows={3}
+                        placeholder="Adicionar nova observação..."
+                        value={newObservacaoText}
+                        onChange={(e) => setNewObservacaoText(e.target.value)}
+                        className="w-full p-3 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleAddObservacao}
+                          className="px-4 py-2 bg-brand-secondary text-white rounded-lg text-xs font-bold hover:bg-brand-secondary/90 transition-all flex items-center gap-1.5 shadow-sm"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Adicionar Observação
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1551,6 +2109,17 @@ export default function ContratosAtivosView() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {doc.nome && [".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".xlsx", ".xls"].some(ext => doc.nome.toLowerCase().endsWith(ext)) && (
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewDocument(doc)}
+                          className="px-3 py-1.5 bg-brand-accent/10 hover:bg-brand-accent text-brand-accent hover:text-white rounded-lg text-[10px] font-extrabold transition-all uppercase tracking-wider flex items-center gap-1"
+                          title="Visualizar documento diretamente"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Visualizar
+                        </button>
+                      )}
                       <a
                         href={doc.url}
                         download={doc.nome}
@@ -1586,12 +2155,19 @@ export default function ContratosAtivosView() {
             {/* Upload Area */}
             {isEditing && isWritable && (
               <div className="pt-2">
-                <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-5 transition-all ${
-                  isUploading 
-                    ? "border-brand-secondary bg-slate-50/50 cursor-not-allowed" 
-                    : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
-                }`}>
-                  <div className="flex flex-col items-center justify-center text-center">
+                <label 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-5 transition-all ${
+                    isUploading 
+                      ? "border-brand-secondary bg-slate-50/50 cursor-not-allowed" 
+                      : isDragging
+                        ? "border-brand-secondary bg-brand-secondary/10 scale-[1.01]"
+                        : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex flex-col items-center justify-center text-center pointer-events-none">
                     {isUploading ? (
                       <>
                         <Loader2 className="w-6 h-6 text-brand-accent animate-spin mb-1.5" />
@@ -1601,14 +2177,14 @@ export default function ContratosAtivosView() {
                     ) : (
                       <>
                         <UploadCloud className="w-6 h-6 text-brand-accent mb-1.5" />
-                        <p className="text-xs font-extrabold text-slate-700">Anexar Documento (PDF, Imagem, DWG, Excel)</p>
+                        <p className="text-xs font-extrabold text-slate-700">Anexar Documento (PDF, Excel ou Imagem)</p>
                         <p className="text-[10px] text-slate-400 mt-0.5">Clique ou arraste o arquivo aqui</p>
                       </>
                     )}
                   </div>
                   <input 
                     type="file" 
-                    accept="application/pdf,image/*,.dwg,.xlsx,.xls" 
+                    accept="application/pdf,image/*,.xlsx,.xls" 
                     className="hidden" 
                     onChange={handleLocalFileUpload} 
                     disabled={isUploading}
@@ -1618,6 +2194,180 @@ export default function ContratosAtivosView() {
             )}
           </div>
         </form>
+      )}
+ 
+      {/* DOCUMENT PREVIEW MODAL */}
+      {previewDoc && (
+        <div className="fixed inset-0 bg-slate-900/85 backdrop-blur-md z-[120] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full h-[85vh] overflow-hidden flex flex-col border border-slate-200">
+            {/* Header */}
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-brand-accent/15 text-brand-accent flex items-center justify-center font-bold">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 tracking-tight leading-none">
+                    {previewDoc.nome}
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold mt-1">
+                    Anexo do Contrato Ativo • {previewDoc.tamanho}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewDoc(null);
+                  setExcelPreviewData(null);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-200/60 text-slate-500 hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center transition-all"
+                title="Fechar visualização"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Viewport Content */}
+            <div className="flex-1 overflow-auto bg-slate-100/50 p-6 flex flex-col items-center justify-center relative">
+              {/* If it's an Excel file, we show the tab selector */}
+              {previewDoc && (previewDoc.nome.toLowerCase().endsWith(".xlsx") || previewDoc.nome.toLowerCase().endsWith(".xls")) && (
+                <div className="w-full flex justify-center gap-2 mb-4 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setExcelTab("microsoft")}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                      excelTab === "microsoft"
+                        ? "bg-brand-primary text-white shadow-md"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    Visualizador Microsoft Office Online (Recomendado)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExcelTab("local")}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                      excelTab === "local"
+                        ? "bg-brand-primary text-white shadow-md"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    Visualizador Integrado (Local)
+                  </button>
+                </div>
+              )}
+
+              {isParsingExcel ? (
+                <div className="flex flex-col items-center justify-center gap-2 flex-1">
+                  <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
+                  <p className="text-xs font-bold text-slate-600">Processando planilha Excel...</p>
+                </div>
+              ) : previewDoc && (previewDoc.nome.toLowerCase().endsWith(".xlsx") || previewDoc.nome.toLowerCase().endsWith(".xls")) ? (
+                excelTab === "microsoft" ? (
+                  /* Microsoft Office Web View */
+                  <div className="w-full h-full flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-inner flex-1">
+                    <iframe
+                      src={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(`${window.location.origin}/api/public-document/${previewDoc.id}`)}`}
+                      className="w-full h-full border-none"
+                      title="Microsoft Excel Viewer"
+                    />
+                    <div className="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-400 text-center border-t border-slate-150 shrink-0">
+                      Nota: O visualizador da Microsoft requer que o servidor esteja acessível publicamente na internet.
+                    </div>
+                  </div>
+                ) : excelPreviewData ? (
+                  /* Excel spreadsheet viewer */
+                  <div className="w-full h-full flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-inner flex-1">
+                    {/* Sheets tabs */}
+                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex gap-2 overflow-x-auto shrink-0 scrollbar-none">
+                      {excelPreviewData.sheets.map((sheetName, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleSwitchExcelSheet(idx)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap ${
+                            excelPreviewData.activeSheetIdx === idx
+                              ? "bg-brand-accent text-white shadow-sm"
+                              : "bg-white text-slate-500 hover:text-slate-800 border border-slate-200"
+                          }`}
+                        >
+                          {sheetName}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Worksheet HTML content rendered */}
+                    <div className="flex-1 overflow-auto p-4 bg-white select-text">
+                      <style dangerouslySetInnerHTML={{ __html: `
+                        .excel-preview-table table {
+                          border-collapse: collapse;
+                          width: auto;
+                          min-width: 100%;
+                          font-family: ui-sans-serif, system-ui, sans-serif;
+                          font-size: 11px;
+                        }
+                        .excel-preview-table th, .excel-preview-table td {
+                          border: 1px solid #e2e8f0;
+                          padding: 6px 10px;
+                          text-align: left;
+                          min-width: 80px;
+                        }
+                        .excel-preview-table tr:nth-child(even) {
+                          background-color: #f8fafc;
+                        }
+                      `}} />
+                      <div 
+                        className="excel-preview-table"
+                        dangerouslySetInnerHTML={{ __html: excelPreviewData.htmlContent }} 
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 font-bold">Erro ao carregar dados integrados. Por favor, utilize o visualizador da Microsoft.</div>
+                )
+              ) : previewDoc.nome.toLowerCase().endsWith(".pdf") || previewDoc.url.startsWith("data:application/pdf") ? (
+                /* PDF preview iframe */
+                <iframe
+                  src={previewDoc.url}
+                  className="w-full h-full rounded-2xl border border-slate-200 shadow-sm bg-white"
+                  title="PDF Viewer"
+                />
+              ) : (
+                /* Image preview */
+                <div className="max-w-full max-h-full flex items-center justify-center p-2">
+                  <img
+                    src={previewDoc.url}
+                    alt={previewDoc.nome}
+                    referrerPolicy="no-referrer"
+                    className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-md border border-slate-200 bg-white"
+                  />
+                </div>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
+              <a
+                href={previewDoc.url}
+                download={previewDoc.nome}
+                className="px-4 py-2 bg-brand-accent hover:bg-brand-accent/90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Baixar Documento
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewDoc(null);
+                  setExcelPreviewData(null);
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* PDF PREVIEW AND EXPORT MODAL */}
@@ -1637,7 +2387,7 @@ export default function ContratosAtivosView() {
               <div
                 ref={pdfContentRef}
                 id="ficha-cadastral-pdf-content"
-                className="bg-white text-slate-800 p-8 sm:p-10 shadow-lg rounded-xl max-w-[800px] w-full border border-slate-200/50 flex flex-col space-y-6"
+                className="bg-white text-black p-8 sm:p-10 shadow-lg rounded-xl max-w-[800px] w-full border-2 border-slate-300 flex flex-col space-y-6 antialiased"
                 style={{ minHeight: "1123px" }} // A4 portrait ratio
               >
                 {/* 1. Header Block */}
@@ -1649,60 +2399,60 @@ export default function ContratosAtivosView() {
                       crossOrigin="anonymous"
                       className="w-12 h-12 object-contain"
                     />
-                    <div className="border-l border-slate-200 pl-3">
-                      <h2 className="text-md font-black text-slate-800 tracking-tight leading-none uppercase">PROJETO CERTO</h2>
-                      <p className="text-[8px] font-bold text-brand-accent tracking-widest uppercase mt-0.5">Soluções Arquitetônica Inteligentes</p>
+                    <div className="border-l-2 border-black pl-3">
+                      <h2 className="text-md font-black text-black tracking-tight leading-none uppercase">PROJETO CERTO</h2>
+                      <p className="text-[8px] font-black text-brand-accent tracking-widest uppercase mt-0.5">Soluções Arquitetônicas Inteligentes</p>
                     </div>
                   </div>
                   
-                  <div className="hidden sm:block h-10 w-[1px] bg-slate-200"></div>
+                  <div className="hidden sm:block h-10 w-[2px] bg-black"></div>
 
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-lg font-extrabold text-slate-800 tracking-tight leading-none uppercase">Dados para Contrato</h1>
+                    <h1 className="text-lg font-black text-black tracking-tight leading-none uppercase">Dados para Contrato</h1>
                   </div>
 
                   <div className="flex items-center gap-4 text-right">
-                    <div className="text-[9px] text-slate-400 font-bold leading-tight">
-                      <p>Data:</p>
-                      <p className="text-slate-600 font-black mt-0.5">
+                    <div className="text-[9px] text-black font-extrabold leading-tight">
+                      <p className="text-slate-900 font-bold">Data:</p>
+                      <p className="text-black font-black mt-0.5">
                         {new Date().toLocaleDateString("pt-BR")}
                       </p>
                     </div>
-                    <div className="bg-brand-accent/10 border border-brand-accent/20 rounded-xl p-2.5 text-brand-accent">
-                      <FileText className="w-5 h-5" />
+                    <div className="bg-brand-accent text-white border border-brand-accent rounded-xl p-2.5">
+                      <FileText className="w-5 h-5 text-white" />
                     </div>
                   </div>
                 </div>
 
                 {/* Horizontal line divider */}
-                <div className="h-1 bg-brand-accent rounded-full"></div>
+                <div className="h-1.5 bg-brand-accent rounded-full"></div>
 
                 {/* 2. Hero Card with Building Image and Main attributes */}
-                <div className="border border-slate-200/80 rounded-2xl p-5 bg-white grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                <div className="border-2 border-slate-300 rounded-2xl p-5 bg-white grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
                   <div className="col-span-1 h-44">
                     <BuildingIllustration />
                   </div>
                   <div className="col-span-2 space-y-4">
                     <div>
-                      <span className="text-[9px] font-black text-brand-accent tracking-wider uppercase">CLIENTE</span>
-                      <h2 className="text-xl font-black text-slate-800 mt-0.5">
+                      <span className="text-[10px] font-black text-brand-accent tracking-wider uppercase">CLIENTE</span>
+                      <h2 className="text-xl font-black text-black mt-0.5">
                         {clienteNome || "Nome do cliente"}
                       </h2>
                     </div>
 
                     <div>
-                      <span className="text-[9px] font-black text-brand-accent tracking-wider uppercase">NOME DA OBRA</span>
-                      <h3 className="text-md font-extrabold text-slate-700 mt-0.5 leading-tight">
+                      <span className="text-[10px] font-black text-brand-accent tracking-wider uppercase">NOME DA OBRA</span>
+                      <h3 className="text-md font-black text-black mt-0.5 leading-tight">
                         {contratoNome || selectedObra.nome}
                       </h3>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t-2 border-slate-200">
                       <div className="flex items-start gap-2">
                         <MapPin className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
                         <div className="space-y-0.5">
-                          <p className="text-[8px] font-bold text-slate-400 uppercase">LOCALIZAÇÃO (OBRA)</p>
-                          <p className="text-[10px] font-extrabold text-slate-700 leading-tight" title={`${municipio || ""} - ${uf || ""}`}>
+                          <p className="text-[8px] font-extrabold text-black uppercase">LOCALIZAÇÃO (OBRA)</p>
+                          <p className="text-[10px] font-black text-black leading-tight" title={`${municipio || ""} - ${uf || ""}`}>
                             {municipio ? `${municipio} - ${uf}` : (enderecoEntrega || "Não informado")}
                           </p>
                         </div>
@@ -1711,8 +2461,8 @@ export default function ContratosAtivosView() {
                       <div className="flex items-start gap-2">
                         <Calendar className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
                         <div className="space-y-0.5">
-                          <p className="text-[8px] font-bold text-slate-400 uppercase">DATA CADASTRO</p>
-                          <p className="text-[10px] font-extrabold text-slate-700">
+                          <p className="text-[8px] font-extrabold text-black uppercase">DATA CADASTRO</p>
+                          <p className="text-[10px] font-black text-black">
                             {selectedObra.dataInicioContrato 
                               ? new Date(selectedObra.dataInicioContrato).toLocaleDateString("pt-BR") 
                               : selectedObra.createdAt 
@@ -1723,11 +2473,11 @@ export default function ContratosAtivosView() {
                       </div>
 
                       <div className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                         <div className="space-y-0.5">
-                          <p className="text-[8px] font-bold text-slate-400 uppercase">STATUS</p>
+                          <p className="text-[8px] font-extrabold text-black uppercase">STATUS</p>
                           <div>
-                            <span className="inline-block bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-md text-[9px] font-black uppercase">
+                            <span className="inline-block bg-emerald-700 text-white border border-emerald-800 px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase">
                               ATIVA
                             </span>
                           </div>
@@ -1739,58 +2489,41 @@ export default function ContratosAtivosView() {
 
                 {/* 3. Dados Gerais Section */}
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100">
-                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center">
-                      <Briefcase className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 pb-1.5 border-b-2 border-slate-300">
+                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center font-bold">
+                      <Briefcase className="w-3.5 h-3.5 text-white" />
                     </div>
-                    <h3 className="text-[10px] font-black text-brand-accent uppercase tracking-widest">DADOS GERAIS</h3>
+                    <h3 className="text-xs font-black text-brand-accent uppercase tracking-widest">DADOS GERAIS</h3>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
-                    <div className="space-y-1">
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs items-center">
-                        <span className="font-bold text-slate-400">Tipo de Obra:</span>
-                        {isExportingPdf ? (
-                          <span className="font-extrabold text-slate-800">{tipoObra}</span>
-                        ) : (
-                          <select
-                            value={tipoObra}
-                            disabled={!isEditing || !isWritable}
-                            onChange={(e) => handleSaveTipoObra(e.target.value)}
-                            className="bg-slate-50 border border-slate-200 text-slate-800 text-xs font-extrabold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-brand-accent cursor-pointer"
-                          >
-                            <option value="Instalação">Instalação</option>
-                            <option value="Brises e Instalação">Brises e Instalação</option>
-                            <option value="Brises">Brises</option>
-                          </select>
-                        )}
+                    <div className="space-y-0.5">
+                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Cliente/Incorporadora:</span>
+                        <span className="font-black text-black text-right leading-tight" title={clienteNome}>{clienteNome || "Não Informado"}</span>
                       </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Cliente/Incorporadora:</span>
-                        <span className="font-extrabold text-slate-800 text-right max-w-[200px] truncate" title={clienteNome}>{clienteNome || "Não Informado"}</span>
+                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
+                        <span className="font-extrabold text-black shrink-0 mr-2">CNPJ:</span>
+                        <span className="font-black text-black text-right leading-tight">{cnpj ? formatCNPJ(cnpj) : "Não Informado"}</span>
                       </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">CNPJ:</span>
-                        <span className="font-extrabold text-slate-800">{cnpj ? formatCNPJ(cnpj) : "Não Informado"}</span>
+                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Nome do Contato:</span>
+                        <span className="font-black text-black text-right leading-tight">{nomeContato || "Não Informado"}</span>
                       </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Nome do Contato:</span>
-                        <span className="font-extrabold text-slate-800">{nomeContato || "Não Informado"}</span>
-                      </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Contato (Telefone):</span>
-                        <span className="font-extrabold text-slate-800">{contato ? formatPhone(contato) : "Não Informado"}</span>
+                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Contato (Telefone):</span>
+                        <span className="font-black text-black text-right leading-tight">{contato ? formatPhone(contato) : "Não Informado"}</span>
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Metragem a Instalar:</span>
-                        <span className="font-extrabold text-slate-800">{metragemAInstalar ? `${formatMetragemValue(metragemAInstalar)} M²` : "Não informada"}</span>
+                    <div className="space-y-0.5">
+                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Metragem a Instalar:</span>
+                        <span className="font-black text-black text-right leading-tight">{metragemAInstalar ? `${formatMetragemValue(metragemAInstalar)} M²` : "Não informada"}</span>
                       </div>
-                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-xs">
-                        <span className="font-bold text-slate-400">Frete Tipo:</span>
-                        <span className="font-extrabold text-slate-800">{freteTipo || "CIF"}</span>
+                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Frete Tipo:</span>
+                        <span className="font-black text-black text-right leading-tight">{freteTipo || "CIF"}</span>
                       </div>
                     </div>
                   </div>
@@ -1798,40 +2531,88 @@ export default function ContratosAtivosView() {
 
                 {/* 4. Informações Complementares Section */}
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100">
-                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center">
-                      <FileText className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 pb-1.5 border-b-2 border-slate-300">
+                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center font-bold">
+                      <FileText className="w-3.5 h-3.5 text-white" />
                     </div>
-                    <h3 className="text-[10px] font-black text-brand-accent uppercase tracking-widest">INFORMAÇÕES COMPLEMENTARES</h3>
+                    <h3 className="text-xs font-black text-brand-accent uppercase tracking-widest">INFORMAÇÕES COMPLEMENTARES</h3>
                   </div>
-
+ 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Descrição das Condições Comerciais</h4>
-                      <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line">
-                        {condicoesComerciais || "Sem condições registradas."}
-                      </p>
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
+                      <h4 className="text-[10px] font-black text-black uppercase tracking-wider mb-2">Descrição das Condições Comerciais</h4>
+                      <div className="space-y-2.5">
+                        {parseComments(condicoesComerciais).length > 0 ? (
+                          parseComments(condicoesComerciais).map((c) => (
+                            <div key={c.id} className="p-3 bg-white rounded-lg border border-slate-300 relative shadow-xs">
+                              <p className="text-xs text-black font-extrabold leading-relaxed pr-16 whitespace-pre-line mb-2">{c.texto}</p>
+                              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                                {user?.nivel?.toUpperCase() === 'ADMIN' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInstantDeleteCondicao(c.id)}
+                                    className="no-print hover:bg-red-50 text-red-600 rounded p-1 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                                    title="Excluir condição comercial"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Excluir
+                                  </button>
+                                ) : <div />}
+                                <span className="text-[9px] font-black text-white bg-slate-900 px-2 py-0.5 rounded">
+                                  {c.autor} {c.data ? `• ${c.data}` : ""}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-black font-bold italic">Sem condições registradas.</p>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="space-y-2 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                      <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Observações Gerais</h4>
-                      <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line">
-                        {observacoesGerais || "Sem observações gerais."}
-                      </p>
+ 
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
+                      <h4 className="text-[10px] font-black text-black uppercase tracking-wider mb-2">Observações Gerais</h4>
+                      <div className="space-y-2.5">
+                        {parseComments(observacoesGerais).length > 0 ? (
+                          parseComments(observacoesGerais).map((o) => (
+                            <div key={o.id} className="p-3 bg-white rounded-lg border border-slate-300 relative shadow-xs">
+                              <p className="text-xs text-black font-extrabold leading-relaxed pr-16 whitespace-pre-line mb-2">{o.texto}</p>
+                              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                                {user?.nivel?.toUpperCase() === 'ADMIN' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInstantDeleteObservacao(o.id)}
+                                    className="no-print hover:bg-red-50 text-red-600 rounded p-1 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                                    title="Excluir observação geral"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Excluir
+                                  </button>
+                                ) : <div />}
+                                <span className="text-[9px] font-black text-white bg-slate-900 px-2 py-0.5 rounded">
+                                  {o.autor} {o.data ? `• ${o.data}` : ""}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-black font-bold italic">Sem observações gerais.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                    <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Itens a serem instalados</h4>
+                  <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
+                    <h4 className="text-[10px] font-black text-black uppercase tracking-wider">Itens a serem instalados</h4>
                     <div className="mt-2 space-y-1.5">
                       {itensInstalacao.length > 0 ? (
                         itensInstalacao.map((it, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-700 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                          <div key={idx} className="flex justify-between items-center text-xs font-black text-black bg-white p-2.5 rounded-lg border border-slate-300 shadow-xs">
                             <span>{it.material}</span>
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-slate-400 italic">Nenhum item cadastrado.</p>
+                        <p className="text-xs text-black font-bold italic">Nenhum item cadastrado.</p>
                       )}
                     </div>
                   </div>
@@ -1839,42 +2620,42 @@ export default function ContratosAtivosView() {
 
                 {/* 5. Endereços Section */}
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100">
-                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center">
-                      <MapPin className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 pb-1.5 border-b-2 border-slate-300">
+                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center font-bold">
+                      <MapPin className="w-3.5 h-3.5 text-white" />
                     </div>
-                    <h3 className="text-[10px] font-black text-brand-accent uppercase tracking-widest">ENDEREÇOS</h3>
+                    <h3 className="text-xs font-black text-brand-accent uppercase tracking-widest">ENDEREÇOS</h3>
                   </div>
 
-                  <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                    <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Endereço de Entrega / Instalação</h4>
-                    <div className="mt-2 space-y-1 text-xs text-slate-700">
-                      <div className="flex justify-between border-b border-slate-200/50 py-1">
-                        <span className="font-bold text-slate-400">Município:</span>
-                        <span className="font-extrabold">{municipio || "Não informado"}</span>
+                  <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
+                    <h4 className="text-[10px] font-black text-black uppercase tracking-wider">Endereço de Entrega / Instalação</h4>
+                    <div className="mt-2 space-y-0.5 text-xs text-black">
+                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Município:</span>
+                        <span className="font-black text-black text-right leading-tight">{municipio || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-200/50 py-1">
-                        <span className="font-bold text-slate-400">UF:</span>
-                        <span className="font-extrabold">{uf || "Não informado"}</span>
+                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
+                        <span className="font-extrabold text-black shrink-0 mr-2">UF:</span>
+                        <span className="font-black text-black text-right leading-tight">{uf || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-200/50 py-1">
-                        <span className="font-bold text-slate-400">Bairro:</span>
-                        <span className="font-extrabold">{bairro || "Não informado"}</span>
+                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Bairro:</span>
+                        <span className="font-black text-black text-right leading-tight">{bairro || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-200/50 py-1">
-                        <span className="font-bold text-slate-400">Complemento:</span>
-                        <span className="font-extrabold">{complemento || "Não informado"}</span>
+                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Complemento:</span>
+                        <span className="font-black text-black text-right leading-tight">{complemento || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between py-1">
-                        <span className="font-bold text-slate-400">Logradouro:</span>
-                        <span className="font-extrabold">{enderecoEntrega || "Não informado"}</span>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="font-extrabold text-black shrink-0 mr-2">Logradouro:</span>
+                        <span className="font-black text-black text-right leading-tight">{enderecoEntrega || "Não informado"}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* 6. Footer Block */}
-                <div className="pt-4 border-t border-slate-100 text-center text-[8px] font-bold text-slate-400 space-y-0.5">
+                <div className="pt-4 border-t-2 border-slate-300 text-center text-[9px] font-black text-black space-y-0.5">
                   <p>Projeto Certo LTDA | CNPJ do Contrato: {cnpj ? formatCNPJ(cnpj) : "Não Informado"}</p>
                 </div>
               </div>
@@ -1912,23 +2693,6 @@ export default function ContratosAtivosView() {
               </div>
 
               <div className="space-y-3 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmEnviarEquipe(true)}
-                  disabled={isSaving}
-                  className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold py-3 rounded-xl cursor-pointer shadow transition-all disabled:opacity-50"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 text-white" /> Enviar para Equipe
-                    </>
-                  )}
-                </button>
-
                 <button
                   type="button"
                   onClick={exportToPDF}

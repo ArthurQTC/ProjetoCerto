@@ -805,6 +805,7 @@ async function checkDbConnection() {
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "observacoes_gerais" TEXT');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "nome_contato" VARCHAR(60)');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS documentos TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS cep VARCHAR(50)');
 
         // Removed automatic migrations and ALTER commands as per user request to avoid automatic data updates on startup.
 
@@ -1975,6 +1976,20 @@ Gostaria de usá-lo? Copie o link sugerido, substitua '[SUA_SENHA]' com a senha 
         `);
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "tipoObra" VARCHAR(255) DEFAULT \'Instalação\'');
         await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS documentos TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS cep VARCHAR(50)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "enderecoEntrega" TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "condicoesComerciais" TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "freteTipo" VARCHAR(50) DEFAULT \'CIF\'');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS entrada DOUBLE PRECISION DEFAULT 0.0');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS "saldoReceber" DOUBLE PRECISION DEFAULT 0.0');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS municipio VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS uf VARCHAR(50)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS bairro VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS complemento VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS itens_instalacao TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS metragem_a_instalar VARCHAR(255)');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS observacoes_gerais TEXT');
+        await pool.query('ALTER TABLE contratos_ativos ADD COLUMN IF NOT EXISTS nome_contato VARCHAR(60)');
 
         console.log("Populando dados padrão...");
         const defaultCategories = [
@@ -2418,6 +2433,74 @@ app.delete("/api/documentos/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Falha exclusão" }); }
 });
 
+app.get("/api/public-document/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (dbConnected && pool) {
+      // 1. Search in contratos_ativos
+      const result = await pool.query("SELECT documentos FROM contratos_ativos WHERE documentos IS NOT NULL");
+      for (const row of result.rows) {
+        let docs = [];
+        try {
+          docs = typeof row.documentos === 'string' ? JSON.parse(row.documentos) : row.documentos;
+        } catch (e) {}
+        
+        if (Array.isArray(docs)) {
+          const doc = docs.find((d: any) => d.id === id);
+          if (doc && doc.url && doc.url.startsWith("data:")) {
+            const commaIdx = doc.url.indexOf(",");
+            const header = doc.url.substring(0, commaIdx);
+            const base64Data = doc.url.substring(commaIdx + 1);
+            
+            const mimeMatch = header.match(/data:(.*?);base64/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+            
+            const buffer = Buffer.from(base64Data, "base64");
+            
+            res.setHeader("Content-Type", mimeType);
+            res.setHeader("Content-Disposition", `inline; filename="${doc.nome || 'documento'}"`);
+            return res.send(buffer);
+          }
+        }
+      }
+      
+      // 2. Search in obras
+      const obrasResult = await pool.query("SELECT documentos FROM obras WHERE documentos IS NOT NULL");
+      for (const row of obrasResult.rows) {
+        let docs = [];
+        try {
+          docs = typeof row.documentos === 'string' ? JSON.parse(row.documentos) : row.documentos;
+        } catch (e) {}
+        
+        if (Array.isArray(docs)) {
+          const doc = docs.find((d: any) => d.id === id);
+          if (doc && doc.url && doc.url.startsWith("data:")) {
+            const commaIdx = doc.url.indexOf(",");
+            const header = doc.url.substring(0, commaIdx);
+            const base64Data = doc.url.substring(commaIdx + 1);
+            
+            const mimeMatch = header.match(/data:(.*?);base64/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+            
+            const buffer = Buffer.from(base64Data, "base64");
+            
+            res.setHeader("Content-Type", mimeType);
+            res.setHeader("Content-Disposition", `inline; filename="${doc.nome || 'documento'}"`);
+            return res.send(buffer);
+          }
+        }
+      }
+      
+      res.status(404).json({ error: "Documento não encontrado" });
+    } else {
+      res.status(503).json({ error: "Banco de dados inativo" });
+    }
+  } catch (err: any) {
+    console.error("Erro ao buscar documento público:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/contratos-ativos", async (req, res) => {
   try {
     if (dbConnected && pool) {
@@ -2508,7 +2591,7 @@ app.post("/api/contratos-ativos", async (req, res) => {
   const { 
     obraId, cnpj, contato, nomeContato, address, endereco, municipio, uf, bairro, complemento, 
     itensInstalacao, enderecoEntrega, condicoesComerciais, freteTipo, 
-    entrada, saldoReceber, tipoObra, metragemAInstalar, observacoesGerais, documentos 
+    entrada, saldoReceber, tipoObra, metragemAInstalar, observacoesGerais, documentos, cep
   } = req.body;
   
   if (!obraId) {
@@ -2532,8 +2615,8 @@ app.post("/api/contratos-ativos", async (req, res) => {
               "enderecoEntrega" = $9, "condicoesComerciais" = $10, "freteTipo" = $11, 
               entrada = $12, "saldoReceber" = $13, "tipoObra" = $14,
               metragem_a_instalar = $15, observacoes_gerais = $16, nome_contato = $17, 
-              documentos = $18, "updatedAt" = NOW()
-          WHERE "obraId" = $19
+              documentos = $18, cep = $19, "updatedAt" = NOW()
+          WHERE "obraId" = $20
           RETURNING *
         `, [
           cnpj || null,
@@ -2554,15 +2637,26 @@ app.post("/api/contratos-ativos", async (req, res) => {
           observacoesGerais || null,
           cleanNomeContato,
           docStr,
+          cep || null,
           obraId
         ]);
+        const row = result.rows[0];
         res.json({
-          ...result.rows[0],
-          itensInstalacao: result.rows[0].itens_instalacao,
-          metragemAInstalar: result.rows[0].metragem_a_instalar,
-          observacoesGerais: result.rows[0].observacoes_gerais,
-          nomeContato: result.rows[0].nome_contato,
-          documentos: result.rows[0].documentos ? (typeof result.rows[0].documentos === 'string' ? JSON.parse(result.rows[0].documentos) : result.rows[0].documentos) : []
+          ...row,
+          obraId: row.obraId || row.obra_id || obraId,
+          itensInstalacao: row.itensInstalacao || row.itens_instalacao || "",
+          enderecoEntrega: row.enderecoEntrega || row.endereco_entrega || "",
+          condicoesComerciais: row.condicoesComerciais || row.condicoes_comerciais || "",
+          freteTipo: row.freteTipo || row.frete_tipo || "CIF",
+          entrada: row.entrada !== undefined && row.entrada !== null ? Number(row.entrada) : 0,
+          saldoReceber: row.saldoReceber !== undefined && row.saldoReceber !== null 
+            ? Number(row.saldoReceber) 
+            : (row.saldo_receber !== undefined && row.saldo_receber !== null ? Number(row.saldo_receber) : 0),
+          tipoObra: row.tipoObra || row.tipo_obra || "Instalação",
+          metragemAInstalar: row.metragemAInstalar || row.metragem_a_instalar || "",
+          observacoesGerais: row.observacoesGerais || row.observacoes_gerais || "",
+          nomeContato: row.nomeContato || row.nome_contato || "",
+          documentos: row.documentos ? (typeof row.documentos === 'string' ? JSON.parse(row.documentos) : row.documentos) : []
         });
       } else {
         // INSERT
@@ -2571,9 +2665,9 @@ app.post("/api/contratos-ativos", async (req, res) => {
           INSERT INTO contratos_ativos (
             id, "obraId", cnpj, contato, endereco, municipio, uf, bairro, complemento, 
             itens_instalacao, "enderecoEntrega", "condicoesComerciais", "freteTipo", 
-            entrada, "saldoReceber", "tipoObra", metragem_a_instalar, observacoes_gerais, nome_contato, documentos, "createdAt", "updatedAt"
+            entrada, "saldoReceber", "tipoObra", metragem_a_instalar, observacoes_gerais, nome_contato, documentos, cep, "createdAt", "updatedAt"
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())
           RETURNING *
         `, [
           newId,
@@ -2595,15 +2689,26 @@ app.post("/api/contratos-ativos", async (req, res) => {
           metragemAInstalar || null,
           observacoesGerais || null,
           cleanNomeContato,
-          docStr
+          docStr,
+          cep || null
         ]);
+        const row = result.rows[0];
         res.status(201).json({
-          ...result.rows[0],
-          itensInstalacao: result.rows[0].itens_instalacao,
-          metragemAInstalar: result.rows[0].metragem_a_instalar,
-          observacoesGerais: result.rows[0].observacoes_gerais,
-          nomeContato: result.rows[0].nome_contato,
-          documentos: result.rows[0].documentos ? (typeof result.rows[0].documentos === 'string' ? JSON.parse(result.rows[0].documentos) : result.rows[0].documentos) : []
+          ...row,
+          obraId: row.obraId || row.obra_id || obraId,
+          itensInstalacao: row.itensInstalacao || row.itens_instalacao || "",
+          enderecoEntrega: row.enderecoEntrega || row.endereco_entrega || "",
+          condicoesComerciais: row.condicoesComerciais || row.condicoes_comerciais || "",
+          freteTipo: row.freteTipo || row.frete_tipo || "CIF",
+          entrada: row.entrada !== undefined && row.entrada !== null ? Number(row.entrada) : 0,
+          saldoReceber: row.saldoReceber !== undefined && row.saldoReceber !== null 
+            ? Number(row.saldoReceber) 
+            : (row.saldo_receber !== undefined && row.saldo_receber !== null ? Number(row.saldo_receber) : 0),
+          tipoObra: row.tipoObra || row.tipo_obra || "Instalação",
+          metragemAInstalar: row.metragemAInstalar || row.metragem_a_instalar || "",
+          observacoesGerais: row.observacoesGerais || row.observacoes_gerais || "",
+          nomeContato: row.nomeContato || row.nome_contato || "",
+          documentos: row.documentos ? (typeof row.documentos === 'string' ? JSON.parse(row.documentos) : row.documentos) : []
         });
       }
     } else {

@@ -352,6 +352,13 @@ function AppContent() {
     }
   }, []);
 
+  // Automatically close session expired modal when logging in successfully
+  useEffect(() => {
+    if (isAuthenticated) {
+      setShowSessionExpiredModal(false);
+    }
+  }, [isAuthenticated]);
+
   if (isChecking) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -364,7 +371,41 @@ function AppContent() {
   }
 
   if (!isAuthenticated) {
-    return <LoginView />;
+    return (
+      <>
+        <LoginView />
+        {showSessionExpiredModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-sm bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 text-center space-y-4"
+            >
+              <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto text-amber-500 animate-pulse">
+                <Clock className="w-6 h-6" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">
+                  Tempo de sessão expirado.
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Por motivos de segurança, sua sessão foi encerrada devido à inatividade. Faça login novamente para continuar seu trabalho.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowSessionExpiredModal(false)}
+                className="w-full py-2.5 bg-brand-primary hover:bg-brand-secondary text-white font-black text-[11px] uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Fazer Login
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
