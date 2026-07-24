@@ -2074,7 +2074,7 @@ export default function ContratosAtivosView() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {doc.nome && [".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".xlsx", ".xls"].some(ext => doc.nome.toLowerCase().endsWith(ext)) && (
+                      {doc.nome && [".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"].some(ext => doc.nome.toLowerCase().endsWith(ext)) && (
                         <button
                           type="button"
                           onClick={() => handlePreviewDocument(doc)}
@@ -2352,82 +2352,95 @@ export default function ContratosAtivosView() {
               <div
                 ref={pdfContentRef}
                 id="ficha-cadastral-pdf-content"
-                className="bg-white text-black p-8 sm:p-10 shadow-lg rounded-xl max-w-[800px] w-full border-2 border-slate-300 flex flex-col space-y-6 antialiased"
-                style={{ minHeight: "1123px" }} // A4 portrait ratio
+                style={{
+                  backgroundColor: "#ffffff",
+                  color: "#000000",
+                  padding: "32px",
+                  borderRadius: "12px",
+                  maxWidth: "800px",
+                  width: "100%",
+                  border: "2px solid #cbd5e1",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "24px",
+                  boxSizing: "border-box",
+                  fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
+                  minHeight: "1123px"
+                }}
               >
                 {/* 1. Header Block */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-                  <div className="flex items-center gap-3">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", paddingBottom: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <img
                       src="https://dptxkbsyzfntolgmhniz.supabase.co/storage/v1/object/sign/ProjetoCerto/faviconProjetoCerto.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8yY2MyYjJkMS1hMDBkLTQ5N2EtYTQwMC0zOWM0MjFkZmNmYWEiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJQcm9qZXRvQ2VydG8vZmF2aWNvblByb2pldG9DZXJ0by5wbmciLCJpYXQiOjE3ODA0MjQxNDIsImV4cCI6MjA5NTc4NDE0Mn0._ofXmRtiUUM0MbiBO-FO7fBd5btjixNn1B7EGjNUVy4"
                       alt="Favicon"
                       crossOrigin="anonymous"
-                      className="w-12 h-12 object-contain"
+                      style={{ width: "48px", height: "48px", objectFit: "contain" }}
                     />
-                    <div className="border-l-2 border-black pl-3">
-                      <h2 className="text-md font-black text-black tracking-tight leading-none uppercase">PROJETO CERTO</h2>
-                      <p className="text-[8px] font-black text-brand-accent tracking-widest uppercase mt-0.5">Soluções Arquitetônicas Inteligentes</p>
+                    <div style={{ borderLeft: "2px solid #000000", paddingLeft: "12px" }}>
+                      <h2 style={{ fontSize: "16px", fontWeight: 900, color: "#000000", textTransform: "uppercase", margin: 0, lineHeight: 1 }}>PROJETO CERTO</h2>
+                      <p style={{ fontSize: "8px", fontWeight: 900, color: "#ea580c", textTransform: "uppercase", margin: "2px 0 0 0", letterSpacing: "1px" }}>Soluções Arquitetônicas Inteligentes</p>
                     </div>
                   </div>
                   
-                  <div className="hidden sm:block h-10 w-[2px] bg-black"></div>
+                  <div style={{ height: "40px", width: "2px", backgroundColor: "#000000" }}></div>
 
-                  <div className="flex-1 min-w-0">
-                    <h1 className="text-lg font-black text-black tracking-tight leading-none uppercase">Dados para Contrato</h1>
+                  <div style={{ flex: 1 }}>
+                    <h1 style={{ fontSize: "18px", fontWeight: 900, color: "#000000", textTransform: "uppercase", margin: 0 }}>Dados para Contrato</h1>
                   </div>
 
-                  <div className="flex items-center gap-4 text-right">
-                    <div className="text-[9px] text-black font-extrabold leading-tight">
-                      <p className="text-slate-900 font-bold">Data:</p>
-                      <p className="text-black font-black mt-0.5">
+                  <div style={{ display: "flex", alignItems: "center", gap: "16px", textAlign: "right" }}>
+                    <div style={{ fontSize: "9px", color: "#000000", fontWeight: 800 }}>
+                      <p style={{ color: "#000000", fontWeight: 700, margin: 0 }}>Data:</p>
+                      <p style={{ color: "#000000", fontWeight: 900, margin: "2px 0 0 0" }}>
                         {new Date().toLocaleDateString("pt-BR")}
                       </p>
                     </div>
-                    <div className="bg-brand-accent text-white border border-brand-accent rounded-xl p-2.5">
-                      <FileText className="w-5 h-5 text-white" />
+                    <div style={{ backgroundColor: "#ea580c", color: "#ffffff", borderRadius: "12px", padding: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <FileText style={{ width: "20px", height: "20px", color: "#ffffff" }} />
                     </div>
                   </div>
                 </div>
 
                 {/* Horizontal line divider */}
-                <div className="h-1.5 bg-brand-accent rounded-full"></div>
+                <div style={{ height: "6px", backgroundColor: "#ea580c", borderRadius: "9999px" }}></div>
 
                 {/* 2. Hero Card with Building Image and Main attributes */}
-                <div className="border-2 border-slate-300 rounded-2xl p-5 bg-white grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                  <div className="col-span-1 h-44">
+                <div style={{ border: "2px solid #cbd5e1", borderRadius: "16px", padding: "20px", backgroundColor: "#ffffff", display: "grid", gridTemplateColumns: "1fr 2fr", gap: "24px", alignItems: "center" }}>
+                  <div style={{ height: "176px" }}>
                     <BuildingIllustration />
                   </div>
-                  <div className="col-span-2 space-y-4">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                     <div>
-                      <span className="text-[10px] font-black text-brand-accent tracking-wider uppercase">CLIENTE</span>
-                      <h2 className="text-xl font-black text-black mt-0.5">
+                      <span style={{ fontSize: "10px", fontWeight: 900, color: "#ea580c", letterSpacing: "1px", textTransform: "uppercase", display: "block" }}>CLIENTE</span>
+                      <h2 style={{ fontSize: "20px", fontWeight: 900, color: "#000000", margin: "2px 0 0 0" }}>
                         {clienteNome || "Nome do cliente"}
                       </h2>
                     </div>
 
                     <div>
-                      <span className="text-[10px] font-black text-brand-accent tracking-wider uppercase">NOME DA OBRA</span>
-                      <h3 className="text-md font-black text-black mt-0.5 leading-tight">
+                      <span style={{ fontSize: "10px", fontWeight: 900, color: "#ea580c", letterSpacing: "1px", textTransform: "uppercase", display: "block" }}>NOME DA OBRA</span>
+                      <h3 style={{ fontSize: "15px", fontWeight: 900, color: "#000000", margin: "2px 0 0 0", lineHeight: 1.2 }}>
                         {contratoNome || selectedObra.nome}
                       </h3>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t-2 border-slate-200">
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                        <div className="space-y-0.5">
-                          <p className="text-[8px] font-extrabold text-black uppercase">LOCALIZAÇÃO (OBRA)</p>
-                          <p className="text-[10px] font-black text-black leading-tight" title={`${municipio || ""} - ${uf || ""}`}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", paddingTop: "8px", borderTop: "2px solid #e2e8f0" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                        <MapPin style={{ width: "16px", height: "16px", color: "#ea580c", flexShrink: 0, marginTop: "2px" }} />
+                        <div>
+                          <p style={{ fontSize: "8px", fontWeight: 800, color: "#000000", textTransform: "uppercase", margin: 0 }}>LOCALIZAÇÃO (OBRA)</p>
+                          <p style={{ fontSize: "10px", fontWeight: 900, color: "#000000", margin: "2px 0 0 0", lineHeight: 1.2 }} title={`${municipio || ""} - ${uf || ""}`}>
                             {municipio ? `${municipio} - ${uf}` : (enderecoEntrega || "Não informado")}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-start gap-2">
-                        <Calendar className="w-4 h-4 text-brand-accent shrink-0 mt-0.5" />
-                        <div className="space-y-0.5">
-                          <p className="text-[8px] font-extrabold text-black uppercase">DATA CADASTRO</p>
-                          <p className="text-[10px] font-black text-black">
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                        <Calendar style={{ width: "16px", height: "16px", color: "#ea580c", flexShrink: 0, marginTop: "2px" }} />
+                        <div>
+                          <p style={{ fontSize: "8px", fontWeight: 800, color: "#000000", textTransform: "uppercase", margin: 0 }}>DATA CADASTRO</p>
+                          <p style={{ fontSize: "10px", fontWeight: 900, color: "#000000", margin: "2px 0 0 0" }}>
                             {selectedObra.dataInicioContrato 
                               ? new Date(selectedObra.dataInicioContrato).toLocaleDateString("pt-BR") 
                               : selectedObra.createdAt 
@@ -2437,12 +2450,12 @@ export default function ContratosAtivosView() {
                         </div>
                       </div>
 
-                      <div className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <div className="space-y-0.5">
-                          <p className="text-[8px] font-extrabold text-black uppercase">STATUS</p>
-                          <div>
-                            <span className="inline-block bg-emerald-700 text-white border border-emerald-800 px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase">
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                        <CheckCircle style={{ width: "16px", height: "16px", color: "#047857", flexShrink: 0, marginTop: "2px" }} />
+                        <div>
+                          <p style={{ fontSize: "8px", fontWeight: 800, color: "#000000", textTransform: "uppercase", margin: 0 }}>STATUS</p>
+                          <div style={{ marginTop: "2px" }}>
+                            <span style={{ display: "inline-block", backgroundColor: "#047857", color: "#ffffff", border: "1px solid #065f46", padding: "2px 10px", borderRadius: "6px", fontSize: "9px", fontWeight: 900, textTransform: "uppercase" }}>
                               ATIVA
                             </span>
                           </div>
@@ -2453,175 +2466,177 @@ export default function ContratosAtivosView() {
                 </div>
 
                 {/* 3. Dados Gerais Section */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b-2 border-slate-300">
-                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center font-bold">
-                      <Briefcase className="w-3.5 h-3.5 text-white" />
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingBottom: "6px", borderBottom: "2px solid #cbd5e1" }}>
+                    <div style={{ width: "24px", height: "24px", backgroundColor: "#ea580c", color: "#ffffff", borderRadius: "9999px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>
+                      <Briefcase style={{ width: "14px", height: "14px", color: "#ffffff" }} />
                     </div>
-                    <h3 className="text-xs font-black text-brand-accent uppercase tracking-widest">DADOS GERAIS</h3>
+                    <h3 style={{ fontSize: "12px", fontWeight: 900, color: "#ea580c", textTransform: "uppercase", letterSpacing: "1px", margin: 0 }}>DADOS GERAIS</h3>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
-                    <div className="space-y-0.5">
-                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Cliente/Incorporadora:</span>
-                        <span className="font-black text-black text-right leading-tight" title={clienteNome}>{clienteNome || "Não Informado"}</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 32px" }}>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Cliente/Incorporadora:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{clienteNome || "Não Informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
-                        <span className="font-extrabold text-black shrink-0 mr-2">CNPJ:</span>
-                        <span className="font-black text-black text-right leading-tight">{cnpj ? formatCNPJ(cnpj) : "Não Informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>CNPJ:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{cnpj ? formatCNPJ(cnpj) : "Não Informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Nome do Contato:</span>
-                        <span className="font-black text-black text-right leading-tight">{nomeContato || "Não Informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Nome do Contato:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{nomeContato || "Não Informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Contato (Telefone):</span>
-                        <span className="font-black text-black text-right leading-tight">{contato ? formatPhone(contato) : "Não Informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Contato (Telefone):</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{contato ? formatPhone(contato) : "Não Informado"}</span>
                       </div>
                     </div>
 
-                    <div className="space-y-0.5">
-                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Metragem a Instalar:</span>
-                        <span className="font-black text-black text-right leading-tight">{metragemAInstalar ? `${formatMetragemValue(metragemAInstalar)} M²` : "Não informada"}</span>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Metragem a Instalar:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{metragemAInstalar ? `${formatMetragemValue(metragemAInstalar)} M²` : "Não informada"}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-300 text-xs">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Frete Tipo:</span>
-                        <span className="font-black text-black text-right leading-tight">{freteTipo || "CIF"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #cbd5e1", fontSize: "12px" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Frete Tipo:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{freteTipo || "CIF"}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* 4. Informações Complementares Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 pb-1.5 border-b-2 border-slate-300">
-                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center font-bold">
-                      <FileText className="w-3.5 h-3.5 text-white" />
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingBottom: "6px", borderBottom: "2px solid #cbd5e1" }}>
+                    <div style={{ width: "24px", height: "24px", backgroundColor: "#ea580c", color: "#ffffff", borderRadius: "9999px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>
+                      <FileText style={{ width: "14px", height: "14px", color: "#ffffff" }} />
                     </div>
-                    <h3 className="text-xs font-black text-brand-accent uppercase tracking-widest">INFORMAÇÕES COMPLEMENTARES</h3>
+                    <h3 style={{ fontSize: "12px", fontWeight: 900, color: "#ea580c", textTransform: "uppercase", letterSpacing: "1px", margin: 0 }}>INFORMAÇÕES COMPLEMENTARES</h3>
                   </div>
- 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
-                      <h4 className="text-[10px] font-black text-black uppercase tracking-wider mb-2">Descrição das Condições Comerciais</h4>
-                      <div className="space-y-2.5">
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                    <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "12px", border: "2px solid #cbd5e1" }}>
+                      <h4 style={{ fontSize: "10px", fontWeight: 900, color: "#000000", textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 8px 0" }}>Descrição das Condições Comerciais</h4>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                         {parseComments(condicoesComerciais).length > 0 ? (
                           parseComments(condicoesComerciais).map((c) => (
-                            <div key={c.id} className="p-3 bg-white rounded-lg border border-slate-300 relative shadow-xs">
-                              <p className="text-xs text-black font-extrabold leading-relaxed pr-16 whitespace-pre-line mb-2">{c.texto}</p>
-                              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                            <div key={c.id} style={{ padding: "12px", backgroundColor: "#ffffff", borderRadius: "8px", border: "1px solid #cbd5e1", position: "relative" }}>
+                              <p style={{ fontSize: "12px", color: "#000000", fontWeight: 800, lineHeight: 1.5, margin: "0 0 8px 0", whiteSpace: "pre-line" }}>{c.texto}</p>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
                                 {user?.nivel?.toUpperCase() === 'ADMIN' ? (
                                   <button
                                     type="button"
                                     onClick={() => handleInstantDeleteCondicao(c.id)}
-                                    className="no-print hover:bg-red-50 text-red-600 rounded p-1 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                                    className="no-print"
+                                    style={{ color: "#dc2626", border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "bold" }}
                                     title="Excluir condição comercial"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 style={{ width: "14px", height: "14px" }} />
                                     Excluir
                                   </button>
                                 ) : <div />}
-                                <span className="text-[9px] font-black text-white bg-slate-900 px-2 py-0.5 rounded">
+                                <span style={{ fontSize: "9px", fontWeight: 900, color: "#ffffff", backgroundColor: "#0f172a", padding: "2px 8px", borderRadius: "4px" }}>
                                   {c.autor} {c.data ? `• ${c.data}` : ""}
                                 </span>
                               </div>
                             </div>
                           ))
                         ) : (
-                          <p className="text-xs text-black font-bold italic">Sem condições registradas.</p>
+                          <p style={{ fontSize: "12px", color: "#000000", fontWeight: 700, fontStyle: "italic", margin: 0 }}>Sem condições registradas.</p>
                         )}
                       </div>
                     </div>
- 
-                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
-                      <h4 className="text-[10px] font-black text-black uppercase tracking-wider mb-2">Observações Gerais</h4>
-                      <div className="space-y-2.5">
+
+                    <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "12px", border: "2px solid #cbd5e1" }}>
+                      <h4 style={{ fontSize: "10px", fontWeight: 900, color: "#000000", textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 8px 0" }}>Observações Gerais</h4>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                         {parseComments(observacoesGerais).length > 0 ? (
                           parseComments(observacoesGerais).map((o) => (
-                            <div key={o.id} className="p-3 bg-white rounded-lg border border-slate-300 relative shadow-xs">
-                              <p className="text-xs text-black font-extrabold leading-relaxed pr-16 whitespace-pre-line mb-2">{o.texto}</p>
-                              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                            <div key={o.id} style={{ padding: "12px", backgroundColor: "#ffffff", borderRadius: "8px", border: "1px solid #cbd5e1", position: "relative" }}>
+                              <p style={{ fontSize: "12px", color: "#000000", fontWeight: 800, lineHeight: 1.5, margin: "0 0 8px 0", whiteSpace: "pre-line" }}>{o.texto}</p>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
                                 {user?.nivel?.toUpperCase() === 'ADMIN' ? (
                                   <button
                                     type="button"
                                     onClick={() => handleInstantDeleteObservacao(o.id)}
-                                    className="no-print hover:bg-red-50 text-red-600 rounded p-1 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                                    className="no-print"
+                                    style={{ color: "#dc2626", border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "bold" }}
                                     title="Excluir observação geral"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 style={{ width: "14px", height: "14px" }} />
                                     Excluir
                                   </button>
                                 ) : <div />}
-                                <span className="text-[9px] font-black text-white bg-slate-900 px-2 py-0.5 rounded">
+                                <span style={{ fontSize: "9px", fontWeight: 900, color: "#ffffff", backgroundColor: "#0f172a", padding: "2px 8px", borderRadius: "4px" }}>
                                   {o.autor} {o.data ? `• ${o.data}` : ""}
                                 </span>
                               </div>
                             </div>
                           ))
                         ) : (
-                          <p className="text-xs text-black font-bold italic">Sem observações gerais.</p>
+                          <p style={{ fontSize: "12px", color: "#000000", fontWeight: 700, fontStyle: "italic", margin: 0 }}>Sem observações gerais.</p>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
-                    <h4 className="text-[10px] font-black text-black uppercase tracking-wider">Itens a serem instalados</h4>
-                    <div className="mt-2 space-y-1.5">
+                  <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "12px", border: "2px solid #cbd5e1" }}>
+                    <h4 style={{ fontSize: "10px", fontWeight: 900, color: "#000000", textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 8px 0" }}>Itens a serem instalados</h4>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       {itensInstalacao.length > 0 ? (
                         itensInstalacao.map((it, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-xs font-black text-black bg-white p-2.5 rounded-lg border border-slate-300 shadow-xs">
+                          <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", fontWeight: 900, color: "#000000", backgroundColor: "#ffffff", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
                             <span>{it.material}</span>
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-black font-bold italic">Nenhum item cadastrado.</p>
+                        <p style={{ fontSize: "12px", color: "#000000", fontWeight: 700, fontStyle: "italic", margin: 0 }}>Nenhum item cadastrado.</p>
                       )}
                     </div>
                   </div>
                 </div>
 
                 {/* 5. Endereços Section */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b-2 border-slate-300">
-                    <div className="w-6 h-6 bg-brand-accent text-white rounded-full flex items-center justify-center font-bold">
-                      <MapPin className="w-3.5 h-3.5 text-white" />
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingBottom: "6px", borderBottom: "2px solid #cbd5e1" }}>
+                    <div style={{ width: "24px", height: "24px", backgroundColor: "#ea580c", color: "#ffffff", borderRadius: "9999px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>
+                      <MapPin style={{ width: "14px", height: "14px", color: "#ffffff" }} />
                     </div>
-                    <h3 className="text-xs font-black text-brand-accent uppercase tracking-widest">ENDEREÇOS</h3>
+                    <h3 style={{ fontSize: "12px", fontWeight: 900, color: "#ea580c", textTransform: "uppercase", letterSpacing: "1px", margin: 0 }}>ENDEREÇOS</h3>
                   </div>
 
-                  <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-300">
-                    <h4 className="text-[10px] font-black text-black uppercase tracking-wider">Endereço de Entrega / Instalação</h4>
-                    <div className="mt-2 space-y-0.5 text-xs text-black">
-                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Município:</span>
-                        <span className="font-black text-black text-right leading-tight">{municipio || "Não informado"}</span>
+                  <div style={{ backgroundColor: "#f8fafc", padding: "16px", borderRadius: "12px", border: "2px solid #cbd5e1" }}>
+                    <h4 style={{ fontSize: "10px", fontWeight: 900, color: "#000000", textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 8px 0" }}>Endereço de Entrega / Instalação</h4>
+                    <div style={{ display: "flex", flexDirection: "column", fontSize: "12px", color: "#000000" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #cbd5e1", padding: "8px 0" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Município:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{municipio || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
-                        <span className="font-extrabold text-black shrink-0 mr-2">UF:</span>
-                        <span className="font-black text-black text-right leading-tight">{uf || "Não informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #cbd5e1", padding: "8px 0" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>UF:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{uf || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Bairro:</span>
-                        <span className="font-black text-black text-right leading-tight">{bairro || "Não informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #cbd5e1", padding: "8px 0" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Bairro:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{bairro || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center border-b border-slate-300 py-2">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Complemento:</span>
-                        <span className="font-black text-black text-right leading-tight">{complemento || "Não informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #cbd5e1", padding: "8px 0" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Complemento:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{complemento || "Não informado"}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2">
-                        <span className="font-extrabold text-black shrink-0 mr-2">Logradouro:</span>
-                        <span className="font-black text-black text-right leading-tight">{enderecoEntrega || "Não informado"}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+                        <span style={{ fontWeight: 800, color: "#000000" }}>Logradouro:</span>
+                        <span style={{ fontWeight: 900, color: "#000000", textAlign: "right" }}>{enderecoEntrega || "Não informado"}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* 6. Footer Block */}
-                <div className="pt-4 border-t-2 border-slate-300 text-center text-[9px] font-black text-black space-y-0.5">
-                  <p>Projeto Certo LTDA | CNPJ do Contrato: {cnpj ? formatCNPJ(cnpj) : "Não Informado"}</p>
+                <div style={{ paddingTop: "16px", borderTop: "2px solid #cbd5e1", textAlign: "center", fontSize: "9px", fontWeight: 900, color: "#000000" }}>
+                  <p style={{ margin: 0 }}>Projeto Certo LTDA | CNPJ do Contrato: {cnpj ? formatCNPJ(cnpj) : "Não Informado"}</p>
                 </div>
               </div>
             </div>
