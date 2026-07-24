@@ -716,11 +716,12 @@ export default function ProjectsListView() {
                   </p>
 
                   <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
+                    <label htmlFor="global_cost_adm_input" className="block text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
                       Novo Custo ADM (%)
                     </label>
                     <div className="relative">
                       <input
+                        id="global_cost_adm_input"
                         type="number"
                         min="0"
                         max="100"
@@ -879,11 +880,12 @@ export default function ProjectsListView() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
+                <label htmlFor="individual_cost_adm_input" className="block text-[10px] font-bold text-brand-text-secondary uppercase tracking-wider">
                   Custo ADM (%)
                 </label>
                 <div className="relative">
                   <input
+                    id="individual_cost_adm_input"
                     type="number"
                     min="0"
                     max="100"

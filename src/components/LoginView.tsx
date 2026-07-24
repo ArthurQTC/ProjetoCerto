@@ -221,36 +221,39 @@ export default function LoginView() {
             )}
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">E-mail ou Usuário</label>
+              <label htmlFor="login_email_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">E-mail ou Usuário</label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                 <input
+                  id="login_email_input"
                   type="text"
                   required
                   value={email}
                   placeholder="usuario ou usuario@email.com"
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none transition-all placeholder:text-slate-300 font-semibold text-slate-700"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none transition-all placeholder:text-slate-400 font-semibold text-slate-800"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Senha</label>
+              <label htmlFor="login_password_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Senha</label>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                 <input
+                  id="login_password_input"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none transition-all placeholder:text-slate-300 text-slate-700"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-primary focus:border-brand-primary outline-none transition-all placeholder:text-slate-400 text-slate-800"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  aria-label={showPassword ? "Ocultar senha" : "Exibir senha"}
+                  className="absolute right-3 top-3 text-slate-500 hover:text-slate-700 cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -349,15 +352,16 @@ export default function LoginView() {
                     </p>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">E-mail ou Usuário</label>
+                      <label htmlFor="recovery_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">E-mail ou Usuário</label>
                       <div className="relative">
-                        <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                        <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                         <input
+                          id="recovery_input"
                           type="text"
                           value={recoveryInput}
                           onChange={(e) => setRecoveryInput(e.target.value)}
                           placeholder="usuario ou usuario@email.com"
-                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-brand-primary rounded-xl text-xs font-bold focus:outline-none transition-all text-slate-700"
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-brand-primary rounded-xl text-xs font-bold focus:outline-none transition-all text-slate-800"
                         />
                       </div>
                     </div>
@@ -398,10 +402,11 @@ export default function LoginView() {
 
                     {/* Código de Verificação */}
                     <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Código de 6 dígitos</label>
+                      <label htmlFor="recovery_code_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Código de 6 dígitos</label>
                       <div className="relative mt-1">
                         <span className="absolute left-3.5 top-3 text-sm">🔑</span>
                         <input
+                          id="recovery_code_input"
                           type="text"
                           maxLength={6}
                           value={recoveryCode}
@@ -415,10 +420,11 @@ export default function LoginView() {
 
                     {/* Nova Senha */}
                     <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Nova Senha</label>
+                      <label htmlFor="recovery_new_password_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Nova Senha</label>
                       <div className="relative mt-1">
                         <span className="absolute left-3.5 top-3 text-sm">🔒</span>
                         <input
+                          id="recovery_new_password_input"
                           type="password"
                           value={recoveryNewPassword}
                           onChange={(e) => setRecoveryNewPassword(e.target.value)}
@@ -431,10 +437,11 @@ export default function LoginView() {
 
                     {/* Confirmar Nova Senha */}
                     <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Confirmar Nova Senha</label>
+                      <label htmlFor="recovery_confirm_password_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Confirmar Nova Senha</label>
                       <div className="relative mt-1">
                         <span className="absolute left-3.5 top-3 text-sm">🔒</span>
                         <input
+                          id="recovery_confirm_password_input"
                           type="password"
                           value={recoveryConfirmPassword}
                           onChange={(e) => setRecoveryConfirmPassword(e.target.value)}

@@ -1614,12 +1614,13 @@ export default function ContratosAtivosView() {
               {/* Indicator Block: Metragem a Instalar */}
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative focus-within:ring-2 focus-within:ring-brand-secondary/40 transition-all flex flex-col justify-between self-start w-full">
                 <div>
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                  <label htmlFor="ca_metragem_input" className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider block mb-2">
                     METRAGEM A INSTALAR
                   </label>
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <input
+                        id="ca_metragem_input"
                         type="text"
                         placeholder="Ex: 250 M²"
                         disabled={!isEditing || !isWritable}
@@ -1735,92 +1736,97 @@ export default function ContratosAtivosView() {
 
               {/* Nome do Cliente Field */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label htmlFor="ca_cliente_nome" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Nome do Cliente
                 </label>
                 <input
+                  id="ca_cliente_nome"
                   type="text"
                   disabled={!isEditing || !isWritable}
                   value={clienteNome}
                   onChange={e => setClienteNome(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                 />
               </div>
 
               {/* Nome do Contrato Field */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label htmlFor="ca_contrato_nome" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Nome do Contrato (Obra)
                 </label>
                 <input
+                  id="ca_contrato_nome"
                   type="text"
                   disabled={!isEditing || !isWritable}
                   value={contratoNome}
                   onChange={e => setContratoNome(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                  className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                 />
               </div>
 
               {/* CNPJ Field */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label htmlFor="ca_cnpj" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   CNPJ da Obra
                 </label>
                 <div className="relative">
-                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
+                    id="ca_cnpj"
                     type="text"
                     maxLength={18}
                     placeholder="00.000.000/0000-00"
                     disabled={!isEditing || !isWritable}
                     value={cnpj}
                     onChange={e => setCnpj(formatCNPJ(e.target.value))}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
               </div>
 
               {/* Nome do Contato Field */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label htmlFor="ca_nome_contato" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Nome do Contato
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
+                    id="ca_nome_contato"
                     type="text"
                     maxLength={60}
                     placeholder="Nome do contato (máx. 60 caracteres)"
                     disabled={!isEditing || !isWritable}
                     value={nomeContato}
                     onChange={e => setNomeContato(e.target.value.slice(0, 60))}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
               </div>
 
               {/* Contato (Telefone) Field */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label htmlFor="ca_contato_tel" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Contato (Telefone)
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
+                    id="ca_contato_tel"
                     type="text"
                     maxLength={15}
                     placeholder="(00) 00000-0000"
                     disabled={!isEditing || !isWritable}
                     value={contato}
                     onChange={e => setContato(formatPhone(e.target.value))}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
               </div>
 
               {/* Endereço da Obra with CEP Search */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label htmlFor="ca_cep" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Endereço da Obra
                 </label>
                 <div className="space-y-3.5 bg-slate-100/50 p-4 rounded-xl border border-slate-200">
@@ -1832,22 +1838,23 @@ export default function ContratosAtivosView() {
                   
                   <div className="flex gap-2">
                     <div className="relative w-[110px]">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
                       <input
+                        id="ca_cep"
                         type="text"
                         maxLength={9}
                         placeholder="01001-001"
                         disabled={!isEditing || !isWritable || cepLoading}
                         value={cep}
                         onChange={e => setCep(formatCEP(e.target.value))}
-                        className="w-full pl-9 pr-2 py-2 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                        className="w-full pl-9 pr-2 py-2 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={handleCepSearch}
                       disabled={!isEditing || !isWritable || cepLoading || cep.length < 8}
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white text-[10px] font-extrabold rounded-xl transition-all flex items-center gap-2 uppercase tracking-wider"
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white text-[10px] font-extrabold rounded-xl transition-all flex items-center gap-2 uppercase tracking-wider cursor-pointer"
                     >
                       {cepLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Map className="w-3 h-3" />}
                       {cepLoading ? "Buscando..." : "BUSCAR CEP"}
@@ -1855,12 +1862,13 @@ export default function ContratosAtivosView() {
                   </div>
 
                   <textarea
+                    id="ca_endereco_entrega"
                     placeholder="Endereço"
                     rows={2}
                     disabled={!isEditing || !isWritable}
                     value={enderecoEntrega}
                     onChange={e => setEnderecoEntrega(e.target.value)}
-                    className="w-full p-3 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none"
+                    className="w-full p-3 bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all resize-none text-slate-800"
                   />
                 </div>
               </div>
@@ -1868,55 +1876,59 @@ export default function ContratosAtivosView() {
               {/* Novos campos de endereço */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="ca_municipio" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     Município
                   </label>
                   <input
+                    id="ca_municipio"
                     type="text"
                     disabled={!isEditing || !isWritable}
                     value={municipio}
                     onChange={e => setMunicipio(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="ca_uf" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     UF
                   </label>
                   <input
+                    id="ca_uf"
                     type="text"
                     maxLength={2}
                     disabled={!isEditing || !isWritable}
                     value={uf}
                     onChange={e => setUf(e.target.value.toUpperCase())}
-                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="ca_bairro" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     Bairro
                   </label>
                   <input
+                    id="ca_bairro"
                     type="text"
                     disabled={!isEditing || !isWritable}
                     value={bairro}
                     onChange={e => setBairro(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="ca_complemento" className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     Complemento
                   </label>
                   <input
+                    id="ca_complemento"
                     type="text"
                     disabled={!isEditing || !isWritable}
                     value={complemento}
                     onChange={e => setComplemento(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all"
+                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-secondary rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-secondary transition-all text-slate-800"
                   />
                 </div>
               </div>

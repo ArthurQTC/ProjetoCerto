@@ -141,7 +141,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
                 : (projectFilter === "A_FECHAR" ? "Novo Orçamento" : "Novo Contrato")}
             </h3>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
+          <button onClick={onClose} aria-label="Fechar modal" className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -155,7 +155,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="col-span-1 md:col-span-2">
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="projeto_nome_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 {projectFilter === "A_FECHAR" ? "Nome do Orçamento *" : "Nome do Contrato *"}
               </label>
               <input
@@ -170,7 +170,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="projeto_cliente_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 Cliente (Opcional)
               </label>
               <input
@@ -185,7 +185,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="projeto_valor_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 {projectFilter === "A_FECHAR" ? "Valor do Orçamento (R$) *" : "Valor do Contrato (R$) *"}
               </label>
               <input
@@ -203,7 +203,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="projeto_status_contrato_select" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 {projectFilter === "A_FECHAR" ? "Situação do Orçamento" : "Situação do Contrato"}
               </label>
               <select
@@ -220,7 +220,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="projeto_data_inicio_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 Envio do Orçamento
               </label>
               <input
@@ -234,7 +234,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="projeto_data_fim_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 Aprovação do Orçamento
               </label>
               <input
@@ -249,7 +249,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, project
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+            <label htmlFor="projeto_obs_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
               Observações Adicionais (Opcional)
             </label>
             <textarea

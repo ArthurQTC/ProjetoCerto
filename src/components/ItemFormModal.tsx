@@ -245,7 +245,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
               {isFixedItem ? "Ajuste de Item de Custo Fixo" : itemToEdit ? "Editar Item de Orçamento" : "Adicionar Item ao Orçamento"}
             </h3>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
+          <button onClick={onClose} aria-label="Fechar modal" className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -258,7 +258,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
           )}
 
           <div>
-            <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+            <label htmlFor="item_desc_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
               Descrição do Item {isFixedItem && "(Bloqueado)"}
             </label>
             <input
@@ -276,7 +276,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+                  <label htmlFor="item_category_select" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                     Categoria *
                   </label>
                   <select
@@ -295,7 +295,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+                  <label htmlFor="item_valor_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                     Custo do Item *
                   </label>
                   <div className="relative flex items-center">
@@ -357,7 +357,7 @@ export default function ItemFormModal({ isOpen, onClose, onSuccess, obraId, item
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+                <label htmlFor="item_obs_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                   Observação (Opcional)
                 </label>
                 <textarea

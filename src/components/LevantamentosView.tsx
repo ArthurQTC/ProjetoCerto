@@ -820,9 +820,11 @@ export default function LevantamentosView() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
           {/* Cliente search */}
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300 pointer-events-none" />
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
+              id="filter_cliente_input"
+              aria-label="Buscar por obra ou cliente"
               placeholder="Buscar por obra ou cliente..."
               value={filterCliente}
               onChange={(e) => setFilterCliente(e.target.value)}
@@ -832,9 +834,11 @@ export default function LevantamentosView() {
 
           {/* Solicitante select */}
           <select
+            id="filter_solicitante_select"
+            aria-label="Filtrar por Solicitante"
             value={filterSolicitante}
             onChange={(e) => setFilterSolicitante(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold rounded-xl text-brand-text-primary focus:outline-none focus:ring-1 focus:ring-brand-primary"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold rounded-xl text-brand-text-primary focus:outline-none focus:ring-1 focus:ring-brand-primary cursor-pointer"
           >
             <option value="">Solicitante (Todos)</option>
             {solicitanteOptions.map((s) => (
@@ -846,9 +850,11 @@ export default function LevantamentosView() {
 
           {/* Responsavel select */}
           <select
+            id="filter_responsavel_select"
+            aria-label="Filtrar por Responsável"
             value={filterResponsavel}
             onChange={(e) => setFilterResponsavel(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold rounded-xl text-brand-text-primary focus:outline-none focus:ring-1 focus:ring-brand-primary"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 text-xs font-semibold rounded-xl text-brand-text-primary focus:outline-none focus:ring-1 focus:ring-brand-primary cursor-pointer"
           >
             <option value="">Responsável (Todos)</option>
             <option value="Andrew">Andrew</option>

@@ -118,7 +118,7 @@ export default function CreateCategoryModal({ isOpen, onClose, onSuccess }: Crea
             </div>
             <h3 className="text-base font-extrabold text-brand-text-primary">Gerenciar Categorias</h3>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
+          <button onClick={onClose} aria-label="Fechar modal" className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -134,7 +134,7 @@ export default function CreateCategoryModal({ isOpen, onClose, onSuccess }: Crea
           {/* Form to Create Category */}
           <form onSubmit={handleSubmit} className="space-y-3 shrink-0">
             <div>
-              <label className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
+              <label htmlFor="category_name_input" className="block text-xs font-bold text-brand-text-secondary uppercase tracking-widest mb-1.5">
                 Nova Categoria
               </label>
               <div className="flex gap-2">

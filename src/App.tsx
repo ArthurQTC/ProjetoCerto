@@ -786,6 +786,7 @@ function AppContent() {
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Abrir menu de navegação"
           className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
           id="mobile_menu_toggle_btn"
         >
@@ -830,6 +831,7 @@ function AppContent() {
                     e.stopPropagation();
                     logout();
                   }}
+                  aria-label="Sair da conta"
                   className="p-1.5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg border border-slate-200 hover:border-red-200 transition-all cursor-pointer ml-1"
                   title="Sair"
                 >
@@ -1301,10 +1303,11 @@ function AppContent() {
 
                     {/* Código de Verificação */}
                     <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Código de 6 dígitos</label>
+                      <label htmlFor="app_pwd_code_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Código de 6 dígitos</label>
                       <div className="relative mt-1">
                         <span className="absolute left-3.5 top-3 text-sm">🔑</span>
                         <input
+                          id="app_pwd_code_input"
                           type="text"
                           maxLength={6}
                           value={verificationCode}
@@ -1318,10 +1321,11 @@ function AppContent() {
 
                     {/* Nova Senha */}
                     <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Nova Senha</label>
+                      <label htmlFor="app_pwd_new_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Nova Senha</label>
                       <div className="relative mt-1">
                         <span className="absolute left-3.5 top-3 text-sm">🔒</span>
                         <input
+                          id="app_pwd_new_input"
                           type="password"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
@@ -1334,10 +1338,11 @@ function AppContent() {
 
                     {/* Confirmar Nova Senha */}
                     <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Confirmar Nova Senha</label>
+                      <label htmlFor="app_pwd_confirm_input" className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Confirmar Nova Senha</label>
                       <div className="relative mt-1">
                         <span className="absolute left-3.5 top-3 text-sm">🔒</span>
                         <input
+                          id="app_pwd_confirm_input"
                           type="password"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
