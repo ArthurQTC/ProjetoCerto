@@ -1100,8 +1100,8 @@ async function bootstrap() {
     console.error("[BOOT] Erro não-fatal ao tentar inicializar S3:", err.message);
   }
   const app = express();
-  app.use(express.json({ limit: "150mb" }));
-  app.use(express.urlencoded({ limit: "150mb", extended: true }));
+  app.use(express.json({ limit: "500mb" }));
+  app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
   // API Status / Health Check
   app.get("/api/health", (req, res) => {

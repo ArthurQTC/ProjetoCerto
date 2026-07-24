@@ -37,6 +37,31 @@ import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
 import * as XLSX from "xlsx";
 
+// Helper function to convert data URLs (base64) to Blob for smooth iframe preview without browser size/security restrictions
+function dataURLtoBlob(dataurl: string): Blob | null {
+  try {
+    if (!dataurl || typeof dataurl !== 'string' || !dataurl.startsWith('data:')) return null;
+    const commaIdx = dataurl.indexOf(',');
+    if (commaIdx === -1) return null;
+    const header = dataurl.substring(0, commaIdx);
+    const base64Data = dataurl.substring(commaIdx + 1);
+    
+    const mimeMatch = header.match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
+    
+    const binaryString = window.atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+  } catch (e) {
+    console.error("Erro ao converter dataURL para Blob:", e);
+    return null;
+  }
+}
+
 // Sanitizes CSS content for html2canvas compatibility by converting modern unsupported CSS color functions to standard RGB/RGBA
 const sanitizeCssForHtml2Canvas = (css: string): string => {
   if (!css) return "";
@@ -312,9 +337,28 @@ export default function ContratosAtivosView() {
 
   // Document Preview states
   const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [excelPreviewData, setExcelPreviewData] = useState<{ sheets: string[]; activeSheetIdx: number; htmlContent: string; workbook?: any } | null>(null);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
   const [excelTab, setExcelTab] = useState<"microsoft" | "local">("microsoft");
+
+  useEffect(() => {
+    if (!previewDoc?.url) {
+      setPreviewBlobUrl(null);
+      return;
+    }
+    if (typeof previewDoc.url === "string" && previewDoc.url.startsWith("data:")) {
+      const blob = dataURLtoBlob(previewDoc.url);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setPreviewBlobUrl(url);
+        return () => {
+          URL.revokeObjectURL(url);
+        };
+      }
+    }
+    setPreviewBlobUrl(previewDoc.url);
+  }, [previewDoc]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -337,48 +381,57 @@ export default function ContratosAtivosView() {
 
     if (isUploading) return;
 
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length === 0) return;
 
-    // Validate type: PDF, Excel, Image
-    const fileType = file.type;
-    const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    const isPdf = fileType === "application/pdf" || fileExtension === ".pdf";
-    const isImage = fileType.startsWith("image/") || [".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(fileExtension);
-    const isExcel = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"].includes(fileType) || [".xlsx", ".xls"].includes(fileExtension);
+    // Filter supported files: PDF, Excel, Image
+    const validFiles: File[] = [];
+    for (const file of files) {
+      const fileType = file.type;
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      const isPdf = fileType === "application/pdf" || fileExtension === ".pdf";
+      const isImage = fileType.startsWith("image/") || [".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(fileExtension);
+      const isExcel = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"].includes(fileType) || [".xlsx", ".xls"].includes(fileExtension);
 
-    if (!isPdf && !isImage && !isExcel) {
-      alert("Formato de arquivo não suportado. Por favor, envie apenas PDF, Excel ou Imagens.");
+      if (isPdf || isImage || isExcel) {
+        validFiles.push(file);
+      }
+    }
+
+    if (validFiles.length === 0) {
+      alert("Nenhum arquivo válido encontrado. Por favor, envie apenas PDF, Excel ou Imagens.");
       return;
     }
 
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64Url = reader.result as string;
-        const novoDoc = {
-          id: "doc-" + Date.now(),
-          nome: file.name,
-          data: new Date().toISOString().split('T')[0],
-          tamanho: (file.size / (1024 * 1024)).toFixed(2) + " MB",
-          url: base64Url,
-        };
+    try {
+      const newDocs = await Promise.all(
+        validFiles.map((file, idx) => {
+          return new Promise<any>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                id: `doc-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+                nome: file.name,
+                data: new Date().toISOString().split('T')[0],
+                tamanho: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+                url: reader.result as string,
+              });
+            };
+            reader.onerror = () => reject(new Error(`Erro ao ler o arquivo ${file.name}`));
+            reader.readAsDataURL(file);
+          });
+        })
+      );
 
-        const updatedDocs = [...documentos, novoDoc];
-        setDocumentos(updatedDocs);
-        await autoSaveDocuments(updatedDocs);
-      } catch (err: any) {
-        alert("Erro ao enviar arquivo: " + err.message);
-      } finally {
-        setIsUploading(false);
-      }
-    };
-    reader.onerror = () => {
-      alert("Erro ao ler o arquivo.");
+      const updatedDocs = [...documentos, ...newDocs];
+      setDocumentos(updatedDocs);
+      await autoSaveDocuments(updatedDocs);
+    } catch (err: any) {
+      alert("Erro ao enviar arquivo(s): " + err.message);
+    } finally {
       setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handlePreviewDocument = async (doc: any) => {
@@ -1322,36 +1375,39 @@ export default function ContratosAtivosView() {
   };
 
   const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64Url = reader.result as string;
-        const novoDoc = {
-          id: "doc-" + Date.now(),
-          nome: file.name,
-          data: new Date().toISOString().split('T')[0],
-          tamanho: (file.size / (1024 * 1024)).toFixed(2) + " MB",
-          url: base64Url,
-        };
+    try {
+      const newDocs = await Promise.all(
+        files.map((file, idx) => {
+          return new Promise<any>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                id: `doc-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+                nome: file.name,
+                data: new Date().toISOString().split('T')[0],
+                tamanho: (file.size / (1024 * 1024)).toFixed(2) + " MB",
+                url: reader.result as string,
+              });
+            };
+            reader.onerror = () => reject(new Error(`Erro ao ler o arquivo ${file.name}`));
+            reader.readAsDataURL(file);
+          });
+        })
+      );
 
-        const updatedDocs = [...documentos, novoDoc];
-        setDocumentos(updatedDocs);
-        await autoSaveDocuments(updatedDocs);
-      } catch (err: any) {
-        alert("Erro ao enviar arquivo: " + err.message);
-      } finally {
-        setIsUploading(false);
-      }
-    };
-    reader.onerror = () => {
-      alert("Erro ao ler o arquivo.");
+      const updatedDocs = [...documentos, ...newDocs];
+      setDocumentos(updatedDocs);
+      await autoSaveDocuments(updatedDocs);
+    } catch (err: any) {
+      alert("Erro ao enviar arquivo(s): " + err.message);
+    } finally {
       setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+      e.target.value = "";
+    }
   };
 
   const handleDeleteDocument = async (docId: string) => {
@@ -2142,13 +2198,14 @@ export default function ContratosAtivosView() {
                     ) : (
                       <>
                         <UploadCloud className="w-6 h-6 text-brand-accent mb-1.5" />
-                        <p className="text-xs font-extrabold text-slate-700">Anexar Documento (PDF, Excel ou Imagem)</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Clique ou arraste o arquivo aqui</p>
+                        <p className="text-xs font-extrabold text-slate-700">Anexar Documentos (PDF, Excel ou Imagem)</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Clique ou arraste um ou mais arquivos aqui</p>
                       </>
                     )}
                   </div>
                   <input 
                     type="file" 
+                    multiple
                     accept="application/pdf,image/*,.xlsx,.xls" 
                     className="hidden" 
                     onChange={handleLocalFileUpload} 
@@ -2290,18 +2347,24 @@ export default function ContratosAtivosView() {
                 ) : (
                   <div className="text-xs text-slate-400 font-bold">Erro ao carregar dados integrados. Por favor, utilize o visualizador da Microsoft.</div>
                 )
-              ) : previewDoc.nome.toLowerCase().endsWith(".pdf") || previewDoc.url.startsWith("data:application/pdf") ? (
-                /* PDF preview iframe */
-                <iframe
-                  src={previewDoc.url}
+              ) : previewDoc.nome.toLowerCase().endsWith(".pdf") || (previewDoc.url && previewDoc.url.startsWith("data:application/pdf")) ? (
+                /* PDF preview iframe with object wrapper fallback */
+                <object
+                  data={previewBlobUrl || previewDoc.url}
+                  type="application/pdf"
                   className="w-full h-full rounded-2xl border border-slate-200 shadow-sm bg-white"
-                  title="PDF Viewer"
-                />
+                >
+                  <iframe
+                    src={previewBlobUrl || previewDoc.url}
+                    className="w-full h-full rounded-2xl border border-slate-200 shadow-sm bg-white"
+                    title="PDF Viewer"
+                  />
+                </object>
               ) : (
                 /* Image preview */
                 <div className="max-w-full max-h-full flex items-center justify-center p-2">
                   <img
-                    src={previewDoc.url}
+                    src={previewBlobUrl || previewDoc.url}
                     alt={previewDoc.nome}
                     referrerPolicy="no-referrer"
                     className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-md border border-slate-200 bg-white"
@@ -2313,7 +2376,7 @@ export default function ContratosAtivosView() {
             {/* Footer */}
             <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
               <a
-                href={previewDoc.url}
+                href={previewBlobUrl || previewDoc.url}
                 download={previewDoc.nome}
                 className="px-4 py-2 bg-brand-accent hover:bg-brand-accent/90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
               >

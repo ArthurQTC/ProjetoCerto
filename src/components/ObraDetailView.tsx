@@ -168,6 +168,31 @@ function ImageViewer({ url, fileName }: { url: string; fileName: string }) {
   );
 }
 
+// Helper function to convert data URLs (base64) to Blob for smooth iframe preview without browser size/security restrictions
+function dataURLtoBlob(dataurl: string): Blob | null {
+  try {
+    if (!dataurl || typeof dataurl !== 'string' || !dataurl.startsWith('data:')) return null;
+    const commaIdx = dataurl.indexOf(',');
+    if (commaIdx === -1) return null;
+    const header = dataurl.substring(0, commaIdx);
+    const base64Data = dataurl.substring(commaIdx + 1);
+    
+    const mimeMatch = header.match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
+    
+    const binaryString = window.atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+  } catch (e) {
+    console.error("Erro ao converter dataURL para Blob:", e);
+    return null;
+  }
+}
+
 export default function ObraDetailView() {
   const queryClient = useQueryClient();
   const navigateToProjects = useUIStore((state) => state.navigateToProjects);
@@ -197,8 +222,27 @@ export default function ObraDetailView() {
 
   // Secondary document attachments and inline pdf preview states
   const [activePdfUrl, setActivePdfUrl] = useState<string | null>(null);
+  const [activePdfBlobUrl, setActivePdfBlobUrl] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    if (!activePdfUrl) {
+      setActivePdfBlobUrl(null);
+      return;
+    }
+    if (typeof activePdfUrl === "string" && activePdfUrl.startsWith("data:")) {
+      const blob = dataURLtoBlob(activePdfUrl);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setActivePdfBlobUrl(url);
+        return () => {
+          URL.revokeObjectURL(url);
+        };
+      }
+    }
+    setActivePdfBlobUrl(activePdfUrl);
+  }, [activePdfUrl]);
 
   // Sub-items list expansion and inline management states
   const [expandedItemIds, setExpandedItemIds] = useState<Record<string, boolean>>({});
@@ -267,42 +311,90 @@ export default function ObraDetailView() {
   };
 
   const handleLocalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64Url = reader.result as string;
-      const novoDoc = {
-        id: "doc-" + Date.now(),
-        nome: file.name,
-        data: new Date().toISOString().split('T')[0],
-        tamanho: (file.size / (1024 * 1024)).toFixed(1) + " MB",
-        url: base64Url,
-      };
+    try {
+      const newDocs = await Promise.all(
+        files.map((file, idx) => {
+          return new Promise<any>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                id: `doc-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+                nome: file.name,
+                data: new Date().toISOString().split('T')[0],
+                tamanho: (file.size / (1024 * 1024)).toFixed(1) + " MB",
+                url: reader.result as string,
+              });
+            };
+            reader.onerror = () => reject(new Error(`Erro ao ler o arquivo ${file.name}`));
+            reader.readAsDataURL(file);
+          });
+        })
+      );
 
-      const updatedDocs = [...(project?.documentos || []), novoDoc];
-      try {
-        const res = await fetch(`/api/projetos/${project?.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ documentos: updatedDocs }),
-        });
-        if (!res.ok) throw new Error("Erro ao salvar documento");
-        refetch();
-        queryClient.invalidateQueries({ queryKey: ["projectDetail", project?.id] });
-      } catch (err: any) {
-        alert("Erro ao enviar arquivo: " + err.message);
-      } finally {
-        setIsUploading(false);
-      }
-    };
-    reader.onerror = () => {
-      alert("Erro ao ler o arquivo PDF/Imagem.");
+      const updatedDocs = [...(project?.documentos || []), ...newDocs];
+      const res = await fetch(`/api/projetos/${project?.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentos: updatedDocs }),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar documento(s)");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["projectDetail", project?.id] });
+    } catch (err: any) {
+      alert("Erro ao enviar arquivo(s): " + err.message);
+    } finally {
       setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+      e.target.value = "";
+    }
+  };
+
+  const handleDropFiles = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isUploading) return;
+
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const newDocs = await Promise.all(
+        files.map((file, idx) => {
+          return new Promise<any>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                id: `doc-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+                nome: file.name,
+                data: new Date().toISOString().split('T')[0],
+                tamanho: (file.size / (1024 * 1024)).toFixed(1) + " MB",
+                url: reader.result as string,
+              });
+            };
+            reader.onerror = () => reject(new Error(`Erro ao ler o arquivo ${file.name}`));
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+
+      const updatedDocs = [...(project?.documentos || []), ...newDocs];
+      const res = await fetch(`/api/projetos/${project?.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentos: updatedDocs }),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar documento(s)");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["projectDetail", project?.id] });
+    } catch (err: any) {
+      alert("Erro ao enviar arquivo(s): " + err.message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const [docToDelete, setDocToDelete] = useState<any | null>(null);
@@ -1433,7 +1525,10 @@ export default function ObraDetailView() {
             {/* Upload Area */}
             {canEdit && (
               <div className="pt-2 border-t border-slate-100">
-                <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-3 transition-all ${
+                <label 
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={handleDropFiles}
+                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-3 transition-all ${
                   isUploading 
                     ? "border-amber-300 bg-amber-50/20 cursor-not-allowed" 
                     : "border-slate-200 hover:border-brand-accent cursor-pointer hover:bg-slate-50"
@@ -1442,19 +1537,20 @@ export default function ObraDetailView() {
                     {isUploading ? (
                       <>
                         <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin mb-1" />
-                        <p className="text-[10px] font-extrabold text-amber-700">Enviando arquivo...</p>
+                        <p className="text-[10px] font-extrabold text-amber-700">Enviando arquivo(s)...</p>
                         <p className="text-[8px] text-slate-400 mt-0.5">Salvando no banco de dados, aguarde...</p>
                       </>
                     ) : (
                       <>
                         <UploadCloud className="w-5 h-5 text-brand-accent mb-1 animate-bounce" />
-                        <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documento (PDF, Imagem, DWG, Excel)</p>
-                        <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste o arquivo aqui</p>
+                        <p className="text-[10px] font-extrabold text-brand-text-primary">Anexar Documentos (PDF, Imagem, DWG, Excel)</p>
+                        <p className="text-[8px] text-brand-text-secondary mt-0.5">Clique ou arraste um ou mais arquivos aqui</p>
                       </>
                     )}
                   </div>
                   <input 
                     type="file" 
+                    multiple
                     accept="application/pdf,image/*,.dwg,.xlsx,.xls" 
                     className="hidden" 
                     onChange={handleLocalFileUpload} 
@@ -1713,7 +1809,7 @@ export default function ObraDetailView() {
                     <span className="hidden sm:inline">Microsoft</span>
                   </a>
                   <a
-                    href={activePdfUrl}
+                    href={activePdfBlobUrl || activePdfUrl}
                     download={activeDocName}
                     target="_blank"
                     rel="noreferrer"
@@ -1741,13 +1837,19 @@ export default function ObraDetailView() {
                 ) : isDwg ? (
                   <DwgViewer fileName={activeDocName} />
                 ) : isImage ? (
-                  <ImageViewer url={activePdfUrl} fileName={activeDocName} />
+                  <ImageViewer url={activePdfBlobUrl || activePdfUrl} fileName={activeDocName} />
                 ) : (
-                  <iframe 
-                    src={activePdfUrl} 
-                    className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-inner flex-1" 
-                    title="Document Preview"
-                  />
+                  <object
+                    data={activePdfBlobUrl || activePdfUrl}
+                    type="application/pdf"
+                    className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-inner flex-1"
+                  >
+                    <iframe 
+                      src={activePdfBlobUrl || activePdfUrl} 
+                      className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-inner flex-1" 
+                      title="Document Preview"
+                    />
+                  </object>
                 )}
               </div>
             </div>
