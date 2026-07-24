@@ -37,65 +37,18 @@ import { useAuthStore } from "../store";
 import { Obra, ContratoAtivo } from "../types";
 import * as XLSX from "xlsx";
 
-// Converts modern CSS OKLCH values to standard RGB values for perfect html2canvas compatibility
-const oklchToRgbStr = (oklchStr: string): string => {
-  try {
-    const match = oklchStr.match(/oklch\s*\(\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)(?:\s*\/\s*([0-9.%]+))?\s*\)/i);
-    if (!match) return "rgb(120, 120, 120)";
-    const l = parseFloat(match[1]);
-    const c = parseFloat(match[2]);
-    const h = parseFloat(match[3]);
-    const a = match[4] ? (match[4].endsWith("%") ? parseFloat(match[4]) / 100 : parseFloat(match[4])) : 1;
-
-    const hRad = (h * Math.PI) / 180;
-    const a_ = c * Math.cos(hRad);
-    const b_ = c * Math.sin(hRad);
-
-    const l_ = l + 0.3963377774 * a_ + 0.2158037573 * b_;
-    const m_ = l - 0.1055613458 * a_ - 0.0638541728 * b_;
-    const s_ = l - 0.0894841775 * a_ - 1.2914855480 * b_;
-
-    const l3 = l_ * l_ * l_;
-    const m3 = m_ * m_ * m_;
-    const s3 = s_ * s_ * s_;
-
-    const rL = +4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3;
-    const gL = -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3;
-    const bL = -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076126010 * s3;
-
-    const f = (cVal: number) => {
-      const clamped = Math.max(0, Math.min(1, cVal));
-      return clamped <= 0.0031308
-        ? 12.92 * clamped
-        : 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
-    };
-
-    const r = Math.round(f(rL) * 255);
-    const g = Math.round(f(gL) * 255);
-    const b = Math.round(f(bL) * 255);
-
-    if (a < 1) {
-      return `rgba(${r}, ${g}, ${b}, ${a})`;
-    }
-    return `rgb(${r}, ${g}, ${b})`;
-  } catch (err) {
-    return "rgb(120, 120, 120)";
-  }
-};
-
-// Sanitizes CSS content for html2canvas compatibility by replacing modern unsupported CSS color functions
+// Sanitizes CSS content for html2canvas compatibility by converting modern unsupported CSS color functions to standard RGB/RGBA
 const sanitizeCssForHtml2Canvas = (css: string): string => {
   if (!css) return "";
   let result = css;
   result = result.replace(/in\s+(oklch|oklab)/gi, "in srgb");
-  result = result.replace(/oklch\s*\([^)]+\)/gi, (match) => oklchToRgbStr(match));
 
-  // Regex to strip unsupported color functions: color(...), color-mix(...), oklab(...), lab(...), lch(...), hwb(...), light-dark(...)
-  const unsupportedColorRegex = /(color|color-mix|oklab|lab|lch|hwb|light-dark)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
+  // Regex to strip unsupported color functions (oklch, color, color-mix, oklab, lab, lch, hwb, light-dark) and replace with standard RGB
+  const unsupportedColorRegex = /(color|color-mix|oklch|oklab|lab|lch|hwb|light-dark)\s*\((?:[^()]+|\([^()]*\))*\)/gi;
 
   let attempts = 0;
   while (unsupportedColorRegex.test(result) && attempts < 10) {
-    result = result.replace(unsupportedColorRegex, "rgba(100, 100, 100, 0.8)");
+    result = result.replace(unsupportedColorRegex, "rgb(15, 23, 42)");
     attempts++;
   }
 
